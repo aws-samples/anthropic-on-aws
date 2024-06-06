@@ -1,17 +1,15 @@
-## My Project
+# Anthropic on AWS
 
-TODO: Fill this README out!
+This repo contains a collection of examples and notebooks when using Anthropic on AWS. These examples
 
-Be sure to:
+## Notebooks
 
-* Change the title in this README
-* Edit your repository description on GitHub
+- [Cookbooks](cookbooks/README.md)
 
-## Security
+## Workshops
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+- [Prompt Engineering](prompt-engineering-with-anthropic-claude-v-3)
 
-## License
+## Demos
 
-This library is licensed under the MIT-0 License. See the LICENSE file.
-
+- [Metaprompt Generator](metaorinot-generator/README.md)
