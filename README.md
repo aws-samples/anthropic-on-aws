@@ -8,8 +8,8 @@ This repo contains a collection of examples and notebooks when using Anthropic o
 
 ## Workshops
 
-- [Prompt Engineering](prompt-engineering-with-anthropic-claude-v-3)
+- [Prompt Engineering](https://github.com/aws-samples/prompt-engineering-with-anthropic-claude-v-3))
 
 ## Demos
 
-- [Metaprompt Generator](metaorinot-generator/README.md)
+- [Metaprompt Generator](metaprompt-generator/README.md)
