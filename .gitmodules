@@ -1,0 +1,3 @@
+[submodule "prompt-engineering-with-anthropic-claude-v-3"]
+	path = prompt-engineering-with-anthropic-claude-v-3
+	url = https://github.com/aws-samples/prompt-engineering-with-anthropic-claude-v-3

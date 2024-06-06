@@ -1,0 +1,56 @@
+{
+  "version": "2017-02-28",
+  "operation": "UpdateItem",
+  "key": {
+    "id": $util.dynamodb.toDynamoDBJson($ctx.args.id)
+  },
+  #set($expNames = {})
+  #set($expValues = {})
+  #set($expSet = {})
+
+  #foreach($entry in $context.arguments.entrySet())
+    #if($entry.key == "status")
+      $!{expSet.put("#${entry.key}", ":${entry.key}")}
+      $!{expNames.put("#${entry.key}", "$entry.key")}
+      $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+    #elseif($entry.key == "prompt" && $entry.value != '')
+      #if($ctx.args.status == "GENERATING" || $ctx.args.status == "PENDING")
+        $!{expSet.put("${entry.key}", ":${entry.key}")}
+        $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+      #else
+        $!{expSet.put("#${entry.key}", ":${entry.key}")}
+        $!{expNames.put("#${entry.key}", "$entry.key")}
+        $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+      #end
+    #elseif($entry.key == "task" && $entry.value != '')
+      $!{expSet.put("#${entry.key}", ":${entry.key}")}
+      $!{expNames.put("#${entry.key}", "$entry.key")}
+      $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+    #elseif($entry.key == "variables" && $entry.value != '')
+      $!{expSet.put("#${entry.key}", ":${entry.key}")}
+      $!{expNames.put("#${entry.key}", "$entry.key")}
+      $!{expValues.put(":${entry.key}", $util.dynamodb.toDynamoDBJson($entry.value))}
+    #end
+  #end
+
+  #set($expression = "")
+  #if(!$expSet.isEmpty())
+    #set($expression = "SET")
+    #foreach($entry in $expSet.entrySet())
+      #set($expression = "${expression} ${entry.key} = ${entry.value}")
+      #if($foreach.hasNext)
+        #set($expression = "${expression},")
+      #end
+    #end
+  #end
+
+  "update": {
+    "expression": "$expression"
+    #if(!$expNames.isEmpty())
+      ,"expressionNames": $utils.toJson($expNames)
+    #end
+    #if(!$expValues.isEmpty())
+      ,"expressionValues": $utils.toJson($expValues)
+    #end
+  }
+}

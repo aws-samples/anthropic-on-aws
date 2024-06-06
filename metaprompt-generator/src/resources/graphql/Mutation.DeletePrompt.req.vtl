@@ -1,0 +1,16 @@
+{
+  "version": "2017-02-28",
+  "operation": "DeleteItem",
+  "key": {
+    "id": $util.dynamodb.toDynamoDBJson($ctx.args.id)
+  },
+  "condition": {
+    "expression": "#owner = :userId",
+    "expressionNames": {
+      "#owner": "owner"
+    },
+    "expressionValues": {
+      ":userId": $util.dynamodb.toDynamoDBJson($ctx.identity.sub)
+    }
+  }
+}

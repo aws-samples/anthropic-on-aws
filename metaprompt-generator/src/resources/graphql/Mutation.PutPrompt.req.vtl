@@ -1,0 +1,16 @@
+{
+  "version": "2017-02-28",
+  "operation": "PutItem",
+  "key": {
+    "id": $util.dynamodb.toDynamoDBJson($util.autoId()),
+  },
+  "attributeValues": {
+    #if($ctx.args.prompt && $ctx.args.prompt != "")
+      "prompt": $util.dynamodb.toDynamoDBJson($ctx.args.prompt),
+    #end
+    "task": $util.dynamodb.toDynamoDBJson($ctx.args.task),
+    "variables": $util.dynamodb.toDynamoDBJson($ctx.args.variables),
+    "owner": $util.dynamodb.toDynamoDBJson($ctx.identity.sub),
+    "status": { "S": "${ctx.args.status}" }
+  }
+}

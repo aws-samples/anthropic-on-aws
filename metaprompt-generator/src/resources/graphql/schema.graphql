@@ -1,0 +1,51 @@
+enum PromptStatus {
+  PENDING
+  GENERATING
+  GENERATED
+  ERROR
+}
+
+type Prompt @aws_api_key @aws_cognito_user_pools {
+  id: ID!
+  prompt: String
+  updatedPrompt: String
+  task: String!
+  variables: [String!]
+  owner: String!
+  status: PromptStatus!
+}
+
+type Query @aws_cognito_user_pools {
+  getPrompt(id: ID!, owner: String!): Prompt
+  listPrompts(owner: String!): [Prompt!]!
+  getAllPrompts(owner: String!): [Prompt!]!
+}
+
+type Mutation {
+  putPrompt(
+    prompt: String
+    task: String!
+    variables: [String!]
+    status: PromptStatus!
+  ): Prompt! @aws_cognito_user_pools
+
+  updatePrompt(
+    id: ID!
+    prompt: String
+    updatedPrompt: String
+    task: String
+    variables: [String!]
+    status: PromptStatus
+  ): Prompt! @aws_api_key
+
+  deletePrompt(id: ID!): Prompt @aws_cognito_user_pools
+}
+
+type Subscription @aws_cognito_user_pools {
+  promptGenerated(owner: String!): Prompt
+    @aws_subscribe(mutations: ["putPrompt"])
+  promptUpdated(owner: String!): Prompt
+    @aws_subscribe(mutations: ["updatePrompt"])
+  promptDeleted(owner: String!): Prompt
+    @aws_subscribe(mutations: ["deletePrompt"])
+}

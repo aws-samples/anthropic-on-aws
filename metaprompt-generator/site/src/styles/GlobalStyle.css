@@ -1,0 +1,59 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    outline: 0;
+}
+
+body {
+    background: #fafafa;
+    -webkit-font-smoothing: antialiased;
+}
+
+body,
+input,
+button {
+    font-family: 'Inconsolata', serif;
+    font-size: 16px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong {
+    font-weight: 500;
+}
+
+button {
+    cursor: pointer;
+}
+
+a {
+    color: #0000ee;
+    text-decoration: none;
+}
+
+a:visited,
+a:hover,
+a:active {
+    color: #0000ee;
+}
+
+iframe#webpack-dev-server-client-overlay {
+    display: none !important;
+}
+
+.custom-main-header {
+    display: block;
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    margin: 0;
+    background-color: #0f1b2a;
+    border-bottom: solid 1px #414d5c;
+}
