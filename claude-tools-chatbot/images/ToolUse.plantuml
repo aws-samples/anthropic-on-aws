@@ -1,0 +1,80 @@
+@startuml
+
+!define AWSPuml https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v18.0/dist
+!include AWSPuml/AWSCommon.puml
+!include AWSPuml/AWSSimplified.puml
+!include AWSPuml/Compute/Lambda.puml
+!include AWSPuml/Database/DynamoDB.puml
+!include AWSPuml/MachineLearning/Bedrock.puml
+!include AWSPuml/ApplicationIntegration/AppSync.puml
+!include AWSPuml/Database/RDS.puml
+
+skinparam actorStyle awesome
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 75
+skinparam maxMessageSize 400
+
+actor User
+LambdaParticipant(Lambda,LambdaResolver,)
+DynamoDBParticipant(Conversation,ConversationTable,)
+AppSyncParticipant(Subscription,Subscription,)
+BedrockParticipant(Bedrock,Bedrock,)
+RDSParticipant(RDS,RDS,)
+
+User -> Lambda: Request
+activate Lambda
+Lambda -> User: ACK
+
+Lambda -> Conversation: Check for existing conversation
+activate Conversation
+Conversation -> Lambda: Existing conversation or null
+
+Lambda -> Conversation: Append item with request
+Conversation -> Lambda: ACK
+Conversation -> Subscription: Request Message
+deactivate Conversation
+activate Subscription
+Subscription -> User: Request Message
+deactivate Subscription
+|||
+Lambda -> Bedrock: Converse API request
+activate Bedrock
+Bedrock -> Lambda: Response from Converse API - stopReason = 'tool_use'
+deactivate Bedrock
+|||
+Lambda -> Conversation: Append item with response
+activate Conversation
+Conversation -> Lambda: ACK
+deactivate Lambda
+deactivate Conversation
+
+|||
+group ToolUse
+  Lambda -> RDS: Query request
+  activate RDS
+  RDS -> Lambda: Query response
+  deactivate RDS
+  Lambda -> Conversation: Append item with response
+  activate Conversation
+  Conversation -> Lambda: ACK
+  deactivate Lambda
+  deactivate Conversation
+  |||
+  end
+|||
+Lambda -> Bedrock: Converse API request
+activate Bedrock
+Bedrock -> Lambda: Response from Converse API - stopReason = 'end_turn'
+deactivate Bedrock
+|||
+Lambda -> Conversation: Append item with response
+activate Conversation
+Conversation -> Lambda: ACK
+deactivate Lambda
+Conversation -> Subscription: Response Message
+deactivate Conversation
+activate Subscription
+Subscription -> User: Response Message
+deactivate Subscription
+
+@enduml

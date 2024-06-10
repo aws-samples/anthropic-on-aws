@@ -1,0 +1,26 @@
+#set($newMessage = {
+ "content": $ctx.args.message.content,
+ "role": $ctx.args.message.role
+})
+
+{
+  "version": "2017-02-28",
+  "operation": "UpdateItem",
+  "key": {
+    "conversationId": $util.dynamodb.toDynamoDBJson($ctx.args.conversationId)
+  },
+  "update": {
+    "expression": "SET #timestamp = :timestamp, #messages = list_append(if_not_exists(#messages, :emptyList), :newMessage), #ownerId = :ownerId",
+    "expressionNames": {
+      "#timestamp": "timestamp",
+      "#messages": "messages",
+      "#ownerId": "ownerId"
+    },
+    "expressionValues": {
+      ":timestamp": $util.dynamodb.toDynamoDBJson($util.time.nowEpochMilliSeconds()),
+      ":emptyList": { "L": [] },
+      ":newMessage": { "L": [$util.dynamodb.toDynamoDBJson($newMessage)] },
+      ":ownerId": $util.dynamodb.toDynamoDBJson($ctx.args.ownerId)
+    }
+  }
+}

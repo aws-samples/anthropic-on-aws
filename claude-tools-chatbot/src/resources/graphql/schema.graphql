@@ -1,0 +1,103 @@
+scalar AWSJSON
+scalar AWSTimestamp
+
+type Conversation @aws_api_key @aws_cognito_user_pools {
+  conversationId: String!
+  messages: [Message!]!
+  timestamp: AWSTimestamp!
+  ownerId: String!
+}
+
+type Message @aws_api_key @aws_cognito_user_pools {
+  content: [MessageContent!]!
+  role: String!
+}
+
+type MessageContent @aws_api_key @aws_cognito_user_pools {
+  text: String
+  imageBytes: ImageBytes
+  toolResult: ToolResult
+  toolUse: ToolUse
+}
+
+input MessageContentInput @aws_api_key @aws_cognito_user_pools {
+  text: String
+  imageBytes: ImageBytesInput
+  toolResult: ToolResultInput
+  toolUse: ToolUseInput
+}
+
+input MessageInput @aws_api_key @aws_cognito_user_pools {
+  content: [MessageContentInput!]!
+  role: String!
+}
+
+type ImageBytes {
+  bytes: String!
+}
+
+input ImageBytesInput {
+  bytes: String!
+}
+
+type ToolResult @aws_api_key @aws_cognito_user_pools {
+  content: [ToolResultContent!]!
+  toolUseId: String!
+  status: String
+}
+
+input ToolResultInput @aws_api_key @aws_cognito_user_pools {
+  content: [ToolResultContentInput!]!
+  toolUseId: String!
+  status: String
+}
+
+type ToolResultContent @aws_api_key @aws_cognito_user_pools {
+  text: String
+  imageBytes: ImageBytes
+  json: AWSJSON
+}
+
+input ToolResultContentInput @aws_api_key @aws_cognito_user_pools {
+  text: String
+  imageBytes: ImageBytesInput
+  json: AWSJSON
+}
+
+type ToolUse @aws_api_key @aws_cognito_user_pools {
+  input: AWSJSON!
+  name: String!
+  toolUseId: String!
+}
+
+input ToolUseInput @aws_api_key @aws_cognito_user_pools {
+  input: AWSJSON!
+  name: String!
+  toolUseId: String!
+}
+
+type Mutation {
+  processMessage(
+    conversationId: String!
+    message: MessageInput!
+    ownerId: String!
+  ): Conversation @aws_cognito_user_pools
+
+  updateConversation(
+    conversationId: String!
+    ownerId: String!
+    message: MessageInput!
+    timestamp: AWSTimestamp
+  ): Conversation @aws_api_key
+}
+
+type Query {
+  getConversation(conversationId: String!): Conversation
+    @aws_api_key
+    @aws_cognito_user_pools
+}
+
+type Subscription @aws_cognito_user_pools {
+  conversationUpdated(conversationId: String!, ownerId: String!): Conversation
+    @aws_subscribe(mutations: ["updateConversation"])
+}
