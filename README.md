@@ -13,3 +13,5 @@ This repo contains a collection of examples and notebooks when using Anthropic o
 ## Demos
 
 - [Metaprompt Generator](metaprompt-generator/README.md)
+
+- [Tool Use (function calling) with complex tool schemas](complex-schema-tool-use/README.md)
