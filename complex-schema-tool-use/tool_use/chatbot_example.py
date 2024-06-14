@@ -1,21 +1,29 @@
-import streamlit as st
-import boto3
+"""
+This script demonstrates how to use a complex tool schema with Claude 3 Tool Use.
+It allows users to order a pizza through a Streamlit user interface.
+"""
+
 import json
 import re
 from datetime import datetime
-from botocore.exceptions import ClientError
+import streamlit as st
+import boto3
 from input_schema import tools
 from system_prompt import system_prompt
 
-modelId = "anthropic.claude-3-sonnet-20240229-v1:0"
-region = "us-east-1"
-temperature = 0.0
-max_tokens = 4000
 
-bedrock_client = boto3.client(service_name="bedrock-runtime", region_name=region)
+MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
+REGION = "us-east-1"
+TEMPERATURE = 0.0
+MAX_TOKENS = 4000
+
+bedrock_client = boto3.client(service_name="bedrock-runtime", region_name=REGION)
 
 
 def extract_reply(text):
+    """
+    Extracts the reply content from the assistant's response.
+    """
     pattern = r"<reply>(.*?)</reply>"
     match = re.search(pattern, text, re.DOTALL)
     if match:
@@ -24,8 +32,18 @@ def extract_reply(text):
 
 
 def use_tool():
-    st.title("Incident Reporting")
-
+    """
+    Main function to run the pizza ordering tool using Claude 3 Tool Use.
+    """
+    st.title("Order a pizza")
+    st.subheader("Powered by Anthropic Claude 3 and Amazon Bedrock")
+    st.write(
+        """
+        This example demonstrates how to use a complex tool schema with
+        Claude 3 Tool Use. To get started, tell the bot you'd like to
+        order a pizza.
+    """
+    )
     conversation_container = st.container()
     input_container = st.container()
 
@@ -36,6 +54,9 @@ def use_tool():
         st.session_state.messages = []
 
     def handle_user_input():
+        """
+        Handles the user input and generates a response from the assistant.
+        """
         if st.session_state.user_input:
             user_input = st.session_state.user_input
             st.session_state.conversation.append(("user", user_input))
@@ -49,12 +70,12 @@ def use_tool():
                 + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
             converse_api_params = {
-                "modelId": modelId,
+                "modelId": MODEL_ID,
                 "messages": st.session_state.messages,
                 "system": [{"text": system_prompt_with_date}],
                 "inferenceConfig": {
-                    "temperature": temperature,
-                    "maxTokens": max_tokens,
+                    "temperature": TEMPERATURE,
+                    "maxTokens": MAX_TOKENS,
                 },
                 "toolConfig": tools,
             }
@@ -70,35 +91,36 @@ def use_tool():
             if response["stopReason"] != "tool_use":
                 st.session_state.conversation.append(("assistant", reply))
             else:
-                st.session_state.conversation.append(("system", "Incident reported."))
+                st.session_state.conversation.append(
+                    ("system", "Pizza Ready to be Ordered.")
+                )
             st.session_state.user_input = ""
 
     with input_container:
         st.text_input("Input", key="user_input", on_change=handle_user_input)
 
+    def get_message_style(role):
+        styles = {
+            "user": "background-color: #eeeeee; color: black;",
+            "assistant": "background-color: #8e92ab; color: black;",
+            "system": "background-color: #313652; color: white;",
+        }
+        return styles.get(role, "")
+
+    def display_message(role, message):
+        st.markdown(
+            f"""<div style="{get_message_style(role)}
+            padding: 10px; 
+            border-radius: 5px;">
+            <strong>{role.capitalize()}:</strong> {message}</div>""",
+            unsafe_allow_html=True,
+        )
+
     with conversation_container:
         for role, message in st.session_state.conversation:
-            if role == "user":
-                st.markdown(
-                    f'<div style="background-color: #eeeeee; padding: 10px; border-radius: 5px; color: black;"><strong>You:</strong> {message}</div>',
-                    unsafe_allow_html=True,
-                )
-            elif role == "assistant":
-                st.markdown(
-                    f'<div style="background-color: #8e92ab; padding: 10px; border-radius: 5px;color: black;"><strong>Assistant:</strong> {message}</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<div style="background-color: #313652; padding: 10px; border-radius: 5px; color:white">{message}</div>',
-                    unsafe_allow_html=True,
-                )
+            display_message(role, message)
 
         st.empty()
-
-
-def handle_user_input():
-    pass
 
 
 if __name__ == "__main__":
