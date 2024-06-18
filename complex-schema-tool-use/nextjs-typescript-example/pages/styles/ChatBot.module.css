@@ -1,0 +1,70 @@
+.chatContainer {
+  display: flex;
+  flex-direction: column-reverse;
+  height: 400px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.messageList {
+  display: flex;
+  flex-direction: column-reverse; /* Reverse the order */
+  overflow-y: auto; /* Add scrollbar for vertical overflow */
+}
+
+.messageContainer {
+  margin-bottom: 8px;
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.userMessage {
+  justify-content: flex-end;
+}
+
+.botMessage {
+  justify-content: flex-start;
+}
+
+.messageBubble {
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 70%;
+  font-family: sans-serif;
+}
+.userMessage .messageBubble {
+  background-color: #007aff;
+  color: white;
+}
+
+.botMessage .messageBubble {
+  background-color: #f0f0f0;
+  color: black;
+}
+
+.inputContainer {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+}
+
+.messageInput {
+  flex: 1;
+  margin-right: 8px;
+}
+
+.thinkingBubble {
+  background-color: #f0f0f0;
+  padding: 8px 12px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.errorBubble {
+  background-color: #ffcccc;
+  color: #ff0000;
+  padding: 8px 12px;
+  border-radius: 16px;
+}
