@@ -1,39 +1,9 @@
 # Using complex JSON Schema with Claude 3 Tools
 
-In this demo, we will show how to use complex JSON schema with Claude 3 using the [tools use feature](https://docs.anthropic.com/en/docs/tool-use#how-tool-use-works). This is meant as a simple and customizable demonstration you can use to familiarize yourself with how tools work. A basic understanding of tools use on Claude will be important for understanding this demo.
-
-## Using this demo
-
-To get started, you will need the following:
-
-- AWS CLI [Installed](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html) and [Configured](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html)
-- Amazon Bedrock [Model Access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) for Claude 3 Sonnet
-- Python [Installed](https://www.python.org/downloads/)
-
-With these installed and configured, you can clone this repo.
-
-```bash
-git clone https://github.com/aws-samples/anthropic-on-aws.git
-cd anthropic-on-aws/complex-schema-tool-use
-```
-
-And create a virtual environment and install the necessary packages.
-
-```bash
-python3 -m venv ./
-source bin/activate
-pip3 install -r requirements.txt
-```
-
-And now run the Streamlit App
-
-```bash
-streamlit run tool_use/chatbot_example.py
-```
-
-This should open a browser to `http://localhost:8501/` or something similar. To get started, tell the bot you'd like to order a pizza.
+In these demos, we will show how to use complex JSON schema with Claude 3 using the [tools use feature](https://docs.anthropic.com/en/docs/tool-use#how-tool-use-works). This is meant as a simple and customizable demonstration you can use to familiarize yourself with how tools work. A basic understanding of tools use on Claude will be important for understanding this demo.
 
 ![OrderAPizza](images/OrderAPizza.png)
+_Image from Streamlit example_
 
 From here the bot will use the [tool use feature](https://docs.anthropic.com/en/docs/tool-use) of Claude to walk through the process of ordering a pizza. In this demo, we're not actually going to make a function call so the [output](https://docs.anthropic.com/en/docs/tool-use#json-output) will be the JSON that Claude thinks it needs to provide to call the function.
 
@@ -151,11 +121,14 @@ converse_api_params = {
 response = bedrock_client.converse(**converse_api_params)
 ```
 
+_Streamlit code example_
+
 ## Result
 
 The result is a simple chat bot that can capture a wide variety of information from a user and produce reliable JSON for further processing.
 
 ![ReadyToOrder](images/ReadyToOrder.png)
+_Image from Streamlit example_
 
 ```json
 {
