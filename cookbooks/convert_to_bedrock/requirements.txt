@@ -14,4 +14,4 @@ rpds-py==0.18.0
 s3transfer==0.10.1
 six==1.16.0
 traitlets==5.14.3
-urllib3==1.26.18
+urllib3==1.26.19
