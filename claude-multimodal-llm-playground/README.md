@@ -1,4 +1,4 @@
-# Claude 3.5 Streamlit LLM Playground
+# Claude 3.5 Streamlit Multimodal LLM Playground
 
 ## Overview
 

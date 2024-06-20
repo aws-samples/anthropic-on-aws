@@ -16,4 +16,4 @@ This repo contains a collection of examples and notebooks when using Anthropic o
 
 - [Tool Use (function calling) with complex tool schemas](complex-schema-tool-use/README.md)
 
-- [Claude Streamlit LLM Playground (supports Claude 3.5)](claude-llm-playground/README.md)
+- [Claude Streamlit LLM Playground (supports Claude 3.5)](claude-multimodal-llm-playground/README.md)

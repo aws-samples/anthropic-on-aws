@@ -1,4 +1,4 @@
-# Streamlit Bedrock LLM Playground
+# Claude 3.5 Streamlit Multimodal LLM Playground
 
 ## Overview
 This Streamlit application provides a comprehensive interface for interacting with Amazon Bedrock's Claude 3 AI models. It supports both text-only and image+text inputs, allows for custom system prompts, and enables the use of tools (function calling) with the AI model. The application is designed to showcase the capabilities of Claude 3 models on Amazon Bedrock while providing users with a flexible and intuitive way to experiment with different inputs and settings.
@@ -27,7 +27,7 @@ This Streamlit application provides a comprehensive interface for interacting wi
 1. Clone the repository:
    ```
    git clone https://github.com/aws-samples/anthropic-on-aws.git
-   cd claude-llm-playground/bedrock
+   cd claude-multimodal-llm-playground/bedrock
    ```
 
 2. Install the required packages:
