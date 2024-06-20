@@ -1,0 +1,5 @@
+pillow==10.3.0
+streamlit==1.35.0
+python-dotenv==1.0.1
+boto3==1.34.130
+botocore==1.34.130
