@@ -9,8 +9,7 @@ from datetime import datetime
 import streamlit as st
 import boto3
 from input_schema import tools
-from system_prompt import system_prompt
-
+from system_prompt import role_prompt, detailed_instructions
 
 MODEL_ID = "anthropic.claude-3-sonnet-20240229-v1:0"
 REGION = "us-east-1"
@@ -60,19 +59,22 @@ def use_tool():
         if st.session_state.user_input:
             user_input = st.session_state.user_input
             st.session_state.conversation.append(("user", user_input))
-            st.session_state.messages.append(
-                {"role": "user", "content": [{"text": user_input}]}
-            )
+            
+            # If this is the first message, include the detailed instructions
+            if len(st.session_state.messages) == 0:
+                st.session_state.messages.append(
+                    {"role": "user", "content": [{"text": detailed_instructions + "\n\nUser: " + user_input}]}
+                )
+            else:
+                st.session_state.messages.append(
+                    {"role": "user", "content": [{"text": user_input}]}
+                )
 
-            system_prompt_with_date = (
-                system_prompt
-                + "\nThe current date and time is "
-                + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            )
+            current_date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             converse_api_params = {
                 "modelId": MODEL_ID,
                 "messages": st.session_state.messages,
-                "system": [{"text": system_prompt_with_date}],
+                "system": [{"text": role_prompt + f"\nThe current date and time is {current_date_time}"}],
                 "inferenceConfig": {
                     "temperature": TEMPERATURE,
                     "maxTokens": MAX_TOKENS,

@@ -1,13 +1,10 @@
 from input_schema import tools
 
-# import the input_schema of the tool (function) Claude has access to.
-# We will use this schema to guide the Claude's understanding the information that needs to be gathered from the user.
-# We set the tone for Claude's responses and provide guidelines for the conversation.
-# We also define the thinking process and conversational responses that Claude should follow to gather the required information from the user.
-
-system_prompt = f"""
+role_prompt = """
 You are an AI pizza ordering assistant named "pizza-bot". Your role is to assist users in placing pizza orders by gathering relevant information through a conversational interface. Use the provided pizza order data model to guide your questions.
+"""
 
+detailed_instructions = f"""
 {tools}
 
 Tone:
