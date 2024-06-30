@@ -67,7 +67,6 @@ NodeProject.prototype.addBuildWorkflow = function (projectName, directory) {
       },
       env: {
         CI: 'true',
-        ANTHROPIC_API_KEY: 'sk-123456',
       },
       steps: [
         {

@@ -2,6 +2,7 @@ const { AwsCdkTypeScriptApp } = require('projen/lib/awscdk');
 const { UpgradeDependenciesSchedule } = require('projen/lib/javascript');
 const addUpgradeProjectWorkflow = require('../workflows.ts');
 const addBuildWorkflow = require('../workflows.ts');
+const { off } = require('process');
 
 module.exports = function (root) {
   const metapromptGenerator = new AwsCdkTypeScriptApp({
@@ -11,7 +12,7 @@ module.exports = function (root) {
     name: 'anthropic-metaprompt-generator',
     appEntrypoint: 'anthropic-metaprompt-generator.ts',
     outdir: 'metaprompt-generator',
-    devDeps: ['esbuild', 'cdk-nag'],
+    devDeps: ['esbuild'],
     jest: false,
     deps: [
       'fs-extra',
@@ -25,8 +26,8 @@ module.exports = function (root) {
       '@types/uuid',
       'esbuild',
       'dotenv',
+      'cdk-nag',
     ],
-    buildWorkflowOptions: { env: [{ ANTHROPIC_API_KEY: 'sk-1234567' }] },
     depsUpgradeOptions: {
       workflow: true,
       workflowOptions: {
@@ -54,12 +55,17 @@ module.exports = function (root) {
     exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json metaprompt-generator-client/public/',
   });
 
-  metapromptGenerator.tsconfigDev.file.addOverride('include', ['src/*.ts']);
+  metapromptGenerator.tsconfigDev.file.addOverride('include', [
+    'src/*.ts',
+    'src/**/*.ts',
+    'test/*.ts',
+  ]);
   metapromptGenerator.eslint.addOverride({
-    files: ['./*.ts'],
+    files: ['./*.ts', './test/*.ts'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
       'import/no-extraneous-dependencies': 'off',
+      'import/no-unresolved': 'off',
     },
   });
 

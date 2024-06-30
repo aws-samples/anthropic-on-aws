@@ -66,7 +66,7 @@ export class SiteResources extends Construct {
               return false;
             }
             execSync(
-              'cd site && yarn install --frozen-lockfile && yarn build',
+              'cd claude-tools-chatbot-client && yarn install --frozen-lockfile && yarn build',
               execOptions,
             );
             fsExtra.copySync('./claude-tools-chatbot-client/dist', outputDir);

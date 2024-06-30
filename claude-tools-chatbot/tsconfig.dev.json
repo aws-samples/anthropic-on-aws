@@ -28,7 +28,7 @@
   "include": [
     "test/*.ts",
     "src/**/*.ts",
-    "site/src/**/*.tsx",
+    "claude-tools-chatbot-client/src/**/*.tsx",
     "./.projenrc.ts"
   ],
   "exclude": [

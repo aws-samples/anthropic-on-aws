@@ -222,7 +222,7 @@
       "files": [
         "src/resources/**/*.ts",
         "src/*.ts",
-        "site/src/**/*.tsx",
+        "claude-tools-chatbot-client/src/**/*.tsx",
         "test/*.ts"
       ],
       "rules": {

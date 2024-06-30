@@ -47,7 +47,7 @@ module.exports = function (root) {
   claudeToolsChatbot.tsconfigDev.file.addOverride('include', [
     'test/*.ts',
     'src/**/*.ts',
-    'site/src/**/*.tsx',
+    'claude-tools-chatbot-client/src/**/*.tsx',
     './.projenrc.ts',
   ]);
 
@@ -55,7 +55,7 @@ module.exports = function (root) {
     files: [
       'src/resources/**/*.ts',
       'src/*.ts',
-      'site/src/**/*.tsx',
+      'claude-tools-chatbot-client/src/**/*.tsx',
       'test/*.ts',
     ],
     rules: {
