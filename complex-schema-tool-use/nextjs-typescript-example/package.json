@@ -26,9 +26,9 @@
     "typescript": "^5.5.2"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.602.0",
-    "@cloudscape-design/components": "^3.0.668",
-    "@cloudscape-design/global-styles": "^1.0.27",
+    "@aws-sdk/client-bedrock-runtime": "^3.606.0",
+    "@cloudscape-design/components": "^3.0.671",
+    "@cloudscape-design/global-styles": "^1.0.30",
     "next": "^14.2.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

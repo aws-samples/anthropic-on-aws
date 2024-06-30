@@ -66,4 +66,5 @@ cdk-nag-output.txt
 .graphqlconfig.yml
 **/share/
 **/etc/
+.env
 !/.projenrc.js

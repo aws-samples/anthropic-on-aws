@@ -25,6 +25,7 @@ module.exports = function (root) {
       'esbuild',
       'dotenv',
     ],
+    buildWorkflowOptions: { env: [{ ANTHROPIC_API_KEY: 'sk-1234567' }] },
     depsUpgradeOptions: {
       workflow: true,
       workflowOptions: {
@@ -49,7 +50,7 @@ module.exports = function (root) {
   });
 
   metapromptGenerator.addTask('configLocal', {
-    exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json site/public/',
+    exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json metaprompt-generator-client/public/',
   });
 
   metapromptGenerator.tsconfigDev.file.addOverride('include', ['src/*.ts']);

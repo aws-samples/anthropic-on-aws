@@ -40,7 +40,7 @@ module.exports = function (root) {
   });
 
   claudeToolsChatbot.addTask('configLocal', {
-    exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json site/public/',
+    exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json claude-tools-chatbot-client/public/',
   });
 
   claudeToolsChatbot.tsconfigDev.file.addOverride('include', [

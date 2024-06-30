@@ -11,6 +11,7 @@ jobs:
       contents: write
     env:
       CI: "true"
+      ANTHROPIC_API_KEY: sk-123456
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -96,7 +96,7 @@ const ChatBot: React.FC = () => {
     if (!text) {
       return '';
     }
-    const replyRegex = /<reply>(.*?)<\/reply>/s;
+    const replyRegex = /<reply>([\s\S]*?)<\/reply>/;
     const match = text.match(replyRegex);
     return match ? match[1].trim() : text;
   };

@@ -34,6 +34,7 @@ const common_exclude = [
   '.graphqlconfig.yml',
   '**/share/',
   '**/etc/',
+  '.env',
 ];
 
 root.gitignore.exclude(...common_exclude);

@@ -33,7 +33,7 @@
       "name": "configLocal",
       "steps": [
         {
-          "exec": "aws s3 cp s3://$(yarn run --silent getBucket)/config.json site/public/"
+          "exec": "aws s3 cp s3://$(yarn run --silent getBucket)/config.json metaprompt-generator-client/public/"
         }
       ]
     },
