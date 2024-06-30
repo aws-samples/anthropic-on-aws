@@ -49,7 +49,7 @@ export class SiteResources extends Construct {
     });
     const execOptions: ExecSyncOptions = { stdio: 'inherit' };
 
-    const bundle = Source.asset('./site', {
+    const bundle = Source.asset('./claude-tools-chatbot-client', {
       bundling: {
         command: [
           'sh',
@@ -69,7 +69,7 @@ export class SiteResources extends Construct {
               'cd site && yarn install --frozen-lockfile && yarn build',
               execOptions,
             );
-            fsExtra.copySync('./site/dist', outputDir);
+            fsExtra.copySync('./claude-tools-chatbot-client/dist', outputDir);
             return true;
           },
         },

@@ -50,7 +50,7 @@ export class Site extends Construct {
     });
     const execOptions: ExecSyncOptions = { stdio: 'inherit' };
 
-    const bundle = Source.asset('./site', {
+    const bundle = Source.asset('./metaprompt-generator-client', {
       bundling: {
         command: [
           'sh',
@@ -70,7 +70,7 @@ export class Site extends Construct {
               'cd site && yarn install --frozen-lockfile && yarn build',
               execOptions,
             );
-            fsExtra.copySync('./site/dist', outputDir);
+            fsExtra.copySync('./metaprompt-generator-client/dist', outputDir);
             return true;
           },
         },
