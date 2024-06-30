@@ -166,22 +166,7 @@
     },
     "test": {
       "name": "test",
-      "description": "Run tests",
-      "steps": [
-        {
-          "exec": "jest --passWithNoTests --updateSnapshot",
-          "receiveArgs": true
-        }
-      ]
-    },
-    "test:watch": {
-      "name": "test:watch",
-      "description": "Run jest in watch mode",
-      "steps": [
-        {
-          "exec": "jest --watch"
-        }
-      ]
+      "description": "Run tests"
     },
     "unbump": {
       "name": "unbump",
@@ -207,13 +192,13 @@
       },
       "steps": [
         {
-          "exec": "npx npm-check-updates@16 --upgrade --target=minor --peer --dep=dev,peer,prod,optional --filter=jest,projen"
+          "exec": "npx npm-check-updates@16 --upgrade --target=minor --peer --dep=dev,peer,prod,optional --filter=projen"
         },
         {
           "exec": "yarn install --check-files"
         },
         {
-          "exec": "yarn upgrade constructs jest jest-junit projen standard-version"
+          "exec": "yarn upgrade constructs projen standard-version"
         },
         {
           "exec": "npx projen"

@@ -31,9 +31,6 @@ jspm_packages/
 *.tgz
 .yarn-integrity
 .cache
-/test-reports/
-junit.xml
-/coverage/
 !/.github/workflows/build.yml
 /dist/changelog.md
 /dist/version.txt

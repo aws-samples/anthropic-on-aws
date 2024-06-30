@@ -9,6 +9,7 @@ const root = new NodeProject({
   license: 'MIT-0',
   copyrightOwner: 'Amazon.com, Inc.',
   gitpod: true,
+  jest: false,
   authorAddress: 'https://aws.amazon.com',
 });
 

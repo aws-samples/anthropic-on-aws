@@ -6,15 +6,6 @@
       "type": "build"
     },
     {
-      "name": "jest",
-      "type": "build"
-    },
-    {
-      "name": "jest-junit",
-      "version": "^15",
-      "type": "build"
-    },
-    {
       "name": "projen",
       "type": "build"
     },
