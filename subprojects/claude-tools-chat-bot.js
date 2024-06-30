@@ -15,6 +15,7 @@ module.exports = function (root) {
     appEntrypoint: 'claude-tools-chatbot.ts',
     outdir: 'claude-tools-chatbot',
     devDeps: ['esbuild', 'cdk-nag'],
+    jest: false,
     deps: ['dotenv', 'fs-extra', '@types/fs-extra', '@types/aws-lambda'],
     depsUpgradeOptions: {
       workflow: true,

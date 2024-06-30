@@ -164,20 +164,7 @@
       "description": "Run tests",
       "steps": [
         {
-          "exec": "jest --passWithNoTests --updateSnapshot",
-          "receiveArgs": true
-        },
-        {
           "spawn": "eslint"
-        }
-      ]
-    },
-    "test:watch": {
-      "name": "test:watch",
-      "description": "Run jest in watch mode",
-      "steps": [
-        {
-          "exec": "jest --watch"
         }
       ]
     },
@@ -189,13 +176,13 @@
       },
       "steps": [
         {
-          "exec": "npx npm-check-updates@16 --upgrade --target=minor --peer --dep=dev,peer,prod,optional --filter=@types/jest,cdk-nag,esbuild,eslint-import-resolver-typescript,eslint-plugin-import,jest,ts-jest,ts-node,typescript,@types/aws-lambda,@types/fs-extra,dotenv,fs-extra"
+          "exec": "npx npm-check-updates@16 --upgrade --target=minor --peer --dep=dev,peer,prod,optional --filter=cdk-nag,esbuild,eslint-import-resolver-typescript,eslint-plugin-import,ts-node,typescript,@types/aws-lambda,@types/fs-extra,dotenv,fs-extra"
         },
         {
           "exec": "yarn install --check-files"
         },
         {
-          "exec": "yarn upgrade @types/jest @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser aws-cdk cdk-nag esbuild eslint-import-resolver-typescript eslint-plugin-import eslint jest jest-junit ts-jest ts-node typescript @types/aws-lambda @types/fs-extra aws-cdk-lib constructs dotenv fs-extra"
+          "exec": "yarn upgrade @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser aws-cdk cdk-nag esbuild eslint-import-resolver-typescript eslint-plugin-import eslint ts-node typescript @types/aws-lambda @types/fs-extra aws-cdk-lib constructs dotenv fs-extra"
         },
         {
           "exec": "npx projen"

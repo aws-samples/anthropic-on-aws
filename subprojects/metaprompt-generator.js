@@ -12,6 +12,7 @@ module.exports = function (root) {
     appEntrypoint: 'anthropic-metaprompt-generator.ts',
     outdir: 'metaprompt-generator',
     devDeps: ['esbuild', 'cdk-nag'],
+    jest: false,
     deps: [
       'fs-extra',
       '@types/fs-extra',
