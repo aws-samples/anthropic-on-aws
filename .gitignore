@@ -39,10 +39,10 @@ jspm_packages/
 !/.github/workflows/upgrade-main.yml
 !/.github/pull_request_template.md
 !/.github/workflows/upgrade-metaprompt-generator.yml
-!/.github/workflows/upgrade-metaprompt-generator-site.yml
+!/.github/workflows/upgrade-metaprompt-generator-client.yml
 !/.github/workflows/build-metaprompt-generator.yml
 !/.github/workflows/upgrade-claude-tools-chatbot.yml
-!/.github/workflows/upgrade-claude-tools-chatbot-site.yml
+!/.github/workflows/upgrade-claude-tools-chatbot-client.yml
 !/.github/workflows/build-claude-tools-chatbot.yml
 !/.github/workflows/upgrade-complex-schema-tool-use-nextjs.yml
 !/.github/workflows/build-complex-schema-tool-use-nextjs.yml

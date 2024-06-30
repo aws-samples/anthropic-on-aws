@@ -68,8 +68,8 @@ module.exports = function (root) {
     'metaprompt-generator',
   );
   root.addUpgradeProjectWorkflow(
-    'metaprompt-generator-site',
-    'metaprompt-generator/site',
+    'metaprompt-generator-client',
+    'metaprompt-generator/metaprompt-generator-client',
   );
   root.addBuildWorkflow('metaprompt-generator', 'metaprompt-generator');
 

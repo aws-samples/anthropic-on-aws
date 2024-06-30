@@ -76,8 +76,8 @@ module.exports = function (root) {
     'claude-tools-chatbot',
   );
   root.addUpgradeProjectWorkflow(
-    'claude-tools-chatbot-site',
-    'claude-tools-chatbot/site',
+    'claude-tools-chatbot-client',
+    'claude-tools-chatbot/claude-tools-chatbot-client',
   );
   root.addBuildWorkflow('claude-tools-chatbot', 'claude-tools-chatbot');
 
