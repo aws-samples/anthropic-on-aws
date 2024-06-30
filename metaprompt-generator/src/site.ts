@@ -67,7 +67,7 @@ export class Site extends Construct {
               return false;
             }
             execSync(
-              'cd site && yarn install --frozen-lockfile && yarn build',
+              'cd metaprompt-generator-client && yarn install --frozen-lockfile && yarn build',
               execOptions,
             );
             fsExtra.copySync('./metaprompt-generator-client/dist', outputDir);

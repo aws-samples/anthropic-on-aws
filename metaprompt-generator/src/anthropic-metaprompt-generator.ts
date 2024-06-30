@@ -16,6 +16,7 @@ export interface AnthropicMetaPromptGeneratorProps extends StackProps {
   logLevel: string;
   allowedDomain: string;
   anthropicKey: string;
+  CI: string;
 }
 
 export class AnthropicMetaPromptGenerator extends Stack {
@@ -26,7 +27,9 @@ export class AnthropicMetaPromptGenerator extends Stack {
   ) {
     super(scope, id, props);
 
-    if (!props.anthropicKey) {
+    const isCI = props.CI === 'true';
+
+    if (!props.anthropicKey && isCI) {
       throw new Error('Anthropic key is required');
     }
 
@@ -82,6 +85,7 @@ const props = {
   logLevel: process.env.LOG_LEVEL || '',
   allowedDomain: process.env.ALLOWED_DOMAIN || '',
   anthropicKey: process.env.ANTHROPIC_KEY || '',
+  CI: process.env.CI || 'false',
 };
 
 const devEnv = {

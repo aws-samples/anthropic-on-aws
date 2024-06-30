@@ -21,10 +21,6 @@
       "type": "build"
     },
     {
-      "name": "cdk-nag",
-      "type": "build"
-    },
-    {
       "name": "esbuild",
       "type": "build"
     },
@@ -76,6 +72,10 @@
     {
       "name": "aws-cdk-lib",
       "version": "^2.130.0",
+      "type": "runtime"
+    },
+    {
+      "name": "cdk-nag",
       "type": "runtime"
     },
     {
