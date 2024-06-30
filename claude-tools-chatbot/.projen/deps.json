@@ -58,6 +58,14 @@
       "type": "runtime"
     },
     {
+      "name": "@types/jest",
+      "type": "runtime"
+    },
+    {
+      "name": "@types/mocha",
+      "type": "runtime"
+    },
+    {
       "name": "aws-cdk-lib",
       "version": "^2.130.0",
       "type": "runtime"

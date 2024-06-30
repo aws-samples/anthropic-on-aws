@@ -16,7 +16,6 @@ export interface AnthropicMetaPromptGeneratorProps extends StackProps {
   logLevel: string;
   allowedDomain: string;
   anthropicKey: string;
-  CI: string;
 }
 
 export class AnthropicMetaPromptGenerator extends Stack {
@@ -26,12 +25,6 @@ export class AnthropicMetaPromptGenerator extends Stack {
     props: AnthropicMetaPromptGeneratorProps,
   ) {
     super(scope, id, props);
-
-    const isCI = props.CI === 'true';
-
-    if (!props.anthropicKey && isCI) {
-      throw new Error('Anthropic key is required');
-    }
 
     const cognitoResources = new Cognito(this, 'Cognito', {
       allowedDomain: props.allowedDomain,
@@ -85,7 +78,6 @@ const props = {
   logLevel: process.env.LOG_LEVEL || '',
   allowedDomain: process.env.ALLOWED_DOMAIN || '',
   anthropicKey: process.env.ANTHROPIC_KEY || '',
-  CI: process.env.CI || 'false',
 };
 
 const devEnv = {

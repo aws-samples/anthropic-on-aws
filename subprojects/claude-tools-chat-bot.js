@@ -16,7 +16,14 @@ module.exports = function (root) {
     outdir: 'claude-tools-chatbot',
     devDeps: ['esbuild', 'cdk-nag'],
     jest: false,
-    deps: ['dotenv', 'fs-extra', '@types/fs-extra', '@types/aws-lambda'],
+    deps: [
+      'dotenv',
+      'fs-extra',
+      '@types/fs-extra',
+      '@types/aws-lambda',
+      '@types/jest',
+      '@types/mocha',
+    ],
     depsUpgradeOptions: {
       workflow: true,
       workflowOptions: {
@@ -61,6 +68,10 @@ module.exports = function (root) {
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
       'import/no-extraneous-dependencies': 'off',
+      'import/no-unresolved': [
+        'error',
+        { ignore: ['source-map-support/register'] },
+      ],
     },
   });
 
