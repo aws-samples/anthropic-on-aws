@@ -1,4 +1,5 @@
 const { NodeProject } = require('projen/lib/javascript');
+const { UpgradeDependenciesSchedule } = require('projen/lib/javascript');
 const metapromptGenerator = require('./subprojects/metaprompt-generator');
 const claudeToolsChatbot = require('./subprojects/claude-tools-chat-bot');
 const complexSchemaToolUseNextJS = require('./subprojects/complex-schema-tool-use-nextjs');
@@ -11,6 +12,26 @@ const root = new NodeProject({
   gitpod: true,
   jest: false,
   authorAddress: 'https://aws.amazon.com',
+  depsUpgradeOptions: {
+    ignoreProjen: false,
+    workflowOptions: {
+      labels: ['auto-approve', 'auto-merge'],
+      schedule: UpgradeDependenciesSchedule.WEEKLY,
+    },
+  },
+  workflowNodeVersion: '18.x',
+  autoApproveOptions: {
+    secret: 'GITHUB_TOKEN',
+    allowedUsernames: ['schuettc'],
+  },
+  autoApproveUpgrades: true,
+  projenUpgradeSecret: 'PROJEN_GITHUB_TOKEN',
+  defaultReleaseBranch: 'main',
+  prettierOptions: {
+    overrides: {
+      quoteProps: 'consistent',
+    },
+  },
 });
 
 metapromptGenerator(root);
