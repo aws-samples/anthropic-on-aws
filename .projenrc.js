@@ -21,7 +21,7 @@ const root = new NodeProject({
   },
   workflowNodeVersion: '18.x',
   autoApproveOptions: {
-    secret: 'GITHUB_TOKEN',
+    secret: 'PROJEN_GITHUB_TOKEN',
     allowedUsernames: ['schuettc'],
   },
   autoApproveUpgrades: true,
