@@ -762,6 +762,7 @@ To deploy the CDK:
 ```bash
 git clone https://github.com/aws-samples/anthropic-on-aws.git
 cd anthropic-on-aws/claude-tools-chatbot
+yarn
 yarn launch
 ```
 

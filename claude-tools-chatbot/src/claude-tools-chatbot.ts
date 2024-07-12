@@ -53,7 +53,7 @@ export class ClaudeToolsChatbot extends Stack {
     new CfnOutput(this, 'siteBucket', {
       value: siteResources.siteBucket.bucketName,
     });
-    new CfnOutput(this, 'promptGeneratorSite', {
+    new CfnOutput(this, 'claudeToolsChatBotSite', {
       value: siteResources.distribution.distributionDomainName,
     });
   }
