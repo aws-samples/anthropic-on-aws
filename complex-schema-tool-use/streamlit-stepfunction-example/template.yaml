@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: tool-use-with-stepfunctions
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Default: "anthropic.claude-3-haiku-20240307-v1:0"
+
+Resources:
+
+  ConnectionNoAuth:
+      Type: AWS::Events::Connection
+      Properties:
+          AuthorizationType: API_KEY
+          AuthParameters:
+            ApiKeyAuthParameters:
+              ApiKeyName: Authorization
+              ApiKeyValue: 'dummyvalue' #### NO auth for both location and weather api.
+
+  BedrockLambdaFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: lambda/bedrock
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 900
+      Environment:
+        Variables:
+          MODEL_ID: !Ref BedrockModelId
+
+      Policies:
+        - AWSLambdaExecute
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+  OrderStatusLambdaFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: lambda/orderstatus
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 900
+      Policies:
+        - AWSLambdaExecute
+
+  StepFunctionsLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 7
+      LogGroupName: /aws/vendedlogs/ToolUseCoverseAPIStateMachine
+
+  ToolUseCoverseAPIStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/tool_use_demo.asl.yaml
+      Type: EXPRESS
+      Logging:
+        IncludeExecutionData: true
+        Destinations: 
+          - CloudWatchLogsLogGroup: 
+              LogGroupArn: !GetAtt StepFunctionsLogs.Arn
+        Level: ALL
+      DefinitionSubstitutions:
+        BedrockLambdaFunction: !GetAtt BedrockLambdaFunction.Arn
+        OrderStatusLambdaFunction: !GetAtt OrderStatusLambdaFunction.Arn
+        ConnectionArn: !GetAtt ConnectionNoAuth.Arn
+        BedrockModelId: !Ref BedrockModelId
+      Policies:
+        - CloudWatchLogsFullAccess
+        - Version: '2012-10-17' 
+          Statement:
+            - Effect: Allow
+              Action:
+                - states:InvokeHTTPEndpoint
+              Resource: "*"
+              Condition: 
+                StringLike: 
+                  states:HTTPMethod: "*"
+                StringLike: 
+                  states:HTTPEndpoint: "*"
+            - Effect: Allow
+              Action:
+                - events:RetrieveConnectionCredentials
+              Resource: !GetAtt ConnectionNoAuth.Arn
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:DescribeSecret
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:events!connection/${ConnectionNoAuth}/*"
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: 
+                - !GetAtt BedrockLambdaFunction.Arn
+                - !GetAtt OrderStatusLambdaFunction.Arn
+
+
+
+Outputs:
+  ToolUseCoverseAPIStateMachineArn:
+    Description: "Tool Use state machine ARN"
+    Value: !Ref ToolUseCoverseAPIStateMachine
+  ToolUseStateMachineRole:
+    Description: "IAM Role created for Tool Use state machine based on the specified SAM Policy Templates"
+    Value: !GetAtt ToolUseCoverseAPIStateMachineRole.Arn
+  EventBridgeConnectionArn:
+    Description: "EventBridge connection ARN"
+    Value: !Ref ConnectionNoAuth

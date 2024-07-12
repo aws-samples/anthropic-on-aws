@@ -1,0 +1,121 @@
+Comment: A description of my state machine
+StartAt: Invoke Model with tool use
+States:
+  Invoke Model with tool use:
+    Type: Task
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      Payload.$: $
+      FunctionName: ${BedrockLambdaFunction}
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 1
+        MaxAttempts: 3
+        BackoffRate: 2
+    Next: Is tool available?
+    ResultSelector:
+      modelResponse.$: $.Payload.output
+      toolUse.$: $.Payload.output.message.content[?(@.toolUse)].toolUse
+      stopReason.$: $.Payload.stopReason
+    ResultPath: $.toolResponse
+  Is tool available?:
+    Type: Choice
+    Choices:
+      - Variable: $.toolResponse.stopReason
+        StringEquals: end_turn
+        Next: Build response
+      - Variable: $.toolResponse.stopReason
+        StringEquals: tool_use
+        Next: Collect tools
+  Collect tools:
+    Type: Choice
+    Choices:
+      - Variable: $.toolResponse.toolUse[0].name
+        StringEquals: create_pizza_order
+        Next: Create order
+      - Variable: $.toolResponse.toolUse[0].name
+        StringEquals: order_status
+        Next: Get order status
+    Default: There is no tool available
+  Build response:
+    Type: Pass
+    End: true
+    Parameters:
+      Response.$: $.toolResponse
+  There is no tool available:
+    Type: Pass
+    End: true
+    Parameters:
+      Response.$: $.toolResponse
+      Error: "Unexpected Error"
+
+  Create order:
+    Type: Task
+    Resource: arn:aws:states:::http:invoke
+    Parameters:
+      Authentication:
+        ConnectionArn: ${ConnectionArn}
+      ApiEndpoint: https://jsonplaceholder.typicode.com/posts
+      Method: POST
+      RequestBody:
+        order_details.$: $.toolResponse.toolUse[0].input
+    Retry:
+      - ErrorEquals:
+          - States.ALL
+        BackoffRate: 2
+        IntervalSeconds: 1
+        MaxAttempts: 3
+        JitterStrategy: FULL
+    Next: construct tool result response
+    ResultPath: $.toolResultjson
+    ResultSelector:
+      ResponseBody.$: $.ResponseBody
+
+  Get order status:
+    Type: Task
+    Resource: arn:aws:states:::lambda:invoke
+    Parameters:
+      FunctionName: ${OrderStatusLambdaFunction}    
+      Payload:
+        order_details.$: $.toolResponse.toolUse[0].input
+    Retry:
+      - ErrorEquals:
+          - Lambda.ServiceException
+          - Lambda.AWSLambdaException
+          - Lambda.SdkClientException
+          - Lambda.TooManyRequestsException
+        IntervalSeconds: 1
+        MaxAttempts: 3
+        BackoffRate: 2
+    Next: construct tool result response
+    ResultSelector:
+      ResponseBody.$: $.Payload
+    ResultPath: $.toolResultjson
+  construct tool result response:
+    Type: Pass
+    Next: merge tool results with existing messages
+    Parameters:
+      - role: assistant
+        content.$: $.toolResponse.modelResponse.message.content
+      - role: user
+        content:
+          - toolResult:
+              toolUseId.$: $.toolResponse.toolUse[0].toolUseId
+              status: success
+              content:
+                - json.$: $.toolResultjson
+    ResultPath: $.newmessages
+  merge tool results with existing messages:
+    Type: Pass
+    Next: flatten the array
+    Parameters:
+      messages.$: States.Array($.messages, $.newmessages)
+  flatten the array:
+    Type: Pass
+    Next: Invoke Model with tool use
+    Parameters:
+      messages.$: $.messages[*][*]
