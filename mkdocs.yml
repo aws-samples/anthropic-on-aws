@@ -24,6 +24,7 @@ theme:
     - yaml
     - json
     - bash
+    - typescript
   features:
     - header.autohide
     - navigation.instant
@@ -49,7 +50,9 @@ plugins:
         font_family: Roboto
 nav:
   - Home: index.md
-  - Projects:
+  - Cookbooks: cookbooks.md
+  - Workshops: workshops.md
+  - Demos:
       - Classification with Intercom: projects/classification-with-intercom.md
       - Claude Multimodal LLM Playground:
           - projects/claude-multimodal-llm-playground/index.md
