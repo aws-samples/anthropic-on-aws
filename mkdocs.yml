@@ -1,4 +1,4 @@
-site_name: My Project
+site_name: Anthropic on AWS
 theme:
   name: material
   font:
