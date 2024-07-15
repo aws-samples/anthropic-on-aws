@@ -1,5 +1,3 @@
 # Workshops
 
-{%
-include "../prompt-engineering-with-anthropic-claude-v-3/README.md"
-%}
+- [Prompt Engineering with Anthropic Claude v3](https://github.com/aws-samples/prompt-engineering-with-anthropic-claude-v-3)
