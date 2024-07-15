@@ -29,6 +29,7 @@ theme:
     - navigation.instant
     - navigation.sections
     - navigation.top
+    - navigation.indexes
     - search.highlight
     - search.share
     - search.suggest
@@ -51,12 +52,12 @@ nav:
   - Projects:
       - Classification with Intercom: projects/classification-with-intercom.md
       - Claude Multimodal LLM Playground:
-          - Overview: projects/claude-multimodal-llm-playground.md
-          - Anthropic: projects/claude-multimodal-llm-playground/anthropics/README.md
-          - Bedrock: projects/claude-multimodal-llm-playground/bedrock/README.md
+          - projects/claude-multimodal-llm-playground/index.md
+          - Anthropic: projects/claude-multimodal-llm-playground/anthropic.md
+          - Bedrock: projects/claude-multimodal-llm-playground/bedrock.md
       - Claude Tools Chatbot: projects/claude-tools-chatbot.md
       - Complex Schema Tool Use:
-          - Overview: projects/complex-schema-tool-use.md
+          - projects/complex-schema-tool-use/index.md
           - NextJS Typescript Example: projects/complex-schema-tool-use/nextjs-typescript-example.md
           - Streamlit Python Example: projects/complex-schema-tool-use/streamlit-python-example.md
           - Streamlit Stepfunction Example: projects/complex-schema-tool-use/streamlit-stepfunction-example.md
