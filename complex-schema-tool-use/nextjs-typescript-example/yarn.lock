@@ -451,9 +451,9 @@
     tslib "^2.6.2"
 
 "@babel/runtime@^7.21.0", "@babel/runtime@^7.5.5", "@babel/runtime@^7.8.0", "@babel/runtime@^7.8.7":
-  version "7.24.7"
-  resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.24.7.tgz#f4f0d5530e8dbdf59b3451b9b3e594b6ba082e12"
-  integrity sha512-UwgBRMjJP+xv857DCngvqXI3Iq6J4v0wXmwc6sapg+zyhbwmQX67LUEFrkK5tbyJ30jGuG3ZvWpBiB9LCy1kWw==
+  version "7.24.8"
+  resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.24.8.tgz#5d958c3827b13cc6d05e038c07fb2e5e3420d82e"
+  integrity sha512-5F7SDGs1T72ZczbRwbGO9lQi0NLjQxzl6i4lJxLxfW9U5UluCSyEJeniWvnhl3/euNiqQVbo8zruhsDfid0esA==
   dependencies:
     regenerator-runtime "^0.14.0"
 
@@ -463,17 +463,17 @@
   integrity sha512-zWvFGIJLBqmKM01xbogMSocpDI/DOLw8bpeH0+1mB7nP/M5OnkcoPtFtEvu2CZdEFUUYtKml0N+W7GI/NtIcwg==
 
 "@cloudscape-design/component-toolkit@^1.0.0-beta":
-  version "1.0.0-beta.54"
-  resolved "https://registry.yarnpkg.com/@cloudscape-design/component-toolkit/-/component-toolkit-1.0.0-beta.54.tgz#f9889dc74f649dbbf8e589412499be22436c7d35"
-  integrity sha512-Vfp73tlOPb2NLdSOuOf2TX3jKMOF7oDj9B5em2tYjmHN38x2IfJNYtL2tpx7brzubDj8VEaD0LZFqXXLAlg2Vg==
+  version "1.0.0-beta.55"
+  resolved "https://registry.yarnpkg.com/@cloudscape-design/component-toolkit/-/component-toolkit-1.0.0-beta.55.tgz#9a9d5eaadaa9ce4c90d109ae5b1421a5db7504c3"
+  integrity sha512-xHl4CrwlRlzmtNRHQPi7j6JkQspDpjK4uwMmd1++YseqJNEjKO60ykIOpYw40iN97UwOTiusxDMDL4lEPV14HQ==
   dependencies:
     "@juggle/resize-observer" "^3.3.1"
     tslib "^2.3.1"
 
 "@cloudscape-design/components@^3.0.671":
-  version "3.0.682"
-  resolved "https://registry.yarnpkg.com/@cloudscape-design/components/-/components-3.0.682.tgz#92a50031990113a061d81e62ff2e769229c5cd4a"
-  integrity sha512-hZyXJ5zA6PlY6Sxy2Du0S1U5RxEdIRCcifbkarMvFBpkF45nAbL+bBAMgkjJGfF0P95pgI6vvLM2za1XK8g1MQ==
+  version "3.0.684"
+  resolved "https://registry.yarnpkg.com/@cloudscape-design/components/-/components-3.0.684.tgz#d44614882376ee185bc19713081430ed6fbdf450"
+  integrity sha512-5HXQFv4/XW0mruEloeZcLI6Rpez1cv00NyrrbXVvYqWocsYI6c5MJRTCk26zZElOoLTNoCzpbxx6/aJEmeubCA==
   dependencies:
     "@cloudscape-design/collection-hooks" "^1.0.0"
     "@cloudscape-design/component-toolkit" "^1.0.0-beta"
@@ -1136,9 +1136,9 @@ busboy@1.6.0:
     streamsearch "^1.1.0"
 
 caniuse-lite@^1.0.30001579:
-  version "1.0.30001641"
-  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001641.tgz#3572862cd18befae3f637f2a1101cc033c6782ac"
-  integrity sha512-Phv5thgl67bHYo1TtMY/MurjkHhV4EDaCosezRXgZ8jzA/Ub+wjxAvbGvjoFENStinwi5kCyOYV3mi5tOGykwA==
+  version "1.0.30001642"
+  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001642.tgz#6aa6610eb24067c246d30c57f055a9d0a7f8d05f"
+  integrity sha512-3XQ0DoRgLijXJErLSl+bLnJ+Et4KqV1PY6JJBGAFlsNsz31zeAIncyeZfLCabHK/jtSh+671RM9YMldxjUPZtA==
 
 client-only@0.0.1:
   version "0.0.1"
