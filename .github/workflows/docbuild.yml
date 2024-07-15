@@ -23,5 +23,12 @@ jobs:
           pip install mkdocs-include-markdown-plugin
       - name: Copy subproject images
         run: python copy_subproject_images.py
-      - name: Deploy MkDocs
-        run: mkdocs gh-deploy --force
+      - name: Build MkDocs site
+        run: mkdocs build
+      - name: Debug - List built site contents
+        run: ls -R site
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
