@@ -1,3 +1,3 @@
 # Anthropic on AWS
 
-{!./README.md!}
+{!../README.md!}

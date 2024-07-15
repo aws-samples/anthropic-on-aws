@@ -1,3 +1,3 @@
 # Classification with Intercom
 
-{!./classification-with-intercom/README.md!}
+{!../classification-with-intercom/README.md!}

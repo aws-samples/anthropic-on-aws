@@ -1,3 +1,3 @@
 # Streamlit Stepfunction Example
 
-{!./complex-schema-tool-use/streamlit-stepfunction-example/README.md!}
+{!../complex-schema-tool-use/streamlit-stepfunction-example/README.md!}

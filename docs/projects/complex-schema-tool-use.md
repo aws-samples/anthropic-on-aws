@@ -1,3 +1,3 @@
 # Complex Schema Tool Use
 
-{!./complex-schema-tool-use/README.md!}
+{!../complex-schema-tool-use/README.md!}
