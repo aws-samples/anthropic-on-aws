@@ -69,4 +69,6 @@ mkdocs-env/*
 **/share/
 **/etc/
 .env
+docs/**/images/
+!docs/images/
 !/.projenrc.js

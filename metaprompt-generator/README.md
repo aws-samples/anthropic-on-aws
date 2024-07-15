@@ -193,7 +193,7 @@ useEffect(() => {
 
 Now that we have the infrastructure to asynchronously generate a prompt and return the response to the client, let's see what that prompt looks like.
 
-The included prompt can be viewed [here](/metaprompt-generator/src/resources/promptGenerator/prompt.ts). It is a long multi-shot prompt filled with half a dozen examples of good prompts for solving various tasks. These examples help Claude to write a good prompt for your task.
+The included prompt can be viewed [here](/metaprompt-generator//src/resources/promptGenerator/prompt.ts). It is a long multi-shot prompt filled with half a dozen examples of good prompts for solving various tasks. These examples help Claude to write a good prompt for your task.
 
 Let's see what it can do with an example:
 

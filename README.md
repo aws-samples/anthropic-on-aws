@@ -4,7 +4,7 @@ This repo contains a collection of examples and notebooks when using Anthropic o
 
 ## Notebooks
 
-- [Cookbooks](cookbooks/README.md)
+- [Cookbooks](/cookbooks/README.md)
 
 ## Workshops
 
@@ -12,8 +12,8 @@ This repo contains a collection of examples and notebooks when using Anthropic o
 
 ## Demos
 
-- [Metaprompt Generator](metaprompt-generator/README.md)
-
-- [Tool Use (function calling) with complex tool schemas](complex-schema-tool-use/README.md)
-
-- [Claude Streamlit LLM Playground (supports Claude 3.5)](claude-multimodal-llm-playground/README.md)
+- [Metaprompt Generator](/metaprompt-generator/README.md)
+- [Tool Use (function calling) with complex tool schemas](/complex-schema-tool-use/README.md)
+- [Claude Streamlit LLM Playground (supports Claude 3.5)](/claude-multimodal-llm-playground/README.md)
+- [Claude Tools Chatbot](/claude-tools-chatbot/README.md)
+- [Classification with Intercom](/classification-with-intercom/README.md)

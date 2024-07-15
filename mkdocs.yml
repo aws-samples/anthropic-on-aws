@@ -50,7 +50,10 @@ nav:
   - Home: index.md
   - Projects:
       - Classification with Intercom: projects/classification-with-intercom.md
-      - Claude Multimodal LLM Playground: projects/claude-multimodal-llm-playground.md
+      - Claude Multimodal LLM Playground:
+          - Overview: projects/claude-multimodal-llm-playground.md
+          - Anthropic: projects/claude-multimodal-llm-playground/anthropics/README.md
+          - Bedrock: projects/claude-multimodal-llm-playground/bedrock/README.md
       - Claude Tools Chatbot: projects/claude-tools-chatbot.md
       - Complex Schema Tool Use:
           - Overview: projects/complex-schema-tool-use.md

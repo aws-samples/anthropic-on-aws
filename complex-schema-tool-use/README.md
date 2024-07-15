@@ -100,7 +100,7 @@ When combined with the above schema, Claude will know what fields are required a
 
 ## Prompting
 
-Finally, armed with these tools, we will pass a [system prompt](tool_use/system_prompt.py) and messages to Amazon Bedrock using the Converse API.
+Finally, armed with these tools, we will pass a [system prompt](/complex-schema-tool-use/streamlit-python-example/tool_use/system_prompt.py) and messages to Amazon Bedrock using the Converse API.
 
 ```python
 system_prompt_with_date = (

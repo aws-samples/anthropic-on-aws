@@ -60,6 +60,8 @@ const common_exclude = [
   '**/share/',
   '**/etc/',
   '.env',
+  'docs/**/images/',
+  '!docs/images/',
 ];
 
 root.gitignore.exclude(...common_exclude);

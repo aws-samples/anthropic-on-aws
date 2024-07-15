@@ -772,7 +772,7 @@ Once deployed, your demo will include output with an [Amazon CloudFront](https:/
 
 ![SignUp](/claude-tools-chatbot/images/SignUp.png)
 
-Once you have received the validation code from Cognito, you can log in and try out some questions. The data loaded in to the database can be found [here](src/resources/initializerLambda/data.py)
+Once you have received the validation code from Cognito, you can log in and try out some questions. The data loaded in to the database can be found [here](/claude-tools-chatbot/src/resources/initializerLambda/data.py)
 
 ### Example Conversations
 

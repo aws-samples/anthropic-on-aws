@@ -8,20 +8,20 @@ This repository contains a Streamlit-based application for interacting with Clau
 
 We offer two versions of this application, each tailored to different deployment scenarios:
 
-1. [Anthropic API Version](./anthropic/README.md)
-2. [Amazon Bedrock Version](./bedrock/README.md)
+1. [Anthropic API Version](/claude-multimodal-llm-playground/anthropic/README.md)
+2. [Amazon Bedrock Version](/claude-multimodal-llm-playground/bedrock/README.md)
 
 ### Anthropic API Version
 
 This version interacts directly with the Anthropic API. It's suitable for users who have an Anthropic API key and want to use Claude 3 models without additional cloud infrastructure.
 
-[Learn more about the Anthropic API version](./anthropic/README.md)
+[Learn more about the Anthropic API version](/claude-multimodal-llm-playground/anthropic/README.md)
 
 ### Amazon Bedrock Version
 
 This version is designed to work with Claude 3 and 3.5 models through Amazon Bedrock. It's ideal for users who prefer to leverage AWS infrastructure or have existing workflows in the AWS ecosystem.
 
-[Learn more about the Amazon Bedrock version](./bedrock/README.md)
+[Learn more about the Amazon Bedrock version](/claude-multimodal-llm-playground/bedrock/README.md)
 
 ## Key Features
 
@@ -55,8 +55,8 @@ Please refer to the README files in each respective folder for detailed setup in
 
 ## Contributing
 
-We welcome contributions to both versions of the application. Please read our [CONTRIBUTING.md](../CONTRIBUTING.md) file for guidelines on how to submit contributions.
+We welcome contributions to both versions of the application. Please read our [CONTRIBUTING.md](/CONTRIBUTING.md) file for guidelines on how to submit contributions.
 
 ## License
 
-This project is licensed under the MIT-0 License - see the [LICENSE.md](../LICENSE) file for details.
+This project is licensed under the MIT-0 License - see the [LICENSE.md](/LICENSE) file for details.

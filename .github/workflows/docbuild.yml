@@ -13,10 +13,15 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: 3.11
-      - run: pip install mkdocs-material
-      - run: pip install mkdocs-glightbox
-      - run: pip install mkdocs-minify-plugin
-      - run: pip install mkdocs-material-extensions
-      - run: pip install pillow cairosvg
-      - run: pip install mkdocs-include-markdown-plugin
-      - run: mkdocs gh-deploy --force
+      - name: Install dependencies
+        run: |
+          pip install mkdocs-material
+          pip install mkdocs-glightbox
+          pip install mkdocs-minify-plugin
+          pip install mkdocs-material-extensions
+          pip install pillow cairosvg
+          pip install mkdocs-include-markdown-plugin
+      - name: Copy subproject images
+        run: python copy_subproject_images.py
+      - name: Deploy MkDocs
+        run: mkdocs gh-deploy --force
