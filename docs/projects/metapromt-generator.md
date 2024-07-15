@@ -1,3 +1,3 @@
 # Metaprompt Generator
 
-{!../metaprompt-generator/README.md!}
+{%../metaprompt-generator/README.md%}
