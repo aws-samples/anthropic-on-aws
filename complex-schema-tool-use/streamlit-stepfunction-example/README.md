@@ -2,7 +2,7 @@
 
 Streamlit app invokes Step Functions workflow directly everytime user enters input in the textbox. Workflow invokes Amazon Bedrock converse API, identifies if a tool is needed to be called, routes to appropriate tools, builds the response and sends back to the streamlit app. We used Step Functions Express workflow. Express workflows are suitable for high scale short lived transaction type of use cases. They can be called synchronously.
 
-![workflow](/complex-schema-tool-use/streamlit-stepfunction-example/images/stepfunctions_graph.png)
+![workflow](images/stepfunctions_graph.png)
 
 ## Using this demo
 
