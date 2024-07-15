@@ -3,6 +3,7 @@ const { UpgradeDependenciesSchedule } = require('projen/lib/javascript');
 const metapromptGenerator = require('./subprojects/metaprompt-generator');
 const claudeToolsChatbot = require('./subprojects/claude-tools-chat-bot');
 const complexSchemaToolUseNextJS = require('./subprojects/complex-schema-tool-use-nextjs');
+const classificationWithIntercom = require('./subprojects/classification-with-intercom');
 
 const root = new NodeProject({
   name: 'anthropic-on-aws',
@@ -37,6 +38,7 @@ const root = new NodeProject({
 metapromptGenerator(root);
 claudeToolsChatbot(root);
 complexSchemaToolUseNextJS(root);
+classificationWithIntercom(root);
 
 const common_exclude = [
   '.yalc',

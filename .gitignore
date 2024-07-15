@@ -47,6 +47,9 @@ jspm_packages/
 !/.github/workflows/build-claude-tools-chatbot.yml
 !/.github/workflows/upgrade-complex-schema-tool-use-nextjs.yml
 !/.github/workflows/build-complex-schema-tool-use-nextjs.yml
+!/.github/workflows/upgrade-classification-with-intercom.yml
+!/.github/workflows/upgrade-classification-with-intercom-client.yml
+!/.github/workflows/build-classification-with-intercom.yml
 .yalc
 cdk.out
 cdk.context.json
