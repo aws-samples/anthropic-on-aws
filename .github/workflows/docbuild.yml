@@ -10,10 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      # - name: Use Node.js ${{ matrix.node-version }}
-      #   uses: actions/setup-node@v3
-      #   with:
-      #     node-version: ${{ matrix.node-version }}
       - uses: actions/setup-python@v4
         with:
           python-version: 3.11
@@ -22,10 +18,5 @@ jobs:
       - run: pip install mkdocs-minify-plugin
       - run: pip install mkdocs-material-extensions
       - run: pip install pillow cairosvg
-
-      # CDK API reference
-      # - run: npm install
-      # - run: npx typedoc --out docs/api src/index.ts
-
-      # docs  deploy
+      - run: pip install mkdocs-include-markdown-plugin
       - run: mkdocs gh-deploy --force

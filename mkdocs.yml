@@ -39,6 +39,7 @@ theme:
 plugins:
   - search
   - glightbox
+  - include-markdown
   - minify:
       minify_html: true
   - social:
@@ -47,3 +48,13 @@ plugins:
         font_family: Roboto
 nav:
   - Home: index.md
+  - Projects:
+      - Classification with Intercom: projects/classification-with-intercom.md
+      - Claude Multimodal LLM Playground: projects/claude-multimodal-llm-playground.md
+      - Claude Tools Chatbot: projects/claude-tools-chatbot.md
+      - Complex Schema Tool Use:
+          - Overview: projects/complex-schema-tool-use.md
+          - NextJS Typescript Example: projects/complex-schema-tool-use/nextjs-typescript-example.md
+          - Streamlit Python Example: projects/complex-schema-tool-use/streamlit-python-example.md
+          - Streamlit Stepfunction Example: projects/complex-schema-tool-use/streamlit-stepfunction-example.md
+      - Metaprompt Generator: projects/metaprompt-generator.md
