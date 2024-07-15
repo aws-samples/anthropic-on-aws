@@ -6,7 +6,7 @@ In this example, we will cover two concepts for using LLMs in general and Anthro
 
 When working with Large Language Models and complex prompts, you will often exceed timeouts of various systems. In this case, if we simply had used an Amazon API Gateway with an AWS Lambda Function, the API Gateway timeout limit of 30 seconds could have been reached. In order to process the request with the LLM, we can use an AWS Step Function. By using a Step Function, we can immediately return a response to the API request and begin processing asynchronously.
 
-![Overview](/metaprompt-generator/images/AnthropicMetaPromptGeneratorOverview.png)
+![Overview](images/AnthropicMetaPromptGeneratorOverview.png)
 
 This demo uses a simple React application hosted on an S3 Bucket with a Cloudfront Distribution in front of it. Within this application, we have created an API Gateway that is integrated with a Lambda function. This function will be used to start the state machine that will process the request. Within the state machine, the `promptGenerator` Lambda is invoked that will make a request to Anthropic with the included prompt and the task and variables from the client. When a response is returned from Anthropic, the Lambda function will update the AppSync database.
 
@@ -23,7 +23,7 @@ This demo uses a simple React application hosted on an S3 Bucket with a Cloudfro
 
 To start the process, enter a task in the Task Entry form and press Submit. This will send the request to the `requestHandler` Lambda function through the API Gateway.
 
-![TaskEntry](/metaprompt-generator/images/TaskEntry.png)
+![TaskEntry](images/TaskEntry.png)
 
 ### Request Handler Lambda
 
@@ -50,7 +50,7 @@ The core functionality is to start the state machine and return a response to th
 
 In this example, the State Machine is kept very simple.
 
-![StateMachine](/metaprompt-generator/images/StateMachine.png)
+![StateMachine](images/StateMachine.png)
 
 It's only job is to invoke the `promptGenerator` Lambda function.
 
@@ -94,7 +94,7 @@ const generatingResponse = await apolloClient.mutate({
 });
 ```
 
-![Generating](/metaprompt-generator/images/Generating.png)
+![Generating](images/Generating.png)
 
 ### Anthropic Request
 
@@ -187,7 +187,7 @@ useEffect(() => {
 }, []);
 ```
 
-![Result](/metaprompt-generator/images/PromptResult.png)
+![Result](images/PromptResult.png)
 
 ## Prompt Generation
 
