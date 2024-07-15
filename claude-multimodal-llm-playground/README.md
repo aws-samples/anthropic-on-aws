@@ -46,11 +46,12 @@ Both versions of the application offer:
 Please refer to the README files in each respective folder for detailed setup instructions, usage guidelines, and version-specific information.
 
 ### Combine Text with Vision to create multimodal inputs for Claude 3.5
-![Supports Image and text input](./images/vision.png "Supports Image and text input")
+
+![Supports Image and text input](/claude-multimodal-llm-playground/images/vision.png 'Supports Image and text input')
 
 ### Test with your own Tool definitions
-![Supports Tool Use](./images/tool_use.png "Supports Tool Use")
 
+![Supports Tool Use](/claude-multimodal-llm-playground/images/tool_use.png 'Supports Tool Use')
 
 ## Contributing
 

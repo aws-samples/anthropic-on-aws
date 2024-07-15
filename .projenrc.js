@@ -55,6 +55,7 @@ const common_exclude = [
   '**/test/',
   '**/.next/',
   '**/__pycache__/',
+  'mkdocs-env/*',
   '.graphqlconfig.yml',
   '**/share/',
   '**/etc/',

@@ -1,3 +1,5 @@
 # Claude Multimodal LLM Playground
 
-{%../claude-multimodal-llm-playground/README.md%}
+{%
+include "../../claude-multimodal-llm-playground/README.md"
+%}

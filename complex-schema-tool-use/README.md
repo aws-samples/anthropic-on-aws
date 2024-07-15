@@ -2,7 +2,7 @@
 
 In these demos, we will show how to use complex JSON schema with Claude 3 using the [tools use feature](https://docs.anthropic.com/en/docs/tool-use#how-tool-use-works). This is meant as a simple and customizable demonstration you can use to familiarize yourself with how tools work. A basic understanding of tools use on Claude will be important for understanding this demo.
 
-![OrderAPizza](images/OrderAPizza.png)
+![OrderAPizza](/complex-schema-tool-use/images/OrderAPizza.png)
 _Image from Streamlit example_
 
 From here the bot will use the [tool use feature](https://docs.anthropic.com/en/docs/tool-use) of Claude to walk through the process of ordering a pizza. In this demo, we're not actually going to make a function call so the [output](https://docs.anthropic.com/en/docs/tool-use#json-output) will be the JSON that Claude thinks it needs to provide to call the function.
@@ -92,7 +92,7 @@ And nested [objects](https://json-schema.org/understanding-json-schema/reference
 }
 ```
 
-The complete schema can be found [here](tool_use/input_schema.py)
+The complete schema can be found [here](/complex-schema-tool-use/streamlit-python-example/tool_use/input_schema.py)
 
 ## Tool Use Best Practices
 
@@ -127,7 +127,7 @@ _Streamlit code example_
 
 The result is a simple chat bot that can capture a wide variety of information from a user and produce reliable JSON for further processing.
 
-![ReadyToOrder](images/ReadyToOrder.png)
+![ReadyToOrder](/complex-schema-tool-use/images/ReadyToOrder.png)
 _Image from Streamlit example_
 
 ```json

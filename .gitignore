@@ -64,6 +64,7 @@ cdk-nag-output.txt
 **/test/
 **/.next/
 **/__pycache__/
+mkdocs-env/*
 .graphqlconfig.yml
 **/share/
 **/etc/

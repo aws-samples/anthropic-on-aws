@@ -4,7 +4,7 @@ In this demo, we will see how we can integrate Intercom with Amazon Bedrock to p
 
 ## Overview
 
-![Overview](./images/IntercomIntegration.png)
+![Overview](/classification-with-intercom/images/IntercomIntegration.png)
 
 1. Ticket is created from the client
 2. Webhook notification is sent to Amazon API Gateway with ticket information
@@ -35,7 +35,7 @@ In order to use this demo, you'll need to set up your Intercom application for u
 
 To use this demo, you'll need to configure Intercom to send notification to the Amazon API Gateway. To do this, you will need to create an App in Intercom. This will be done through the [developer hub](https://app.intercom.com/a/apps/_/developer-hub). Once you have created the App, copy the access token generated. This will be used by the AWS Lambda function when making requests. We will update this using AWS Secrets Manager during the deployment.
 
-![AccessToken](./images/AccessToken.png)
+![AccessToken](/classification-with-intercom/images/AccessToken.png)
 
 ### CDK Deployment
 
@@ -67,7 +67,7 @@ Once deployed, take note of the `IntercomIntegration.APIGatewayURL`. This will b
 
 In your app, add the URL to the Webhooks section. When configured with Topics, notifications will be sent to this target and consumed by our AWS Lambda function for processing.
 
-![Webhook](./images/WebhookTarget.png)
+![Webhook](/classification-with-intercom/images/WebhookTarget.png)
 
 Add the `ticket.created` topic to this Webhook. Other topics can be added for additional processing.
 
@@ -118,13 +118,13 @@ Support
 Technical
 ```
 
-![Teams](./images/IntercomTeams.png)
+![Teams](/classification-with-intercom/images/IntercomTeams.png)
 
 #### Workspace App
 
 In the [General](https://app.intercom.com/a/apps/_/settings/workspace/general) section of your workspace, copy the App ID that is being used.
 
-![AppID](./images/AppID.png)
+![AppID](/classification-with-intercom/images/AppID.png)
 
 ### Client Configuration
 
@@ -147,15 +147,15 @@ yarn dev
 
 Once everything is deployed and configured, we can see the integration in action. After starting the client, navigate to `http://localhost:5173/`
 
-![Client](./images/Client.png)
+![Client](/classification-with-intercom/images/Client.png)
 
 You should see the Intercom chat widget in the lower right corner.
 
-![Widget](./images/Widget.png)
+![Widget](/classification-with-intercom/images/Widget.png)
 
 Open that widget so we can create a Support Request.
 
-![Support Request](./images/SupportRequest.png)
+![Support Request](/classification-with-intercom/images/SupportRequest.png)
 
 Enter a Title and Description for the request.
 
@@ -168,7 +168,7 @@ Description: I was just in an accident and don't know what to do. Please help.
 
 When this request is submitted, it will initially be `Unassigned`. However, we want to automatically assign this ticket to the correct team. After processing with Amazon Bedrock, this ticket will be assigned to the Claims team.
 
-![AssignedTicket](./images/AssignTicket.png)
+![AssignedTicket](/classification-with-intercom/images/AssignTicket.png)
 
 ## How it works
 

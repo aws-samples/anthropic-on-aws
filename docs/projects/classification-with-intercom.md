@@ -1,3 +1,5 @@
 # Classification with Intercom
 
-{%../classification-with-intercom/README.md%}
+{%
+include "../../classification-with-intercom/README.md"
+%}

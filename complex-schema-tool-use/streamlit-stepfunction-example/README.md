@@ -1,7 +1,8 @@
 ## Implementation
+
 Streamlit app invokes Step Functions workflow directly everytime user enters input in the textbox. Workflow invokes Amazon Bedrock converse API, identifies if a tool is needed to be called, routes to appropriate tools, builds the response and sends back to the streamlit app. We used Step Functions Express workflow. Express workflows are suitable for high scale short lived transaction type of use cases. They can be called synchronously.
 
-![workflow](./stepfunctions_graph.png)
+![workflow](/complex-schema-tool-use/streamlit-stepfunction-example/stepfunctions_graph.png)
 
 ## Using this demo
 
@@ -11,7 +12,7 @@ To get started, you will need the following:
 - Amazon Bedrock [Model Access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) for Claude 3 Sonnet
 - Python [Installed](https://www.python.org/downloads/)
 - SAM CLI [Installed](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-- [Streamlit](https://streamlit.io/) 
+- [Streamlit](https://streamlit.io/)
 
 With these installed and configured, you can clone this repo.
 
@@ -28,6 +29,7 @@ source bin/activate
 pip3 install -r requirements.txt
 
 ```
+
 And deploy the cloudformation stack that creates the Step Functions
 
 ```bash

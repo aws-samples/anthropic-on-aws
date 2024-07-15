@@ -2,7 +2,7 @@
 
 This example will demonstrate how to build a simple ChatBot application using [Claude Tools](https://docs.anthropic.com/en/docs/tool-use) and the [Amazon Bedrock](https://aws.amazon.com/bedrock/) [Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html).
 
-![Overview](images/ClaudeToolsChatBotOverview.png)
+![Overview](/claude-tools-chatbot/images/ClaudeToolsChatBotOverview.png)
 
 This demo will deploy a simple client that will interact with an [AWS AppSync](https://aws.amazon.com/appsync/) GraphQL API. This API will use an [AWS Lambda resolver](https://docs.aws.amazon.com/appsync/latest/devguide/tutorial-lambda-resolvers.html) to make requests to Amazon Bedrock with the [Amazon Bedrock Converse API](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html). These requests and responses are stored in an [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) table via the AppSync API that allows for easy updates in the client. With these tools, we can create a chat bot that is able to look up orders in a database by using the [tool use](https://docs.aws.amazon.com/bedrock/latest/userguide/tool-use.html) feature of Amazon Bedrock.
 
@@ -388,7 +388,7 @@ In a basic flow where tool use is not required:
 - The Lambda resolver appends the existing item in the conversation Table with the response
 - This mutation triggers the AppSync subscription to update the client
 
-![BasicFlow](images/BasicFlow.png)
+![BasicFlow](/claude-tools-chatbot/images/BasicFlow.png)
 
 For example:
 
@@ -420,7 +420,7 @@ We can see that Claude used `<thinking>` to determine that it needs additional i
 Bot:  Sure, I'd be happy to help you with your order. Can you please provide me with the order ID? This will allow me to look up the specific details of your order.
 ```
 
-![BasicChat](images/BasicChat.png)
+![BasicChat](/claude-tools-chatbot/images/BasicChat.png)
 
 ### Tools Required
 
@@ -494,7 +494,7 @@ Because Claude knows that it has tools available to it (as defined in the `toolC
 
 Now our code knows that Claude wants to use a tool. But Claude cannot use the tool itself. This is where we need to step in and process the request for Claude. This changes the flow to include a direct request to our database.
 
-![ToolUseFlow](images/ToolUseFlow.png)
+![ToolUseFlow](/claude-tools-chatbot/images/ToolUseFlow.png)
 
 We continue to update the conversation Table with each turn, but because these steps do not need to be exposed to the user, we do not need to include updates to the subscription.
 
@@ -663,7 +663,7 @@ The process to do this in the Lambda resolver looks something like this:
 
 While Claude wants to use a tool, we will continue to loop through this process.
 
-![ToolUseChat](images/ToolUseChat.png)
+![ToolUseChat](/claude-tools-chatbot/images/ToolUseChat.png)
 
 ### Continued conversation
 
@@ -744,7 +744,7 @@ Here we can see that even though Claude wants to use the `cancel_order` tool, th
 
 Because we have instructed Claude to only allow orders that are in a `processing` state to be canceled, the `stopReason` from Bedrock is `end_turn` instead of `tool_use` and the response is sent to the user.
 
-![ContinuedUse](images/ContinuedUseChat.png)
+![ContinuedUse](/claude-tools-chatbot/images/ContinuedUseChat.png)
 
 ## Using the Demo
 
@@ -770,7 +770,7 @@ yarn launch
 
 Once deployed, your demo will include output with an [Amazon CloudFront](https://aws.amazon.com/cloudfront/) distribution URL. You can use this to log in to the client by creating an Amazon Cognito user with a valid email address.
 
-![SignUp](images/SignUp.png)
+![SignUp](/claude-tools-chatbot/images/SignUp.png)
 
 Once you have received the validation code from Cognito, you can log in and try out some questions. The data loaded in to the database can be found [here](src/resources/initializerLambda/data.py)
 
