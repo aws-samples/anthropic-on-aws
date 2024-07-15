@@ -1,3 +1,5 @@
 # Anthropic on AWS
 
-{%../README.md%}
+{%
+  include "../README.md"
+%}

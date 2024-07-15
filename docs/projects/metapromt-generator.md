@@ -1,3 +1,5 @@
 # Metaprompt Generator
 
-{%../metaprompt-generator/README.md%}
+{%
+  include "../metaprompt-generator/README.md"
+%}
