@@ -21,7 +21,8 @@ Amplify.configure(AmplifyConfig);
 const App: React.FC = () => {
     const [prompts, setPrompts] = useState<Prompt[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
-    const [activeTabId, setActiveTabId] = useState('prompts');
+    const [activeTabId, setActiveTabId] = useState('tasks');
+    const [copiedTask, setCopiedTask] = useState<string | null>(null);
 
     const handleNewPrompt = (newPrompt: Prompt) => {
         setPrompts((prevPrompts) => [...prevPrompts, newPrompt]);
@@ -73,6 +74,12 @@ const App: React.FC = () => {
         }
     };
 
+    const handleCopyToTaskForm = (distilledTask: string) => {
+        console.log('Copying to task form:', distilledTask);
+        setCopiedTask(distilledTask);
+        setActiveTabId('prompts');
+    };
+
     const handleSignOut = async () => {
         try {
             await signOut();
@@ -107,7 +114,11 @@ const App: React.FC = () => {
                                             content: (
                                                 <SpaceBetween size="l">
                                                     <PromptDistillationForm />
-                                                    <TasksTable tasks={tasks} onDeleteTask={handleDeleteTask} />
+                                                    <TasksTable
+                                                        tasks={tasks}
+                                                        onDeleteTask={handleDeleteTask}
+                                                        onCopyToTaskForm={handleCopyToTaskForm}
+                                                    />
                                                 </SpaceBetween>
                                             ),
                                         },
@@ -116,7 +127,7 @@ const App: React.FC = () => {
                                             id: 'prompts',
                                             content: (
                                                 <SpaceBetween size="l">
-                                                    <TaskForm />
+                                                    <TaskForm copiedTask={copiedTask} />
                                                     <PromptsTable
                                                         prompts={prompts}
                                                         onDeletePrompt={handleDeletePrompt}

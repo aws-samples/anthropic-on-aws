@@ -18,10 +18,20 @@ import * as mutations from './graphql/mutations';
 
 const client = generateClient();
 
-export const TaskForm: React.FC = () => {
+interface TaskFormProps {
+    copiedTask: string | null;
+}
+
+export const TaskForm: React.FC<TaskFormProps> = ({ copiedTask }) => {
     const [task, setTask] = useState('');
     const [variables, setVariables] = useState('');
     const [flashbarItems, setFlashbarItems] = useState<FlashbarProps.MessageDefinition[]>([]);
+
+    useEffect(() => {
+        if (copiedTask) {
+            setTask(copiedTask);
+        }
+    }, [copiedTask]);
 
     useEffect(() => {
         if (flashbarItems.length > 0) {
