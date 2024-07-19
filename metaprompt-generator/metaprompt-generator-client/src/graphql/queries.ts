@@ -53,3 +53,39 @@ export const getAllPrompts = /* GraphQL */ `query GetAllPrompts($owner: String!)
   APITypes.GetAllPromptsQueryVariables,
   APITypes.GetAllPromptsQuery
 >;
+export const getTask = /* GraphQL */ `query GetTask($id: ID!, $owner: String!) {
+  getTask(id: $id, owner: $owner) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedQuery<APITypes.GetTaskQueryVariables, APITypes.GetTaskQuery>;
+export const listTasks = /* GraphQL */ `query ListTasks($owner: String!) {
+  listTasks(owner: $owner) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedQuery<APITypes.ListTasksQueryVariables, APITypes.ListTasksQuery>;
+export const getAllTasks = /* GraphQL */ `query GetAllTasks($owner: String!) {
+  getAllTasks(owner: $owner) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedQuery<
+  APITypes.GetAllTasksQueryVariables,
+  APITypes.GetAllTasksQuery
+>;

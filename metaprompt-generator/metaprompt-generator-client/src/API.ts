@@ -21,6 +21,23 @@ export type Prompt = {
   status: PromptStatus,
 };
 
+export enum TaskStatus {
+  PENDING = "PENDING",
+  PROCESSING = "PROCESSING",
+  COMPLETED = "COMPLETED",
+  ERROR = "ERROR",
+}
+
+
+export type Task = {
+  __typename: "Task",
+  id: string,
+  originalPrompt: string,
+  distilledTask?: string | null,
+  owner: string,
+  status: TaskStatus,
+};
+
 export type PutPromptMutationVariables = {
   prompt?: string | null,
   task: string,
@@ -80,6 +97,54 @@ export type DeletePromptMutation = {
   } | null,
 };
 
+export type PutTaskMutationVariables = {
+  originalPrompt: string,
+  status: TaskStatus,
+};
+
+export type PutTaskMutation = {
+  putTask:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  },
+};
+
+export type UpdateTaskMutationVariables = {
+  id: string,
+  distilledTask?: string | null,
+  status?: TaskStatus | null,
+};
+
+export type UpdateTaskMutation = {
+  updateTask:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  },
+};
+
+export type DeleteTaskMutationVariables = {
+  id: string,
+};
+
+export type DeleteTaskMutation = {
+  deleteTask?:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  } | null,
+};
+
 export type GetPromptQueryVariables = {
   id: string,
   owner: string,
@@ -132,6 +197,52 @@ export type GetAllPromptsQuery = {
   } >,
 };
 
+export type GetTaskQueryVariables = {
+  id: string,
+  owner: string,
+};
+
+export type GetTaskQuery = {
+  getTask?:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  } | null,
+};
+
+export type ListTasksQueryVariables = {
+  owner: string,
+};
+
+export type ListTasksQuery = {
+  listTasks:  Array< {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  } >,
+};
+
+export type GetAllTasksQueryVariables = {
+  owner: string,
+};
+
+export type GetAllTasksQuery = {
+  getAllTasks:  Array< {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  } >,
+};
+
 export type PromptGeneratedSubscriptionVariables = {
   owner: string,
 };
@@ -180,5 +291,50 @@ export type PromptDeletedSubscription = {
     variables?: Array< string > | null,
     owner: string,
     status: PromptStatus,
+  } | null,
+};
+
+export type TaskGeneratedSubscriptionVariables = {
+  owner: string,
+};
+
+export type TaskGeneratedSubscription = {
+  taskGenerated?:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  } | null,
+};
+
+export type TaskUpdatedSubscriptionVariables = {
+  owner: string,
+};
+
+export type TaskUpdatedSubscription = {
+  taskUpdated?:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
+  } | null,
+};
+
+export type TaskDeletedSubscriptionVariables = {
+  owner: string,
+};
+
+export type TaskDeletedSubscription = {
+  taskDeleted?:  {
+    __typename: "Task",
+    id: string,
+    originalPrompt: string,
+    distilledTask?: string | null,
+    owner: string,
+    status: TaskStatus,
   } | null,
 };

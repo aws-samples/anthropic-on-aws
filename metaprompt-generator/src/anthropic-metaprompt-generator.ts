@@ -16,6 +16,7 @@ export interface AnthropicMetaPromptGeneratorProps extends StackProps {
   logLevel: string;
   allowedDomain: string;
   anthropicKey: string;
+  anthropicModel: string;
 }
 
 export class AnthropicMetaPromptGenerator extends Stack {
@@ -35,11 +36,14 @@ export class AnthropicMetaPromptGenerator extends Stack {
     const infrastructure = new Infrastructure(this, 'Infrastructure', {
       userPool: cognitoResources.userPool,
       anthropicKey: props.anthropicKey,
+      anthropicModel: props.anthropicModel,
     });
 
     const appSyncResources = new AppSyncResources(this, 'AppSyncResources', {
       promptsTable: dynamoDbResources.promptsTable,
+      tasksTable: dynamoDbResources.tasksTable,
       promptGeneratorLambda: infrastructure.promptGeneratorLambda,
+      taskDistillerLambda: infrastructure.taskDistillerLambda,
       authenticatedRole: cognitoResources.authenticatedRole,
       userPool: cognitoResources.userPool,
     });
@@ -52,9 +56,21 @@ export class AnthropicMetaPromptGenerator extends Stack {
       'APPSYNC_API_KEY',
       appSyncResources.graphQlApi.apiKey!,
     );
+
+    infrastructure.taskDistillerLambda.addEnvironment(
+      'APPSYNC_ENDPOINT',
+      appSyncResources.graphQlApi.graphqlUrl,
+    );
+
+    infrastructure.taskDistillerLambda.addEnvironment(
+      'APPSYNC_API_KEY',
+      appSyncResources.graphQlApi.apiKey!,
+    );
+
     new StateMachineResources(this, 'StateMachineResources', {
       requestHandlerLambda: infrastructure.requestHandlerLambda,
       promptGeneratorLambda: infrastructure.promptGeneratorLambda,
+      taskDistillerLambda: infrastructure.taskDistillerLambda,
     });
 
     const site = new Site(this, 'Site', {
@@ -78,6 +94,7 @@ const props = {
   logLevel: process.env.LOG_LEVEL || '',
   allowedDomain: process.env.ALLOWED_DOMAIN || '',
   anthropicKey: process.env.ANTHROPIC_KEY || '',
+  anthropicModel: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20240620',
 };
 
 const devEnv = {
