@@ -1,7 +1,8 @@
+// PromptForm.tsx
 import React, { useState, useEffect } from 'react';
 import {
     FormField,
-    Textarea,
+    Input,
     Button,
     Container,
     Header,
@@ -10,16 +11,27 @@ import {
     Flashbar,
     FlashbarProps,
 } from '@cloudscape-design/components';
-import { TaskStatus } from './Definitions';
+import { PromptStatus } from './Definitions';
 import { post, generateClient } from 'aws-amplify/api';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import * as mutations from './graphql/mutations';
 
 const client = generateClient();
 
-export const PromptDistillationForm: React.FC = () => {
-    const [originalPrompt, setOriginalPrompt] = useState('');
+interface GenerationFormProps {
+    copiedTask: string | null;
+}
+
+export const GenerationForm: React.FC<GenerationFormProps> = ({ copiedTask }) => {
+    const [task, setTask] = useState('');
+    const [variables, setVariables] = useState('');
     const [flashbarItems, setFlashbarItems] = useState<FlashbarProps.MessageDefinition[]>([]);
+
+    useEffect(() => {
+        if (copiedTask) {
+            setTask(copiedTask);
+        }
+    }, [copiedTask]);
 
     useEffect(() => {
         if (flashbarItems.length > 0) {
@@ -33,48 +45,37 @@ export const PromptDistillationForm: React.FC = () => {
         }
     }, [flashbarItems]);
 
-    const handlePutTask = async (originalPrompt: string) => {
-        console.log('Creating distillation task:', originalPrompt);
+    const handlePutPrompt = async (task: string, variables: string[]) => {
+        console.log('Creating prompt:', task, variables);
 
         try {
-            const newTask = client.graphql({
-                query: mutations.putTask,
-                variables: {
-                    originalPrompt: originalPrompt.trim(),
-                    status: TaskStatus.PENDING,
-                },
+            const newPrompt = client.graphql({
+                query: mutations.putPrompt,
+                variables: { task: task, variables: variables, status: 'PENDING' as PromptStatus },
             });
 
-            const taskId = (await newTask).data.putTask.id;
-            console.log('Distillation task created:', taskId);
-
-            if (!taskId) {
-                console.warn('Task created but no ID returned');
-                throw new Error('No task ID returned from mutation');
-            }
+            const promptId = (await newPrompt).data.putPrompt.id;
+            console.log('Prompt created:', promptId);
 
             const authToken = (await fetchAuthSession()).tokens?.idToken?.toString();
-            const apiGatewayResponse = await post({
+            const apiGatewayResponse = post({
                 apiName: 'request',
-                path: 'createTask',
+                path: 'createPrompt',
                 options: {
                     headers: {
                         Authorization: authToken!,
                     },
                     body: {
-                        taskId: taskId,
-                        originalPrompt: originalPrompt.trim(),
+                        promptId: promptId,
+                        task: task,
+                        variables: variables,
                     },
                 },
             });
             console.log('API Gateway response:', apiGatewayResponse);
             return apiGatewayResponse;
         } catch (error) {
-            console.error('Error creating distillation task:', error);
-            if (error instanceof Error) {
-                console.error('Error message:', error.message);
-                console.error('Error stack:', error.stack);
-            }
+            console.error('Error creating prompt:', error);
             throw error;
         }
     };
@@ -82,11 +83,11 @@ export const PromptDistillationForm: React.FC = () => {
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
 
-        if (!originalPrompt.trim()) {
+        if (!task.trim()) {
             setFlashbarItems([
                 {
                     type: 'error',
-                    content: 'Please enter a prompt to distill.',
+                    content: 'Please enter a task.',
                     dismissible: true,
                     dismissLabel: 'Dismiss message',
                     onDismiss: () => setFlashbarItems([]),
@@ -106,16 +107,19 @@ export const PromptDistillationForm: React.FC = () => {
         ]);
 
         try {
-            const putTaskResponse = handlePutTask(originalPrompt);
+            const processedVariables = variables.trim() ? variables.split(/\s+/) : [];
 
-            const statusCode = (await (await putTaskResponse).response).statusCode;
-            console.log('API Gateway status code:', statusCode);
+            const putPromptResponse = handlePutPrompt(task, processedVariables);
+
+            const statusCode = (await (await putPromptResponse).response).statusCode;
+            console.log(statusCode);
             if (statusCode === 202) {
-                setOriginalPrompt('');
+                setTask('');
+                setVariables('');
                 setFlashbarItems([
                     {
                         type: 'success',
-                        content: 'Distillation task submitted successfully!',
+                        content: 'Form submitted successfully!',
                         dismissible: true,
                         dismissLabel: 'Dismiss message',
                         onDismiss: () => setFlashbarItems([]),
@@ -130,7 +134,7 @@ export const PromptDistillationForm: React.FC = () => {
             setFlashbarItems([
                 {
                     type: 'error',
-                    content: 'Failed to submit the distillation task. Please try again.',
+                    content: 'Failed to submit the form. Please try again.',
                     dismissible: true,
                     dismissLabel: 'Dismiss message',
                     onDismiss: () => setFlashbarItems([]),
@@ -146,7 +150,7 @@ export const PromptDistillationForm: React.FC = () => {
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 }}>
                     <Flashbar items={flashbarItems} />
                 </div>
-                <Container header={<Header variant="h2">Prompt Distillation</Header>}>
+                <Container header={<Header variant="h2">Task Entry</Header>}>
                     <Form
                         actions={
                             <SpaceBetween direction="horizontal" size="xs">
@@ -155,11 +159,14 @@ export const PromptDistillationForm: React.FC = () => {
                         }
                     >
                         <SpaceBetween direction="vertical" size="m">
-                            <FormField label="Original Prompt">
-                                <Textarea
-                                    value={originalPrompt}
-                                    onChange={({ detail }) => setOriginalPrompt(detail.value)}
-                                    placeholder="Enter the large prompt you want to distill into a manageable task"
+                            <FormField label="Task">
+                                <Input value={task} onChange={({ detail }) => setTask(detail.value)} />
+                            </FormField>
+                            <FormField label="Variables (optional)">
+                                <Input
+                                    value={variables}
+                                    onChange={({ detail }) => setVariables(detail.value)}
+                                    placeholder="Enter variables separated by spaces"
                                 />
                             </FormField>
                         </SpaceBetween>

@@ -7,10 +7,9 @@ import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import { GraphQL } from './GraphQL';
 import { Prompt, Task } from './Definitions';
-import { PromptsTable } from './PromptsTable';
-import { TasksTable } from './TasksTable';
-import { TaskForm } from './TaskForm';
-import { PromptDistillationForm } from './PromptDistillationForm';
+import { Generation } from './Generation';
+import { Distillation } from './Distillation';
+import { Instructions } from './Instructions';
 import { generateClient } from 'aws-amplify/api';
 import * as mutations from './graphql/mutations';
 import { signOut } from 'aws-amplify/auth';
@@ -21,7 +20,7 @@ Amplify.configure(AmplifyConfig);
 const App: React.FC = () => {
     const [prompts, setPrompts] = useState<Prompt[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
-    const [activeTabId, setActiveTabId] = useState('tasks');
+    const [activeTabId, setActiveTabId] = useState('instructions');
     const [copiedTask, setCopiedTask] = useState<string | null>(null);
 
     const handleNewPrompt = (newPrompt: Prompt) => {
@@ -77,7 +76,7 @@ const App: React.FC = () => {
     const handleCopyToTaskForm = (distilledTask: string) => {
         console.log('Copying to task form:', distilledTask);
         setCopiedTask(distilledTask);
-        setActiveTabId('prompts');
+        setActiveTabId('generation');
     };
 
     const handleSignOut = async () => {
@@ -97,7 +96,7 @@ const App: React.FC = () => {
                         header={
                             <SpaceBetween size="m">
                                 <Header variant="h1" actions={<Button onClick={handleSignOut}>Sign Out</Button>}>
-                                    Anthropic Metaprompt Generator
+                                    Anthropic Prompt Engineering
                                 </Header>
                             </SpaceBetween>
                         }
@@ -109,30 +108,30 @@ const App: React.FC = () => {
                                     onChange={({ detail }) => setActiveTabId(detail.activeTabId)}
                                     tabs={[
                                         {
-                                            label: 'Task Distillation',
-                                            id: 'tasks',
+                                            label: 'Instructions',
+                                            id: 'instructions',
+                                            content: <Instructions />,
+                                        },
+                                        {
+                                            label: 'Distillation',
+                                            id: 'distillation',
                                             content: (
-                                                <SpaceBetween size="l">
-                                                    <PromptDistillationForm />
-                                                    <TasksTable
-                                                        tasks={tasks}
-                                                        onDeleteTask={handleDeleteTask}
-                                                        onCopyToTaskForm={handleCopyToTaskForm}
-                                                    />
-                                                </SpaceBetween>
+                                                <Distillation
+                                                    tasks={tasks}
+                                                    onDeleteTask={handleDeleteTask}
+                                                    onCopyToTaskForm={handleCopyToTaskForm}
+                                                />
                                             ),
                                         },
                                         {
-                                            label: 'Prompts',
-                                            id: 'prompts',
+                                            label: 'Generation',
+                                            id: 'generation',
                                             content: (
-                                                <SpaceBetween size="l">
-                                                    <TaskForm copiedTask={copiedTask} />
-                                                    <PromptsTable
-                                                        prompts={prompts}
-                                                        onDeletePrompt={handleDeletePrompt}
-                                                    />
-                                                </SpaceBetween>
+                                                <Generation
+                                                    prompts={prompts}
+                                                    copiedTask={copiedTask}
+                                                    onDeletePrompt={handleDeletePrompt}
+                                                />
                                             ),
                                         },
                                     ]}
