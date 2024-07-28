@@ -1,0 +1,44 @@
+{
+  "version": "2017-02-28",
+  "operation": "UpdateItem",
+  "key": {
+    "id": $util.dynamodb.toDynamoDBJson($ctx.args.id)
+  },
+  #set($expNames = {})
+  #set($expValues = {})
+  #set($expSet = {})
+  #foreach($entry in $context.arguments.entrySet())
+    #if($entry.key == "status")
+      $!{expSet.put("#${entry.key}", ":${entry.key}")}
+      $!{expNames.put("#${entry.key}", "$entry.key")}
+      $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+    #elseif($entry.key == "distilledTask" && $entry.value != '')
+      $!{expSet.put("#${entry.key}", ":${entry.key}")}
+      $!{expNames.put("#${entry.key}", "$entry.key")}
+      $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+    #elseif($entry.key == "originalPrompt" && $entry.value != '')
+      $!{expSet.put("#${entry.key}", ":${entry.key}")}
+      $!{expNames.put("#${entry.key}", "$entry.key")}
+      $!{expValues.put(":${entry.key}", { "S" : "${entry.value}" })}
+    #end
+  #end
+  #set($expression = "")
+  #if(!$expSet.isEmpty())
+    #set($expression = "SET")
+    #foreach($entry in $expSet.entrySet())
+      #set($expression = "${expression} ${entry.key} = ${entry.value}")
+      #if($foreach.hasNext)
+        #set($expression = "${expression},")
+      #end
+    #end
+  #end
+  "update": {
+    "expression": "$expression"
+    #if(!$expNames.isEmpty())
+      ,"expressionNames": $utils.toJson($expNames)
+    #end
+    #if(!$expValues.isEmpty())
+      ,"expressionValues": $utils.toJson($expValues)
+    #end
+  }
+}

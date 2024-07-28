@@ -85,13 +85,14 @@ export class Cognito extends Construct {
 
     const userPoolClient = new UserPoolClient(this, 'UserPoolClient', {
       userPool: userPool,
+      accessTokenValidity: Duration.hours(12),
       generateSecret: false,
       supportedIdentityProviders: [UserPoolClientIdentityProvider.COGNITO],
       authFlows: {
         userSrp: true,
         custom: true,
       },
-      refreshTokenValidity: Duration.hours(1),
+      refreshTokenValidity: Duration.hours(12),
     });
 
     const identityPool = new CfnIdentityPool(this, 'cognitoIdentityPool', {

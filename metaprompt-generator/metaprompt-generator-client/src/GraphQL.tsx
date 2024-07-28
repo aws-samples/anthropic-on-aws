@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { generateClient } from 'aws-amplify/api';
 import { fetchUserAttributes } from 'aws-amplify/auth';
-import { Prompt, PromptStatus } from './Definitions';
+import { Prompt, PromptStatus, Task, TaskStatus } from './Definitions';
 import * as subscriptions from './graphql/subscriptions';
 import * as queries from './graphql/queries';
 
@@ -12,6 +12,10 @@ interface GraphQLProps {
     onPromptsUpdated: (prompts: Prompt[]) => void;
     onPromptDeleted: (promptId: string) => void;
     onPromptUpdated: (updatedPrompt: Prompt) => void;
+    onNewTask: (newTask: Task) => void;
+    onTasksUpdated: (tasks: Task[]) => void;
+    onTaskDeleted: (taskId: string) => void;
+    onTaskUpdated: (updatedTask: Task) => void;
 }
 
 export const GraphQL: React.FC<GraphQLProps> = ({
@@ -19,6 +23,10 @@ export const GraphQL: React.FC<GraphQLProps> = ({
     onPromptsUpdated,
     onPromptUpdated,
     onPromptDeleted,
+    onNewTask,
+    onTasksUpdated,
+    onTaskUpdated,
+    onTaskDeleted,
 }) => {
     const [owner, setOwner] = useState<string | undefined>(undefined);
 
@@ -57,9 +65,28 @@ export const GraphQL: React.FC<GraphQLProps> = ({
             }
         };
 
-        fetchPrompts();
+        const fetchTasks = async () => {
+            try {
+                const result = await client.graphql({
+                    query: queries.getAllTasks,
+                    variables: { owner },
+                });
 
-        const createSub = client
+                const tasks = result.data.getAllTasks.map((task: any) => ({
+                    ...task,
+                    status: TaskStatus[task.status as keyof typeof TaskStatus],
+                }));
+
+                onTasksUpdated(tasks);
+            } catch (error) {
+                console.error('Error fetching tasks:', error);
+            }
+        };
+
+        fetchPrompts();
+        fetchTasks();
+
+        const createPromptSub = client
             .graphql({
                 query: subscriptions.promptGenerated,
                 variables: { owner },
@@ -79,7 +106,7 @@ export const GraphQL: React.FC<GraphQLProps> = ({
                 error: (error) => console.warn(error),
             });
 
-        const updateSub = client
+        const updatePromptSub = client
             .graphql({
                 query: subscriptions.promptUpdated,
                 variables: { owner },
@@ -99,7 +126,7 @@ export const GraphQL: React.FC<GraphQLProps> = ({
                 error: (error) => console.warn(error),
             });
 
-        const deleteSub = client
+        const deletePromptSub = client
             .graphql({
                 query: subscriptions.promptDeleted,
                 variables: { owner },
@@ -117,10 +144,71 @@ export const GraphQL: React.FC<GraphQLProps> = ({
                 error: (error) => console.warn(error),
             });
 
+        const createTaskSub = client
+            .graphql({
+                query: subscriptions.taskGenerated,
+                variables: { owner },
+            })
+            .subscribe({
+                next: ({ data }) => {
+                    console.log(data);
+                    const newTask = data.taskGenerated;
+                    if (newTask) {
+                        console.log('New task generated:', newTask);
+                        onNewTask({
+                            ...newTask,
+                            status: TaskStatus[newTask.status as keyof typeof TaskStatus],
+                        });
+                    }
+                },
+                error: (error) => console.warn(error),
+            });
+
+        const updateTaskSub = client
+            .graphql({
+                query: subscriptions.taskUpdated,
+                variables: { owner },
+            })
+            .subscribe({
+                next: ({ data }) => {
+                    console.log(data);
+                    const updatedTask = data.taskUpdated;
+                    if (updatedTask) {
+                        console.log('Task updated:', updatedTask);
+                        onTaskUpdated({
+                            ...updatedTask,
+                            status: TaskStatus[updatedTask.status as keyof typeof TaskStatus],
+                        });
+                    }
+                },
+                error: (error) => console.warn(error),
+            });
+
+        const deleteTaskSub = client
+            .graphql({
+                query: subscriptions.taskDeleted,
+                variables: { owner },
+            })
+            .subscribe({
+                next: ({ data }) => {
+                    console.log(data);
+                    const deletedTask = data.taskDeleted;
+                    if (deletedTask) {
+                        console.log('Task deleted:', deletedTask);
+                        onTaskDeleted(deletedTask.id);
+                        fetchTasks();
+                    }
+                },
+                error: (error) => console.warn(error),
+            });
+
         return () => {
-            createSub.unsubscribe();
-            updateSub.unsubscribe();
-            deleteSub.unsubscribe();
+            createPromptSub.unsubscribe();
+            updatePromptSub.unsubscribe();
+            deletePromptSub.unsubscribe();
+            createTaskSub.unsubscribe();
+            updateTaskSub.unsubscribe();
+            deleteTaskSub.unsubscribe();
         };
     }, [owner]);
 

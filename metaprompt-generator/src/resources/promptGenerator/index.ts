@@ -12,6 +12,7 @@ import { typeDefs } from './typeDefs';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const APPSYNC_ENDPOINT = process.env.APPSYNC_ENDPOINT;
 const APPSYNC_API_KEY = process.env.APPSYNC_API_KEY;
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL;
 
 const anthropic = new Anthropic({
   apiKey: ANTHROPIC_API_KEY,
@@ -104,10 +105,10 @@ export const lambdaHandler = async (event: any): Promise<void> => {
         { role: 'user', content: updatedPrompt },
         { role: 'assistant', content: assistantPartial },
       ],
-      model: 'claude-3-opus-20240229',
+      model: ANTHROPIC_MODEL!,
     });
 
-    const generatedPrompt = extractPrompt(response.content[0].text);
+    const generatedPrompt = extractPrompt(response.content);
     console.log(`Response: \n${JSON.stringify(generatedPrompt, null, 2)}`);
 
     console.log(
@@ -157,7 +158,18 @@ function removeEmptyTags(text: string): string {
   return text.replace(/<(\w+)><\/\1>$/g, '');
 }
 
-function extractPrompt(metapromptResponse: string): string {
-  const betweenTags = extractBetweenTags('Instructions', metapromptResponse)[0];
-  return removeEmptyTags(removeEmptyTags(betweenTags).trim()).trim();
+function extractPrompt(content: Anthropic.ContentBlock[]): string {
+  const textBlock = content.find((block) => block.type === 'text');
+  if (textBlock && 'text' in textBlock) {
+    const metapromptResponse = textBlock.text;
+    const betweenTags = extractBetweenTags(
+      'Instructions',
+      metapromptResponse,
+    )[0];
+    if (betweenTags) {
+      return removeEmptyTags(removeEmptyTags(betweenTags).trim()).trim();
+    }
+    throw new Error('No Instructions tags found in the response');
+  }
+  throw new Error('No text content found in the response');
 }

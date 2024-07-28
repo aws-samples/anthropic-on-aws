@@ -56,3 +56,45 @@ export const promptDeleted = /* GraphQL */ `subscription PromptDeleted($owner: S
   APITypes.PromptDeletedSubscriptionVariables,
   APITypes.PromptDeletedSubscription
 >;
+export const taskGenerated = /* GraphQL */ `subscription TaskGenerated($owner: String!) {
+  taskGenerated(owner: $owner) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedSubscription<
+  APITypes.TaskGeneratedSubscriptionVariables,
+  APITypes.TaskGeneratedSubscription
+>;
+export const taskUpdated = /* GraphQL */ `subscription TaskUpdated($owner: String!) {
+  taskUpdated(owner: $owner) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedSubscription<
+  APITypes.TaskUpdatedSubscriptionVariables,
+  APITypes.TaskUpdatedSubscription
+>;
+export const taskDeleted = /* GraphQL */ `subscription TaskDeleted($owner: String!) {
+  taskDeleted(owner: $owner) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedSubscription<
+  APITypes.TaskDeletedSubscriptionVariables,
+  APITypes.TaskDeletedSubscription
+>;
