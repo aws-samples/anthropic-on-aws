@@ -1,4 +1,8 @@
-const { NodeProject } = require('projen/lib/javascript');
+const {
+  NodeProject,
+  NodePackage,
+  NodePackageManager,
+} = require('projen/lib/javascript');
 const { UpgradeDependenciesSchedule } = require('projen/lib/javascript');
 const metapromptGenerator = require('./subprojects/metaprompt-generator');
 const claudeToolsChatbot = require('./subprojects/claude-tools-chat-bot');
@@ -28,6 +32,7 @@ const root = new NodeProject({
   autoApproveUpgrades: true,
   projenUpgradeSecret: 'PROJEN_GITHUB_TOKEN',
   defaultReleaseBranch: 'main',
+  packageManager: NodePackageManager.YARN_CLASSIC,
   prettierOptions: {
     overrides: {
       quoteProps: 'consistent',
