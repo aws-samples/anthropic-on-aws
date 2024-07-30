@@ -16,11 +16,13 @@ import { Construct } from 'constructs';
 interface InfrastructureProps {
   readonly userPool: IUserPool;
   anthropicKey: string;
+  anthropicModel: string;
 }
 
 export class Infrastructure extends Construct {
   public apiUrl: string;
   public promptGeneratorLambda: Function;
+  public taskDistillerLambda: Function;
   public requestHandlerLambda: Function;
 
   constructor(scope: Construct, id: string, props: InfrastructureProps) {
@@ -35,7 +37,7 @@ export class Infrastructure extends Construct {
       ],
     });
 
-    const promptGeneratorRole = new Role(this, 'promptGeneratorRole', {
+    const generatorRole = new Role(this, 'promptGeneratorRole', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
         ManagedPolicy.fromAwsManagedPolicyName(
@@ -53,12 +55,26 @@ export class Infrastructure extends Construct {
         architecture: Architecture.ARM_64,
         handler: 'lambdaHandler',
         timeout: Duration.minutes(5),
-        role: promptGeneratorRole,
+        role: generatorRole,
         environment: {
           ANTHROPIC_API_KEY: props.anthropicKey,
+          ANTHROPIC_MODEL: props.anthropicModel,
         },
       },
     );
+
+    this.taskDistillerLambda = new NodejsFunction(this, 'taskDistillerLambda', {
+      entry: './src/resources/taskGenerator/index.ts',
+      runtime: Runtime.NODEJS_LATEST,
+      architecture: Architecture.ARM_64,
+      handler: 'lambdaHandler',
+      timeout: Duration.minutes(5),
+      role: generatorRole,
+      environment: {
+        ANTHROPIC_API_KEY: props.anthropicKey,
+        ANTHROPIC_MODEL: props.anthropicModel,
+      },
+    });
 
     this.requestHandlerLambda = new NodejsFunction(
       this,
@@ -104,8 +120,14 @@ export class Infrastructure extends Construct {
     );
 
     const createPrompt = api.root.addResource('createPrompt');
+    const createTask = api.root.addResource('createTask');
 
     createPrompt.addMethod('POST', metaPromptIntegration, {
+      authorizer: auth,
+      authorizationType: AuthorizationType.COGNITO,
+    });
+
+    createTask.addMethod('POST', metaPromptIntegration, {
       authorizer: auth,
       authorizationType: AuthorizationType.COGNITO,
     });

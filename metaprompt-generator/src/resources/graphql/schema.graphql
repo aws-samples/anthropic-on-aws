@@ -5,6 +5,13 @@ enum PromptStatus {
   ERROR
 }
 
+enum TaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  ERROR
+}
+
 type Prompt @aws_api_key @aws_cognito_user_pools {
   id: ID!
   prompt: String
@@ -15,10 +22,22 @@ type Prompt @aws_api_key @aws_cognito_user_pools {
   status: PromptStatus!
 }
 
+type Task @aws_api_key @aws_cognito_user_pools {
+  id: ID!
+  originalPrompt: String!
+  distilledTask: String
+  owner: String!
+  status: TaskStatus!
+}
+
 type Query @aws_cognito_user_pools {
   getPrompt(id: ID!, owner: String!): Prompt
   listPrompts(owner: String!): [Prompt!]!
   getAllPrompts(owner: String!): [Prompt!]!
+
+  getTask(id: ID!, owner: String!): Task
+  listTasks(owner: String!): [Task!]!
+  getAllTasks(owner: String!): [Task!]!
 }
 
 type Mutation {
@@ -39,6 +58,14 @@ type Mutation {
   ): Prompt! @aws_api_key
 
   deletePrompt(id: ID!): Prompt @aws_cognito_user_pools
+
+  putTask(originalPrompt: String!, status: TaskStatus!): Task!
+    @aws_cognito_user_pools
+
+  updateTask(id: ID!, distilledTask: String, status: TaskStatus): Task!
+    @aws_api_key
+
+  deleteTask(id: ID!): Task @aws_cognito_user_pools
 }
 
 type Subscription @aws_cognito_user_pools {
@@ -48,4 +75,8 @@ type Subscription @aws_cognito_user_pools {
     @aws_subscribe(mutations: ["updatePrompt"])
   promptDeleted(owner: String!): Prompt
     @aws_subscribe(mutations: ["deletePrompt"])
+
+  taskGenerated(owner: String!): Task @aws_subscribe(mutations: ["putTask"])
+  taskUpdated(owner: String!): Task @aws_subscribe(mutations: ["updateTask"])
+  taskDeleted(owner: String!): Task @aws_subscribe(mutations: ["deleteTask"])
 }

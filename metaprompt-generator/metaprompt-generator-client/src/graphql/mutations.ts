@@ -80,3 +80,45 @@ export const deletePrompt = /* GraphQL */ `mutation DeletePrompt($id: ID!) {
   APITypes.DeletePromptMutationVariables,
   APITypes.DeletePromptMutation
 >;
+export const putTask = /* GraphQL */ `mutation PutTask($originalPrompt: String!, $status: TaskStatus!) {
+  putTask(originalPrompt: $originalPrompt, status: $status) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.PutTaskMutationVariables,
+  APITypes.PutTaskMutation
+>;
+export const updateTask = /* GraphQL */ `mutation UpdateTask($id: ID!, $distilledTask: String, $status: TaskStatus) {
+  updateTask(id: $id, distilledTask: $distilledTask, status: $status) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.UpdateTaskMutationVariables,
+  APITypes.UpdateTaskMutation
+>;
+export const deleteTask = /* GraphQL */ `mutation DeleteTask($id: ID!) {
+  deleteTask(id: $id) {
+    id
+    originalPrompt
+    distilledTask
+    owner
+    status
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.DeleteTaskMutationVariables,
+  APITypes.DeleteTaskMutation
+>;
