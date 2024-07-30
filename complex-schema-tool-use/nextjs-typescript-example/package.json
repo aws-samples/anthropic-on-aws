@@ -23,13 +23,13 @@
     "@types/react-dom": "^18.3.0",
     "next-compose-plugins": "^2.2.1",
     "next-transpile-modules": "^10.0.1",
-    "typescript": "^5.5.2"
+    "typescript": "^5.5.4"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.606.0",
-    "@cloudscape-design/components": "^3.0.671",
-    "@cloudscape-design/global-styles": "^1.0.30",
-    "next": "^14.2.4",
+    "@aws-sdk/client-bedrock-runtime": "^3.621.0",
+    "@cloudscape-design/components": "^3.0.700",
+    "@cloudscape-design/global-styles": "^1.0.31",
+    "next": "^14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -1,5 +1,8 @@
 const { AwsCdkTypeScriptApp } = require('projen/lib/awscdk');
-const { UpgradeDependenciesSchedule } = require('projen/lib/javascript');
+const {
+  UpgradeDependenciesSchedule,
+  NodePackageManager,
+} = require('projen/lib/javascript');
 const addUpgradeProjectWorkflow = require('../workflows.ts');
 const addBuildWorkflow = require('../workflows.ts');
 const { off } = require('process');
@@ -11,6 +14,7 @@ module.exports = function (root) {
     defaultReleaseBranch: 'main',
     name: 'anthropic-metaprompt-generator',
     appEntrypoint: 'anthropic-metaprompt-generator.ts',
+    packageManager: NodePackageManager.YARN_CLASSIC,
     outdir: 'metaprompt-generator',
     devDeps: ['esbuild'],
     jest: false,
