@@ -2,7 +2,7 @@
 # yarn lockfile v1
 
 
-"@anthropic-ai/sdk@^0.25.0":
+"@anthropic-ai/sdk@^0.25.1":
   version "0.25.1"
   resolved "https://registry.yarnpkg.com/@anthropic-ai/sdk/-/sdk-0.25.1.tgz#df4023bb62cdb8dd715536fe1c5e7d62e62ef3e7"
   integrity sha512-+qF6hRax1XzpbZTy1YqQMTwOPY3W1B5PFS5ZXgmPl1V/lDqXm2uYFCpnSR3DREz1FRZ4lflzbK1cAhr88FvCpw==
@@ -15,7 +15,7 @@
     formdata-node "^4.3.2"
     node-fetch "^2.6.7"
 
-"@apollo/client@^3.11.1":
+"@apollo/client@^3.11.4":
   version "3.11.4"
   resolved "https://registry.yarnpkg.com/@apollo/client/-/client-3.11.4.tgz#8b0fed2d091d47597e8ddafca85776bf612ae3aa"
   integrity sha512-bmgYKkULpym8wt8aXlAZ1heaYo0skLJ5ru0qJ+JCRoo03Pe+yIDbBCnqlDw6Mjj76hFkDw3HwFMgZC2Hxp30Mg==
@@ -88,7 +88,7 @@
     "@smithy/util-utf8" "^2.0.0"
     tslib "^2.6.2"
 
-"@aws-sdk/client-sfn@^3.621.0":
+"@aws-sdk/client-sfn@^3.624.0":
   version "3.624.0"
   resolved "https://registry.yarnpkg.com/@aws-sdk/client-sfn/-/client-sfn-3.624.0.tgz#b21a303fe524e126dc87c7a102561db006bc0a39"
   integrity sha512-ZTKpPY+CPtfoXiaWqmiMpewSqMq/oiET6DCMPtH0MdcnT496CgcxwJcokMCnQd4HyvvUMltN21U9IhmsBeJPOw==
@@ -1126,7 +1126,7 @@
   resolved "https://registry.yarnpkg.com/@tsconfig/node16/-/node16-1.0.4.tgz#0b92dcc0cc1c81f6f306a381f28e31b1a56536e9"
   integrity sha512-vxhUy4J8lyeyinH7Azl1pdd43GJhZH/tP2weN8TntQblOY+A0XbT8DJk1/oCPuOOyg/Ja757rG0CgHcWC8OfMA==
 
-"@types/aws-lambda@^8.10.142":
+"@types/aws-lambda@^8.10.143":
   version "8.10.143"
   resolved "https://registry.yarnpkg.com/@types/aws-lambda/-/aws-lambda-8.10.143.tgz#383693fbaadc6994a71d64a7c09e8c244fad8dff"
   integrity sha512-u5vzlcR14ge/4pMTTMDQr3MF0wEe38B2F9o84uC4F43vN5DGTy63npRrB6jQhyt+C0lGv4ZfiRcRkqJoZuPnmg==
@@ -1540,7 +1540,7 @@ case@1.6.3:
   resolved "https://registry.yarnpkg.com/case/-/case-1.6.3.tgz#0a4386e3e9825351ca2e6216c60467ff5f1ea1c9"
   integrity sha512-mzDSXIPaFwVDvZAHqZ9VlbyF4yyXRuX6IvB06WvPYkqJVO24kX1PPhv9bfpKNFZyxYFmmgo03HUiD8iklmJYRQ==
 
-cdk-nag@^2.28.169:
+cdk-nag@^2.28.177:
   version "2.28.177"
   resolved "https://registry.yarnpkg.com/cdk-nag/-/cdk-nag-2.28.177.tgz#9cbdff535130cb5e58e36841eaec699af11a206c"
   integrity sha512-b6l76XEedQD6UNRY5XFHCtUtQbO21JuLhzAhfkRhlNEW3TxS3FBzXs++3KjpABRUt/5lolxbjxIDWzXLdM9K3Q==
