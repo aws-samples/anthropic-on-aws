@@ -34,7 +34,7 @@ rpds-py==0.18.1
 s3transfer==0.10.1
 six==1.16.0
 smmap==5.0.1
-streamlit==1.35.0
+streamlit==1.37.0
 tenacity==8.4.2
 toml==0.10.2
 toolz==0.12.1
