@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "constructs": "^10.0.0",
-    "projen": "^0.85.0",
+    "projen": "^0.86.0",
     "standard-version": "^9"
   },
   "main": "lib/index.js",
