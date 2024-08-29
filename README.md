@@ -17,3 +17,4 @@ This repo contains a collection of examples and notebooks for using Anthropic on
 - [Claude Streamlit LLM Playground (supports Claude 3.5)](claude-multimodal-llm-playground/README.md)
 - [Claude Tools Chatbot](claude-tools-chatbot/README.md)
 - [Classification with Intercom](classification-with-intercom/README.md)
+- [PDF Knowledge Base with Citations](pdf-knowledge-base-with-citations/README.md)

@@ -65,3 +65,4 @@ nav:
           - Streamlit Python Example: projects/complex-schema-tool-use/streamlit-python-example.md
           - Streamlit Stepfunction Example: projects/complex-schema-tool-use/streamlit-stepfunction-example.md
       - Metaprompt Generator: projects/metaprompt-generator.md
+      - PDF Knowledge Base with Citations: projects/pdf-knowledge-base-with-citations.md
