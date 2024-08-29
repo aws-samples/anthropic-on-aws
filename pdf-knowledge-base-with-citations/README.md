@@ -37,6 +37,8 @@ Key features include:
 
 ## Architecture
 
+![Overview](./images/KnowledgeBases-with-Citations.png)
+
 The project consists of two main components:
 
 1. **CDK Deployment**: Handles the AWS infrastructure setup, including:
@@ -322,7 +324,7 @@ The PDFViewer component then uses these locally stored PDFs for display:
 
 ## Result
 
-![ExampleOutput](/images/ExampleOutput.png)
+![ExampleOutput](./images/ExampleOutput.png)
 
 ## Cleanup
 
