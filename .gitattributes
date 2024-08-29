@@ -19,6 +19,7 @@
 /.github/workflows/upgrade-main.yml linguist-generated
 /.github/workflows/upgrade-metaprompt-generator-client.yml linguist-generated
 /.github/workflows/upgrade-metaprompt-generator.yml linguist-generated
+/.github/workflows/upgrade-submodules-undefined.yml linguist-generated
 /.gitignore linguist-generated
 /.gitpod.yml linguist-generated
 /.mergify.yml linguist-generated

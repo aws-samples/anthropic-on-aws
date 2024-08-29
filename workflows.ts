@@ -168,3 +168,52 @@ NodeProject.prototype.addBuildWorkflow = function (projectName, directory) {
     },
   });
 };
+
+NodeProject.prototype.addUpgradeSubmodulesWorkflow = function (projectName) {
+  const upgradeSubmodules = this.github.addWorkflow(
+    'upgrade-submodules-' + projectName,
+  );
+  upgradeSubmodules.on({
+    schedule: [{ cron: '0 0 * * 0' }], // Run every Sunday at midnight
+    workflowDispatch: {},
+  });
+
+  upgradeSubmodules.addJobs({
+    [`upgrade-submodules-${projectName}`]: {
+      runsOn: ['ubuntu-latest'],
+      name: `upgrade-submodules-${projectName}`,
+      permissions: {
+        contents: JobPermission.WRITE,
+      },
+      steps: [
+        {
+          uses: 'actions/checkout@v3',
+          with: {
+            'fetch-depth': 0,
+            'submodules': 'recursive',
+            'token': '${{ secrets.' + AUTOMATION_TOKEN + ' }}',
+          },
+        },
+        {
+          name: 'Update submodules',
+          run: 'git submodule update --remote --merge',
+        },
+        {
+          name: 'Create Pull Request',
+          uses: 'peter-evans/create-pull-request@v4',
+          with: {
+            'token': '${{ secrets.' + AUTOMATION_TOKEN + ' }}',
+            'commit-message': `chore: update submodules for ${projectName}`,
+            'branch': `auto/submodules-update-${projectName}`,
+            'title': `chore: update submodules for ${projectName}`,
+            'body': `This PR updates submodules for ${projectName}`,
+            'labels': 'auto-merge, auto-approve',
+            'author': 'github-actions <github-actions@github.com>',
+            'committer': 'github-actions <github-actions@github.com>',
+            'signoff': true,
+          },
+        },
+      ],
+    },
+  });
+};

@@ -50,6 +50,7 @@ jspm_packages/
 !/.github/workflows/upgrade-classification-with-intercom.yml
 !/.github/workflows/upgrade-classification-with-intercom-client.yml
 !/.github/workflows/build-classification-with-intercom.yml
+!/.github/workflows/upgrade-submodules-undefined.yml
 .yalc
 cdk.out
 cdk.context.json

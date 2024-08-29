@@ -8,6 +8,7 @@ const metapromptGenerator = require('./subprojects/metaprompt-generator');
 const claudeToolsChatbot = require('./subprojects/claude-tools-chat-bot');
 const complexSchemaToolUseNextJS = require('./subprojects/complex-schema-tool-use-nextjs');
 const classificationWithIntercom = require('./subprojects/classification-with-intercom');
+const upgradeSubmodules = require('./workflows.ts');
 
 const root = new NodeProject({
   name: 'anthropic-on-aws',
@@ -45,6 +46,8 @@ claudeToolsChatbot(root);
 complexSchemaToolUseNextJS(root);
 classificationWithIntercom(root);
 
+root.addUpgradeSubmodulesWorkflow();
+
 const common_exclude = [
   '.yalc',
   'cdk.out',
@@ -68,32 +71,6 @@ const common_exclude = [
   'docs/**/images/',
   '!docs/images/',
 ];
-
-// Add this new section to create the submodule update workflow
-root.github
-  .addWorkflow('update-submodules')
-  .on({
-    schedule: [{ cron: '0 0 * * 0' }], // Run every Sunday at midnight
-    workflow_dispatch: {}, // Allow manual triggering
-  })
-  .addJobs({
-    update: {
-      runsOn: ['ubuntu-latest'],
-      steps: [
-        {
-          uses: 'actions/checkout@v3',
-          with: { 'fetch-depth': 0, 'submodules': 'recursive' },
-        },
-        { run: 'git config user.name github-actions' },
-        { run: 'git config user.email github-actions@github.com' },
-        { run: 'git submodule update --remote --merge' },
-        {
-          run: 'git commit -am "Update submodules" || echo "No changes to commit"',
-        },
-        { run: 'git push' },
-      ],
-    },
-  });
 
 root.gitignore.exclude(...common_exclude);
 root.synth();

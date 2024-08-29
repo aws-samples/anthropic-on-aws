@@ -18,6 +18,7 @@
     ".github/workflows/upgrade-main.yml",
     ".github/workflows/upgrade-metaprompt-generator-client.yml",
     ".github/workflows/upgrade-metaprompt-generator.yml",
+    ".github/workflows/upgrade-submodules-undefined.yml",
     ".gitignore",
     ".gitpod.yml",
     ".mergify.yml",
