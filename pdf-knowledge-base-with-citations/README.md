@@ -1,10 +1,5 @@
 # PDF Knowledge Base with Citations
 
-![GitHub last commit](https://img.shields.io/github/last-commit/aws-samples/anthropic-on-aws/blob/main/pdf-knowledge-base-with-citations)
-![GitHub issues](https://img.shields.io/github/issues/aws-samples/anthropic-on-aws/blob/main/pdf-knowledge-base-with-citations)
-![GitHub pull requests](https://img.shields.io/github/aws-samples/anthropic-on-aws/blob/main/pdf-knowledge-base-with-citations)
-![License](https://img.shields.io/github/license/aws-samples/anthropic-on-aws/blob/main/pdf-knowledge-base-with-citations)
-
 This project demonstrates how to leverage Amazon Bedrock Knowledge Bases with complex PDF processing using AWS CDK (Cloud Development Kit) for infrastructure deployment and a Next.js client application.
 
 ## Table of Contents
