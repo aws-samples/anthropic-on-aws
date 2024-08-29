@@ -18,9 +18,9 @@
     "projen": "npx projen"
   },
   "devDependencies": {
+    "commit-and-tag-version": "^12",
     "constructs": "^10.0.0",
-    "projen": "^0.86.0",
-    "standard-version": "^9"
+    "projen": "^0.86.5"
   },
   "main": "lib/index.js",
   "license": "MIT-0",

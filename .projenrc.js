@@ -69,5 +69,31 @@ const common_exclude = [
   '!docs/images/',
 ];
 
+// Add this new section to create the submodule update workflow
+root.github
+  .addWorkflow('update-submodules')
+  .on({
+    schedule: [{ cron: '0 0 * * 0' }], // Run every Sunday at midnight
+    workflow_dispatch: {}, // Allow manual triggering
+  })
+  .addJobs({
+    update: {
+      runsOn: ['ubuntu-latest'],
+      steps: [
+        {
+          uses: 'actions/checkout@v3',
+          with: { 'fetch-depth': 0, 'submodules': 'recursive' },
+        },
+        { run: 'git config user.name github-actions' },
+        { run: 'git config user.email github-actions@github.com' },
+        { run: 'git submodule update --remote --merge' },
+        {
+          run: 'git commit -am "Update submodules" || echo "No changes to commit"',
+        },
+        { run: 'git push' },
+      ],
+    },
+  });
+
 root.gitignore.exclude(...common_exclude);
 root.synth();
