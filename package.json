@@ -20,7 +20,7 @@
   "devDependencies": {
     "commit-and-tag-version": "^12",
     "constructs": "^10.0.0",
-    "projen": "^0.86.5"
+    "projen": "^0.86.6"
   },
   "main": "lib/index.js",
   "license": "MIT-0",
