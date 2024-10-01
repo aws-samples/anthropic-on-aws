@@ -17,7 +17,7 @@
     "@cloudscape-design/global-styles": "^1.0.32",
     "@mui/styles": "^5.16.5",
     "@types/react-pdf": "^7.0.0",
-    "next": "14.2.5",
+    "next": "14.2.10",
     "react": "^18",
     "react-dom": "^18",
     "react-pdf": "8"
