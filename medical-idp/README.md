@@ -18,7 +18,7 @@ The solution employs a strategic multi-model approach, optimizing for both perfo
     - Processing medical charts and handwritten notes
     - Converting unstructured visual information into structured data
 
-![Orchestration Flow](/static/flow_diagram.webp)
+![Orchestration Flow](static/flow_diagram.webp)
 
 ## Use Case and Dataset
 
@@ -30,4 +30,4 @@ For our example use case, we'll examine a patient intake process at a healthcare
 
 3. **Unstructured Document**: A handwritten doctor's note from an initial consultation, containing free-form observations, preliminary diagnoses, and treatment recommendations. This represents the most challenging category of unstructured documents, where information isn't confined to any predetermined format or structure.
 
-The example document can be downloaded [here](/docs/new-patient-registration.pdf).
+The example document can be downloaded [here](docs/new-patient-registration.pdf).
