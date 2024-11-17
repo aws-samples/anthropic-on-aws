@@ -1,5 +1,6 @@
 import boto3
 import json
+import os
 from tools.tool_error import ToolError
 
 
@@ -162,7 +163,7 @@ class BedrockUtils:
             # If no tools were used, return None
             return None
 
-    def run_loop(self, prompt, tool_list, get_tool_result, temperature=0, maxTokens=4000, enable_guardrails=True):
+    def run_loop(self, prompt, tool_list, get_tool_result, temperature=0, maxTokens=4000, enable_guardrails=False):
         """
         Run a loop to interact with Bedrock's model and handle follow-up messages.
 
@@ -277,8 +278,12 @@ class BedrockUtils:
     def get_guardrail_config(self, enable_guardrails):
         if(enable_guardrails):
             # The ID and version of the guardrail.
-            guardrail_id = "s5z6clywtm1f"
-            guardrail_version = "DRAFT"
+            # Read guardrail_id and version from environment variables
+            guardrail_id = os.getenv('GUARDRAIL_ID')
+            guardrail_version = os.getenv('GUARDRAIL_VERSION')
+            
+            if not guardrail_id or not guardrail_version:
+                raise ValueError("GUARDRAIL_ID and GUARDRAIL_VERSION must be set in the environment")
 
             # Configuration for the guardrail.
             guardrail_config = {
