@@ -31,3 +31,20 @@ For our example use case, we'll examine a patient intake process at a healthcare
 3. **Unstructured Document**: A handwritten doctor's note from an initial consultation, containing free-form observations, preliminary diagnoses, and treatment recommendations. This represents the most challenging category of unstructured documents, where information isn't confined to any predetermined format or structure.
 
 The example document can be downloaded [here](/docs/new-patient-registration.pdf).
+
+## Solution Setup
+1.	Setup an Amazon SageMaker Domain using the instruction in the [quick setup guide](https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-quick-start.html)
+2.	Launch the Studio. Then create and launch a JupyterLab space using the instruction in the [documentation](https://docs.aws.amazon.com/sagemaker/latest/dg/studio-updated-jl-user-guide-create-space.html)
+3.	Follow instructions in the documentation to [create a guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-create.html). Focus on adding “Sensitive Information Filters” that would mask personally identifiable information (PII) or personal health information (PIH).
+4.	Clone the code from the aws-samples GitHub repository
+`git clone <repo-url>`
+5.	Change directory to the root of the cloned repository by running
+`cd medical-idp`
+6.	Install dependencies by running
+`pip install -r requirements.txt`
+7.	Update setup.sh with the guardrail ID you created in step 3. Then set the ENV variable by running
+`source setup.sh`
+8.	Finally, start the Streamlit application by running
+`streamlit run app.py`
+
+Now you are ready to explore the intelligent document processing workflow using Amazon Bedrock.
