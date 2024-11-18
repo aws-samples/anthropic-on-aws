@@ -1,11 +1,10 @@
 #!/bin/bash
 
 # Set the Guardrail ID
-# export GUARDRAIL_ID="s5z6clywtm1f"
-export GUARDRAIL_ID="7gnxrcsucp5c"
+export GUARDRAIL_ID="<TODO: ENTER GUARDRAIL ID HERE>"
 
 # Set the Guardrail Version
-export GUARDRAIL_VERSION="DRAFT"
+export GUARDRAIL_VERSION="DRAFT" # Change this to use a specific version of the guardrail
 
 # Print the values to confirm
 echo "GUARDRAIL_ID set to: $GUARDRAIL_ID"
