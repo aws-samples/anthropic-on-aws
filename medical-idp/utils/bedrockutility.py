@@ -75,12 +75,11 @@ class BedrockUtils:
             dict: The response from the Bedrock model.
         """
         print(f"Invoking Bedrock model {self.model_id} with temp={temperature}, and maxTokens={maxTokens}...")
-        if(guardrail_config):
-            response = self.bedrock.converse(
+        response = self.bedrock.converse(
                 modelId=self.model_id,
                 messages=message_list,
-                guardrailConfig=guardrail_config,
-                # **({"guardrailConfig": guardrail_config} if guardrail_config else {}),
+                # guardrailConfig=guardrail_config,
+                **({"guardrailConfig": guardrail_config} if guardrail_config else {}),
                 **({"system": system_message} if system_message else {}),
                 inferenceConfig={
                     "maxTokens": maxTokens,
@@ -88,18 +87,6 @@ class BedrockUtils:
                 },
                 **({"toolConfig": {"tools": tool_list}} if tool_list else {}),
             )
-        else:
-            response = self.bedrock.converse(
-                modelId=self.model_id,
-                messages=message_list,
-                **({"system": system_message} if system_message else {}),
-                inferenceConfig={
-                    "maxTokens": maxTokens,
-                    "temperature": temperature
-                },
-                **({"toolConfig": {"tools": tool_list}} if tool_list else {})
-            )
-
         input_tokens = response['usage']['inputTokens']
         output_tokens = response['usage']['outputTokens']
         

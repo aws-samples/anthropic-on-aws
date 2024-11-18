@@ -1,5 +1,5 @@
 class ModelIDs:
-    anthropic_claude_3_5_sonnet = "arn:aws:bedrock:us-west-2:789068066945:application-inference-profile/wenjf6zdbcql"
+    anthropic_claude_3_5_sonnet = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     #anthropic_claude_3_5_sonnet = "anthropic.claude-3-5-sonnet-20241022-v2:0"
     # anthropic_claude_3_5_sonnet = "anthropic.claude-3-5-haiku-20241022-v1:0"
     anthropic_claude_3_sonnet = "anthropic.claude-3-sonnet-20240229-v1:0"
@@ -96,7 +96,8 @@ class ToolConfig:
                                                     `True` if the user asked for the guardrail to be enabled, 
                                                     `False` if they did not ask for it to be enabled."""
                             }
-                        }
+                        },
+                        "required": ["summary"]
                     }
                 }
             }
@@ -453,7 +454,17 @@ class ToolConfig:
             }
 
     ]
-   
+    
+    # Example usage:
+    
+    """
+    full_toolspec = ToolConfig.compose_toolspec(
+        'DOCUMENT_PROCESSING_PIPELINE', 
+        'NEW_PATIENT_INFO', 
+        'INSURANCE_FORM',
+        'DOC_NOTES'
+    )
+    """   
     @classmethod
     def compose_toolspec(cls, *components):
         composed_toolspec = []
@@ -466,19 +477,4 @@ class ToolConfig:
                 composed_toolspec.append(component_specs)
         return composed_toolspec
 
-# Example usage:
 
-"""
-full_toolspec = ToolConfig.compose_toolspec(
-    'COT', 
-    'URLA_LOAN_INFO_TOOL', 
-    'URLA_BORROWER_INFO_TOOL', 
-    'DRIVERS_LICENSE_TOOL', 
-    'VERIFICATION_TOOL',
-    'CURRENT_EMPLOYER_TOOL',
-    'ASSETS_TOOL',
-    'LIABILITIES_TOOL',
-    'DECLARATIONS_TOOL',
-    'LOAN_ORIGINATOR_TOOL'
-)
-"""
