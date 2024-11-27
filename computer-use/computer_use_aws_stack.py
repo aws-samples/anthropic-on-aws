@@ -353,7 +353,9 @@ class ComputerUseAwsStack(Stack):
             fail_secure=True,  # Change this to False to fail open
         )
         # Log the IP being used for security groups
-        print(f"Configuring security groups with IP: {deployer_ip}")
+        command = os.getenv("CDK_STACK_COMMANDS", "")
+        if command == "deploy":
+            print(f"Configuring security groups with IP: {deployer_ip}")
 
         # Create security group for environment container
         environment_security_group = aws_ec2.SecurityGroup(
@@ -733,7 +735,9 @@ class ComputerUseAwsStack(Stack):
 
     def format_ip_with_cidr(self, ip: str, fail_secure: bool = True) -> str:
         """
-        Format IP address with CIDR notation and validate
+        Format IP address with CIDR notation and validate. Only provides output messages
+        during deployment operations.
+
         Args:
             ip: IP address to format (can be single IP or CIDR range)
             fail_secure: If True, defaults to '255.255.255.255/32' (blocks all) on failure
@@ -741,23 +745,34 @@ class ComputerUseAwsStack(Stack):
         Returns:
             str: Properly formatted CIDR range
         """
+        command = os.getenv("CDK_STACK_COMMANDS", "")
+
+        # Return silently during bootstrap or destroy operations
+        if "bootstrap" in command or "destroy" in command:
+            return "255.255.255.255/32" if fail_secure else "0.0.0.0/0"
+
+        # Handle cases where no IP is provided
         if not ip:
             default_ip = "255.255.255.255/32" if fail_secure else "0.0.0.0/0"
-            print(f"Warning: No deployer IP provided. Defaulting to {default_ip}")
+            if command == "deploy":
+                print(f"Warning: No deployer IP provided. Defaulting to {default_ip}")
             return default_ip
 
-        # If IP already has CIDR notation, return as-is
+        # Handle IP addresses that already include CIDR notation
         if "/" in ip:
             try:
-                # Basic validation of CIDR format
                 address, mask = ip.split("/")
                 mask_int = int(mask)
                 if mask_int < 0 or mask_int > 32:
                     raise ValueError("Invalid CIDR mask")
                 return ip
             except ValueError:
-                print(f"Warning: Invalid CIDR format '{ip}'. Using default.")
-                return "255.255.255.255/32" if fail_secure else "0.0.0.0/0"
+                default_ip = "255.255.255.255/32" if fail_secure else "0.0.0.0/0"
+                if command == "deploy":
+                    print(
+                        f"Warning: Invalid CIDR format '{ip}'. Using default {default_ip}"
+                    )
+                return default_ip
 
         # Add /32 for single IP addresses
         return f"{ip}/32"

@@ -946,7 +946,7 @@ class MessageHandler(Generic[T]):
 class AuthManager:
     def __init__(self, session_timeout_minutes: int = 60):
         self.users = {
-            "admin": "af1c1956cab078daa6412eb61341cf41dfb91b3c4ecd4904506d6360707e2c1c"  # admin/computer
+            "computeruse": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"  # computeruse / admin
         }
         self.session_timeout = timedelta(minutes=session_timeout_minutes)
         self.failed_attempts: Dict[str, List[datetime]] = {}
