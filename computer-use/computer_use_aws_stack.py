@@ -157,6 +157,11 @@ class ComputerUseAwsStack(Stack):
                 "*.pypi.org",
                 "pythonhosted.org",
                 "*.pythonhosted.org",
+                # test domains
+                "example.com",
+                "*.example.com",
+                "iana.org",
+                "*.iana.org",
                 # Internal domains
                 "*.computer-use.local",
                 "computer-use.local",
