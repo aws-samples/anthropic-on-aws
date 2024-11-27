@@ -1,0 +1,2 @@
+aws-cdk-lib==2.164.1
+constructs==10.4.2
