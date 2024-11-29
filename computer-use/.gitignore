@@ -20,7 +20,6 @@ venv.bak/
 # CDK Context & Staging files
 .cdk.staging/
 cdk.out/
-cdk*.json
 cdk.*.json
 cdk.context.json
 # IDE specific files
