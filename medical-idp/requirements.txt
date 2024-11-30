@@ -1,0 +1,11 @@
+pyarrow
+python-dotenv
+beautifulsoup4
+lxml
+grobid-client-python
+watchdog
+streamlit-pdf-viewer
+requests
+PyMuPDF
+Pillow
+boto3
