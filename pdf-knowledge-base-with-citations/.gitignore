@@ -61,3 +61,5 @@ config.json
 .env.local
 documents/
 !/.projenrc.ts
+/src/resources/app/pages/api/documents/*
+!/src/resources/app/pages/api/documents/[filename].ts
