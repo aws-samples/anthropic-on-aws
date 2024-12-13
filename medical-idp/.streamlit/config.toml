@@ -1,0 +1,8 @@
+[logger]
+level = "info"
+
+[browser]
+gatherUsageStats = true
+
+[ui]
+hideTopBar = true
