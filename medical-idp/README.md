@@ -6,13 +6,13 @@ This intelligent document processing solution leverages Amazon Bedrock to orches
 
 The solution employs a strategic multi-model approach, optimizing for both performance and cost by selecting the most appropriate model for each task:
 
-* **Claude 3.5 Haiku**: Serves as the workflow orchestrator due to its low latency and cost-effectiveness. While it has more limited visual capabilities, its strong reasoning and tool-use abilities make it ideal for:
+* **Claude 3 Haiku**: Serves as the workflow orchestrator due to its lower latency and cost-effectiveness. Its strong reasoning and tool-use abilities make it ideal for:
     - Coordinating the overall document processing pipeline
     - Making routing decisions for different document types
     - Invoking appropriate processing functions
     - Managing the workflow state
 
-* **Claude 3.5 Sonnet**: Deployed specifically for vision-intensive tasks where its superior visual reasoning capabilities justify the higher latency and cost. It excels at:
+* **Claude 3.5 Sonnet (v2)**: For vision-intensive tasks where its superior visual reasoning capabilities excels at:
     - Interpreting complex document layouts and structure
     - Extracting text from tables and forms 
     - Processing medical charts and handwritten notes
