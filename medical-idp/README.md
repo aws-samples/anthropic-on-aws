@@ -49,3 +49,4 @@ The example document can be downloaded [here](docs/new-patient-registration.pdf)
 
 Now you are ready to explore the intelligent document processing workflow using Amazon Bedrock.
 
+> ⚠️ **WARNING**: This codebase demonstrates intelligent document processing capabilities using Claude models and references medical documents as an example. Any medical or healthcare-related analysis, diagnosis, or decision-making without proper review and validation by qualified medical professionals is done at your own risk. Neither AWS nor the authors assume any liability for such use.
