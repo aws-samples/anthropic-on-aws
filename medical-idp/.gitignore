@@ -1,0 +1,10 @@
+.idea
+grobid/__pycache__
+__pycache__
+.venv
+.vscode
+temp/*
+*.DS_Store
+*/.ipynb_checkpoints
+.ipynb_checkpoints/*
+Untitled*
