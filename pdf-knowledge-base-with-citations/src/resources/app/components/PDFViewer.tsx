@@ -21,7 +21,9 @@ const PDFViewer: React.FC = () => {
   const [goToPage, setGoToPage] = useState('');
   const [isPdfTextLoaded, setIsPdfTextLoaded] = useState(false);
 
-  const pdfUrl = currentPdfFile ? `/api/documents/${currentPdfFile}` : null;
+  const pdfUrl = currentPdfFile ? 
+    (currentPdfFile.startsWith('/api') ? currentPdfFile : `/api/documents/${currentPdfFile}`) 
+    : null;
 
   const onDocumentLoadSuccess = useCallback(
     ({ numPages: totalPages }: { numPages: number }) => {
