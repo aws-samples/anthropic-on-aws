@@ -24,7 +24,7 @@ const Citations: React.FC<CitationsProps> = ({ onGoToPage }) => {
                 ?.split('/')
                 .pop();
               if (fileName) {
-                setCurrentPdfFile(fileName);
+                setCurrentPdfFile(`/api/documents/${fileName}`);
                 setPdfFileName(fileName);
                 onGoToPage(citationPages[index] || 1, citation.content);
               }
