@@ -1,0 +1,33 @@
+*.swp
+package-lock.json
+.pytest_cache
+*.egg-info
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# CDK Context & Staging files
+.cdk.staging/
+cdk.out/
+cdk.*.json
+cdk.context.json
+# IDE specific files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# OS specific files
+.DS_Store
+Thumbs.db

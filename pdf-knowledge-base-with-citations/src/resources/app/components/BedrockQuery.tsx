@@ -96,29 +96,18 @@ const BedrockQuery: React.FC<{
           extractedCitations.length > 0 &&
           extractedCitations[0].metadata['x-amz-bedrock-kb-source-uri']
         ) {
-          const pdfUrl = `/documents/${extractedCitations[0].metadata[
-            'x-amz-bedrock-kb-source-uri'
-          ]
+          const fileName = extractedCitations[0].metadata['x-amz-bedrock-kb-source-uri']
             .split('/')
-            .pop()}`;
+            .pop();
+          const pdfUrl = `/api/documents/${fileName}`;
           try {
             const loadingTask = pdfjs.getDocument(pdfUrl);
             const loadedPdf = await loadingTask.promise;
-            const pages = await findCitationPages(
-              loadedPdf,
-              extractedCitations,
-            );
-            console.log(
-              'Citation pages found:',
-              JSON.stringify(pages, null, 2),
-            );
+            const pages = await findCitationPages(loadedPdf, extractedCitations);
+            console.log('Citation pages found:', JSON.stringify(pages, null, 2));
             setCitationPages(pages);
           } catch (error) {
-            console.error(
-              'Error loading PDF or finding citation pages:',
-              error,
-            );
-            // Set an error state or show a user-friendly message
+            console.error('Error loading PDF or finding citation pages:', error);
             setErrorMessage('Unable to load PDF for citations. The response is still available.');
           }
         }
