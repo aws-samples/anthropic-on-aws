@@ -217,7 +217,7 @@ def display_claude_response(response, show_reasoning=False):
     total_tokens = response.get('usage', {}).get('totalTokens', 0)
     
     input_cost = input_tokens * 0.000003  # $3 per million tokens
-    output_cost = output_tokens * 0.000005  # $5 per million tokens
+    output_cost = output_tokens * 0.000015  # $15 per million tokens
     total_cost = input_cost + output_cost
     
     # Display metrics
