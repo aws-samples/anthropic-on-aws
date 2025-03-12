@@ -1,0 +1,8 @@
+boto3
+botocore
+anthropic
+Pillow
+pdf2image
+uuid
+matplotlib
+opensearch-py
