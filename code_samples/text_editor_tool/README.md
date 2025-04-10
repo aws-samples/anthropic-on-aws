@@ -10,9 +10,8 @@ This example demonstrates how to use Claude's built-in text editor tool. The sam
 
 ## How It Works
 
-1. The `claude_text_editor_example.py` script reads the buggy code file
-2. It calls Claude through the Bedrock API, asking to fix the syntax error
-3. Claude uses the text editor tool to identify and fix the issue
+1. The `claude_text_editor_example.py` calls Claude through the Bedrock API, asking to fix the syntax error
+3. Claude uses the text editor tool to read the file, and identify and fix the issue
 4. The script processes Claude's response, applying the suggested fixes
 5. The fixed code is saved to a new file
 
