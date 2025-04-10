@@ -1,6 +1,6 @@
 # Claude Text Editor Tool Example
 
-This repository demonstrates how to use Claude's text editor tool to fix bugs in code. The example shows how Claude can identify and fix a syntax error in Python code through the Bedrock API.
+This example demonstrates how to use Claude's built-in text editor tool. The sample shows how Claude can identify and fix a syntax error in Python code with the text editor tool through the Bedrock API.
 
 ## Files
 
@@ -16,7 +16,7 @@ This repository demonstrates how to use Claude's text editor tool to fix bugs in
 4. The script processes Claude's response, applying the suggested fixes
 5. The fixed code is saved to a new file
 
-## The Text Editor Tool
+## The Built-in Text Editor Tool
 
 Claude's text editor tool allows the model to in this scenario to:
 - Identify specific sections of text to modify, by viewing the file
@@ -35,7 +35,7 @@ In this example, Claude will identify the missing colon in the for loop and fix 
 
 1. Configure your AWS credentials
 2. Run: `python claude_text_editor_example.py`
-3. View fixed_code.py and see the changes compared to buggy_code.py (diff -u buggy_code.py fixed_code.py)
+3. View fixed_code.py and see the changes compared to buggy_code.py (`diff -u buggy_code.py fixed_code.py`)
 
 ## Documentation
 
