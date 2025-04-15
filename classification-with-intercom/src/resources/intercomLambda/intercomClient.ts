@@ -168,7 +168,7 @@ export async function updateTicketAssignment(
     logInfo(
       `Ticket ${ticketId} successfully assigned to assignee ${assigneeId} with admin ${selectedAdmin.id}`,
     );
-    console.log('Ticket assigned:', ticketId, data);
+    console.log('Ticket assigned: ', ticketId, data);
   } catch (error) {
     logError(`Error assigning ticket ${ticketId}:`, error);
     throw error;
