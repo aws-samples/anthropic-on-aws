@@ -5,7 +5,8 @@ This example demonstrates how to use Claude's built-in text editor tool. The sam
 ## Files
 
 - `buggy_code.py` - A Python file with a deliberate syntax error (missing colon after a for loop)
-- `claude_text_editor_example.py` - The main script that calls Claude with the text editor tool to fix the bug
+- `claude_text_editor_example.py` - The main script that calls Claude with the text editor tool to fix the bug. This uses Amazon Bedrock's Messages API.
+- `claude_text_editor_example_converse.py` - The same functionality, but using the Amazon Bedrock Converse API.
 - `fixed_code.py` - This file will be generated when you run the example
 
 ## How It Works
