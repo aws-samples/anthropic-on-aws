@@ -6,8 +6,6 @@ This example shows how to use Claude's built-in
 text editor tool with the Amazon Bedrock Converse API.
 """
 import boto3
-import json
-import os
 
 # File paths
 buggy_file_path = "./buggy_code.py"
