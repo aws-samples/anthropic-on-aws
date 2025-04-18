@@ -10,7 +10,8 @@ This example demonstrates how to use Claude's built-in text editor tool. The sam
 
 ## How It Works
 
-1. The `claude_text_editor_example.py` calls Claude through the Bedrock API, asking to fix the syntax error
+1. The `claude_text_editor_example.py` script calls Claude through the Bedrock Messages API, asking to fix the syntax error
+2. Alternatively, `claude_text_editor_example_converse.py` uses the Bedrock Converse API for the same functionality
 3. Claude uses the text editor tool to read the file, and identify and fix the issue
 4. The script processes Claude's response, applying the suggested fixes
 5. The fixed code is saved to a new file
@@ -33,7 +34,7 @@ In this example, Claude will identify the missing colon in the for loop and fix 
 ## Running the Example
 
 1. Configure your AWS credentials
-2. Run: `python claude_text_editor_example.py`
+2. Run: `python claude_text_editor_example.py` or `python claude_text_editor_example_converse.py`
 3. View fixed_code.py and see the changes compared to buggy_code.py (`diff -u buggy_code.py fixed_code.py`)
 
 ## Documentation
