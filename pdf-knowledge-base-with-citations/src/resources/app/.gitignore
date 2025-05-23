@@ -34,7 +34,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# Ignore documents directory except the API endpoint
-/src/resources/app/pages/api/documents/*
-!/src/resources/app/pages/api/documents/[filename].ts
