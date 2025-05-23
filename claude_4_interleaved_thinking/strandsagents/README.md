@@ -133,7 +133,7 @@ from utils import get_model_display_name
 
 def main():
     # Select the appropriate Claude model
-    MODEL_ID = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+    MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0"
     
     # Get display name based on model ID
     model_display_name = get_model_display_name(MODEL_ID)
