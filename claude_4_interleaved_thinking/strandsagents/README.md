@@ -246,7 +246,6 @@ This is just the beginning of what's possible with Strands. The framework suppor
 - Persistent state management (for maintaining context)
 - Multiple model providers (not just Bedrock)
 - Multi-agent systems (for complex workflows)
-- Production deployment options (Lambda, ECS, EC2)
 
 I'm particularly excited about the multi-agent capabilities. By modeling sub-agents as tools, Strands enables a whole new level of compositional thinking where agents can delegate to specialized sub-agents as needed.
 
