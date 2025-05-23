@@ -84,7 +84,7 @@ from strands import Agent
 from strands.models import BedrockModel
 from tools import *  # Import all tools from tools directory
 
-def create_revenue_calculator_agent(model_id="us.anthropic.claude-3-7-sonnet-20250219-v1:0"):
+def create_revenue_calculator_agent(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"):
     # Configure the bedrock model
     bedrock_model = BedrockModel(
         model_id=model_id,
@@ -92,10 +92,10 @@ def create_revenue_calculator_agent(model_id="us.anthropic.claude-3-7-sonnet-202
         temperature=0.7,
         max_tokens=4000,
         additionalModelRequestFields={
-            "anthropic_beta": ["token-efficient-tools-2025-02-19"],
+            "anthropic_beta": ["interleaved-thinking-2025-05-14"],
             "reasoning_config": {
                 "type": "enabled",
-                "budget_tokens": 3000
+                "budget_tokens": 10000
             }
         }
     )
