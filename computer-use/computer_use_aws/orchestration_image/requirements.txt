@@ -1,5 +1,9 @@
 anthropic[bedrock]>=0.34.2
-streamlit>=1.38.0
 jsonschema==4.22.0
 boto3>=1.28.57
+aioboto3>=12.2.0
 aiohttp
+quart>=0.19.4
+quart-cors>=0.7.0
+SQLAlchemy==2.0.27
+aiosqlite==0.20.0

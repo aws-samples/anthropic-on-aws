@@ -168,23 +168,7 @@ Navigate to the links provided in the output of the `get_urls.sh` script to acce
 
 DCV is used to connect to the environment container for remote desktop access, for activities such as resetting the state of the environment, or elliciting the state of the environment prior to a new task.
 
-The Streamlit interface is used to configure the API provider, model, and other parameters for the environment container. Then ultimately instruct the model via a chat interface to perform tasks.
-
-## Steamlit GUI and DCV Access
-
-After navigating to the Orchestration Service URL (Streamlit interface), you'll need to log in:
-
-1. Default credentials for DCV and the Web UI:
-   - **Username:** `computeruse`
-   - **Password:** `admin`
-
-2. After successful login, you'll see:
-   - Configuration panel in the sidebar
-   - Chat interface in the main area
-   - HTTP Exchange Logs tab for debugging
-
-Note: The session will timeout after 60 minutes of inactivity, requiring you to log in again.
-
+The multi computer use agent React UI is used to configure the API provider, model, and other parameters for the environment container. Then ultimately instruct the model via a chat interface to perform tasks.
 
 ## Infrastructure Components
 
@@ -194,7 +178,7 @@ Note: The session will timeout after 60 minutes of inactivity, requiring you to 
 - **Task Definition**: Includes both containers with appropriate port mappings
 - **Security Groups**: 
   - Environment container: Accepts traffic only from orchestration container
-  - Orchestration container: Accepts public traffic on port 8501
+  - Orchestration container: Accepts public traffic on port 8080
 - **IAM Roles**: Task execution role with minimal permissions
 - **CloudWatch Logs**: Configured for container logging
 - **KMS**: Encryption key for secure storage
@@ -205,7 +189,7 @@ Note: The session will timeout after 60 minutes of inactivity, requiring you to 
   - 8443: DCV
   - 5000: Flask Control API
 - **Orchestration Container**:
-  - 8501: Streamlit interface
+  - 8080: React UI interface
 
 ## Monitoring
 

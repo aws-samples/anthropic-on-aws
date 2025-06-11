@@ -52,7 +52,7 @@ echo -e "\nChecking service status..."
 aws $PROFILE ecs describe-services --cluster $CLUSTER_NAME --services $ENV_SERVICE $ORCH_SERVICE \
 --query 'services[*].[serviceName,status,runningCount,desiredCount,events[0].message]' --output table
 
-echo -e "\nGetting Orchestration Service IP (Streamlit on port 8501)..."
+echo -e "\nGetting Orchestration Service IP (Front End on port 8080)..."
 ORCH_TASK=$(aws $PROFILE ecs list-tasks --cluster $CLUSTER_NAME --service-name $ORCH_SERVICE --query 'taskArns[0]' --output text)
 if [ "$ORCH_TASK" != "None" ] && [ ! -z "$ORCH_TASK" ]; then
     ORCH_ENI=$(aws $PROFILE ecs describe-tasks --cluster $CLUSTER_NAME --tasks $ORCH_TASK \
@@ -62,7 +62,7 @@ if [ "$ORCH_TASK" != "None" ] && [ ! -z "$ORCH_TASK" ]; then
     echo "Task ARN: $ORCH_TASK"
     echo "ENI: $ORCH_ENI"
     echo "IP Address: $ORCH_IP"
-    echo "Orchestration Service URL: http://$ORCH_IP:8501"
+    echo "Orchestration Service URL: http://$ORCH_IP:8080"
 else
     echo "No running tasks found for Orchestration Service"
 fi

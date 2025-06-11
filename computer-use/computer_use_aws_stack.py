@@ -103,6 +103,13 @@ class ComputerUseAwsStack(Stack):
             "ComputerUseAwsVPC",
             max_azs=2,
             restrict_default_security_group=True,
+            subnet_configuration=[
+                aws_ec2.SubnetConfiguration(
+                    name="Public",
+                    subnet_type=aws_ec2.SubnetType.PUBLIC,
+                    cidr_mask=24,
+                )
+            ],
             flow_logs={
                 "flowlog": aws_ec2.FlowLogOptions(
                     destination=aws_ec2.FlowLogDestination.to_cloud_watch_logs(),
@@ -110,6 +117,11 @@ class ComputerUseAwsStack(Stack):
                 )
             },
         )
+
+        # Add tags to all public subnets
+        for subnet in vpc.public_subnets:
+            Tags.of(subnet).add("Name", f"{self.stack_name}-public-subnet")
+            Tags.of(subnet).add("TaskTarget", "ComputerUseAws")
 
         # Create Route 53 DNS Firewall Domain List for allowed domains
         cfn_firewall_domain_list = aws_route53resolver.CfnFirewallDomainList(
@@ -267,7 +279,7 @@ class ComputerUseAwsStack(Stack):
             )
         )
 
-        # Create task role with Bedrock access for orchestration container
+        # Create task role with necessary permissions for orchestration container
         orchestration_task_role = aws_iam.Role(
             self,
             "ComputerUseAwsOrchestrationTaskRole",
@@ -281,6 +293,45 @@ class ComputerUseAwsStack(Stack):
         orchestration_task_role.add_managed_policy(
             aws_iam.ManagedPolicy.from_aws_managed_policy_name(
                 "AmazonBedrockFullAccess"
+            )
+        )
+        
+        # Add permissions for ECS operations used in api.py
+        orchestration_task_role.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "ecs:RunTask",
+                    "ecs:DescribeTasks",
+                    "ecs:StopTask",
+                ],
+                resources=["*"],
+            )
+        )
+        
+        # Add permissions for EC2 operations used in api.py
+        orchestration_task_role.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "ec2:DescribeSubnets",
+                    "ec2:DescribeSecurityGroups",
+                    "ec2:DescribeNetworkInterfaces",
+                ],
+                resources=["*"],
+            )
+        )
+        
+        # Add iam:PassRole permission to allow passing execution role to ECS tasks
+        # Fix for AccessDeniedException: Need to allow passing role to environment task definition
+        orchestration_task_role.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=["iam:PassRole"],
+                resources=[
+                    execution_role.role_arn,
+                    # Add wildcard for environment task definition roles
+                    f"arn:aws:iam::{self.account}:role/{self.stack_name}-ComputerUseAwsEnvironmentTaskDe*",
+                    # Fallback pattern for any task execution roles in this stack
+                    f"arn:aws:iam::{self.account}:role/*{self.stack_name}*",
+                ],
             )
         )
 
@@ -350,7 +401,8 @@ class ComputerUseAwsStack(Stack):
 
         # Add port mapping to the orchestration container
         orchestration_container.add_port_mappings(
-            aws_ecs.PortMapping(container_port=8501, host_port=8501)
+            aws_ecs.PortMapping(container_port=3002, host_port=3002), # Multi computer use demo interface API
+            aws_ecs.PortMapping(container_port=8080, host_port=8080), # Multi computer use demo interface frontend
         )
 
         deployer_ip = self.format_ip_with_cidr(
@@ -371,6 +423,10 @@ class ComputerUseAwsStack(Stack):
             description="Security group for environment container",
             security_group_name=f"computer-use-aws-env-sg-{self.stack_name.lower()}",
         )
+
+        # Add tags to environment security group
+        Tags.of(environment_security_group).add("Name", f"{self.stack_name}-environment-sg")
+        Tags.of(environment_security_group).add("TaskTarget", "ComputerUseAws")
 
         # Create security group for orchestration container
         orchestration_security_group = aws_ec2.SecurityGroup(
@@ -395,14 +451,21 @@ class ComputerUseAwsStack(Stack):
         environment_security_group.add_ingress_rule(
             peer=aws_ec2.Peer.ipv4(deployer_ip),
             connection=aws_ec2.Port.tcp(8443),
-            description=f"Allow DVC port 8443inbound traffic from {deployer_ip}",
+            description=f"Allow DVC port 8443 inbound traffic from {deployer_ip}",
         )
 
-        # Allow public access to orchestration container's Streamlit port
+        # Allow Multi computer use demo interface API access only from orchestration container
         orchestration_security_group.add_ingress_rule(
             peer=aws_ec2.Peer.ipv4(deployer_ip),
-            connection=aws_ec2.Port.tcp(8501),
-            description=f"Allow inbound traffic on port 8501 from {deployer_ip}",
+            connection=aws_ec2.Port.tcp(3002),
+            description=f"Allow inbound traffic on port 3002 from {deployer_ip}",
+        )
+        
+        # Allow Multi computer use demo interface frontend access only from orchestration container
+        orchestration_security_group.add_ingress_rule(
+            peer=aws_ec2.Peer.ipv4(deployer_ip),
+            connection=aws_ec2.Port.tcp(8080),
+            description=f"Allow inbound traffic on port 8080 from {deployer_ip}",
         )
 
         # Create ECS services for both containers
@@ -695,7 +758,7 @@ class ComputerUseAwsStack(Stack):
         CfnOutput(
             self,
             "OrchestrationServiceNote",
-            value="After deployment, find the public IP of the Orchestration task in ECS Console and connect via http://<public-ip>:8501",
+            value="After deployment, find the public IP of the Orchestration task in ECS Console and connect via http://<public-ip>:8080",
             description="Instructions to connect to Orchestration Service",
         )
 

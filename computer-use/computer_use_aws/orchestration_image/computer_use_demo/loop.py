@@ -1,27 +1,52 @@
 """
-Agentic sampling loop that calls the Anthropic API and local implenmentation of anthropic-defined computer use tools.
+Agentic sampling loop that calls the Anthropic API and local implementation of anthropic-defined computer use tools.
 """
 
 import platform
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, cast
+from enum import StrEnum
+from typing import Any, Awaitable, Union, cast
 import aiohttp
+import json
+import asyncio
 
-from anthropic import APIResponse
-from anthropic.types import (
-    ContentBlock,
-    ImageBlockParam,
-    Message,
-    MessageParam,
-    TextBlockParam,
-    ToolParam,
-    ToolResultBlockParam,
+from anthropic import (
+    Anthropic,
+    AnthropicBedrock,
+    AnthropicVertex,
+    APIError,
+    APIResponseValidationError,
+    APIStatusError,
+)
+from anthropic.types.beta import (
+    BetaCacheControlEphemeralParam,
+    BetaContentBlockParam,
+    BetaImageBlockParam,
+    BetaMessage,
+    BetaMessageParam,
+    BetaTextBlock,
+    BetaTextBlockParam,
+    BetaToolResultBlockParam,
+    BetaToolUseBlockParam,
 )
 
-from tools import BashTool, ComputerTool, EditTool, ToolCollection, ToolResult
+# Import tools directly instead of using relative imports
+from tools import (
+    TOOL_GROUPS_BY_VERSION,
+    ToolCollection,
+    ToolResult,
+    ToolVersion,
+)
 
-from client import APIProvider, get_client
+PROMPT_CACHING_BETA_FLAG = "prompt-caching-2024-07-31"
+
+
+class APIProvider(StrEnum):
+    ANTHROPIC = "anthropic"
+    BEDROCK = "bedrock"
+    VERTEX = "vertex"
+
 
 # This system prompt is optimized for the Docker environment in this repository and
 # specific tool combinations enabled.
@@ -42,7 +67,6 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 <IMPORTANT>
 * When using Firefox, if a startup wizard appears, IGNORE IT.  Do not even click "skip this step".  Instead, click on the address bar where it says "Search or enter address", and enter the appropriate search term or URL there.
 * If the item you are looking at is a pdf, if after taking a single screenshot of the pdf it seems that you want to read the entire document instead of trying to continue to read the pdf from your screenshots + navigation, determine the URL, use curl to download the pdf, install and use pdftotext to convert it to a text file, and then read that text file directly with your StrReplaceEditTool.
-* When viewing a webpage, first use your computer tool to view it and explore it.  But, if there is a lot of text on that page, instead curl the html of that page to a file on disk and then using your StrReplaceEditTool to view the contents in plain text.
 </IMPORTANT>"""
 
 
@@ -51,71 +75,122 @@ async def sampling_loop(
     model: str,
     provider: APIProvider,
     system_prompt_suffix: str,
-    messages: list[MessageParam],
-    output_callback: Callable[[ContentBlock], None],
-    tool_output_callback: Callable[[ToolResult, str], None],
-    api_response_callback: Callable[[APIResponse[Message]], None],
-    api_key: str,
+    messages: list[BetaMessageParam],
+    callback: Callable[[Any], Union[Any, Awaitable[Any]]],
     only_n_most_recent_images: int | None = None,
+    api_key: str,
+    environment_ip: str = "environment.computer-use.local",
+    max_tokens: int = 4096,
+    tool_version: ToolVersion = "computer_use_20241022",
+    thinking_budget: int | None = None,
+    token_efficient_tools_beta: bool = False,
 ):
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
     """
-    
-    tool_collection = ToolCollection(
-        ComputerTool(),
-        BashTool(),
-        EditTool(),
+    tool_group = TOOL_GROUPS_BY_VERSION[tool_version]
+    tool_collection = ToolCollection(*(ToolCls() for ToolCls in tool_group.tools))
+    system = BetaTextBlockParam(
+        type="text",
+        text=f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}",
     )
+
+    # Define simple callbacks for compatibility with API
+    def output_callback(content_block):
+        pass
     
-    client, extra_body = get_client(provider, api_key)
+    def tool_output_callback(result, tool_id):
+        pass
+    
+    def api_response_callback(request, response, exception):
+        pass
 
     while True:
+        enable_prompt_caching = False
+        betas = [tool_group.beta_flag] if tool_group.beta_flag else []
+        if token_efficient_tools_beta:
+            betas.append("token-efficient-tools-2025-02-19")
+        image_truncation_threshold = only_n_most_recent_images or 0
+
+        if provider == APIProvider.ANTHROPIC:
+            client = Anthropic(api_key=api_key, max_retries=4)
+            enable_prompt_caching = True
+        elif provider == APIProvider.BEDROCK:
+            client = AnthropicBedrock()
+
+        if enable_prompt_caching:
+            betas.append(PROMPT_CACHING_BETA_FLAG)
+            _inject_prompt_caching(messages)
+            # Because cached reads are 10% of the price, we don't think it's
+            # ever sensible to break the cache by truncating images
+            only_n_most_recent_images = 0
+            # Use type ignore to bypass TypedDict check until SDK types are updated
+            system["cache_control"] = {"type": "ephemeral"}  # type: ignore
+
         if only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(messages, only_n_most_recent_images)
+            _maybe_filter_to_n_most_recent_images(
+                messages,
+                only_n_most_recent_images,
+                min_removal_threshold=image_truncation_threshold,
+            )
+        extra_body = {}
+        if thinking_budget:
+            # Ensure we only send the required fields for thinking
+            extra_body = {
+                "thinking": {"type": "enabled", "budget_tokens": thinking_budget}
+            }
 
         # Call the API
-        # we use raw_response to provide debug information to streamlit. Your
-        # implementation may be able call the SDK directly with:
-        # `response = client.messages.create(...)` instead.
-        
-        client.messages.create
-        
-        raw_response = client.messages.with_raw_response.create(
-            max_tokens=4096,
-            messages=messages,
-            model=model,
-            system=f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}",
-            # TODO: Remove cast when SDK properly supports the type
-            tools=cast(list[ToolParam], tool_collection.to_params()),
-            extra_body=extra_body,
+        try:
+            raw_response = client.beta.messages.with_raw_response.create(
+                max_tokens=max_tokens,
+                messages=messages,
+                model=model,
+                system=[system],
+                tools=tool_collection.to_params(),
+                betas=betas,
+                extra_body=extra_body,
+            )
+        except Exception as e:
+            print(f"Error calling API: {e}")
+            # In an async generator, we can't return a value
+            break
+
+        api_response_callback(
+            raw_response.http_response.request, raw_response.http_response, None
         )
 
-        api_response_callback(cast(APIResponse[Message], raw_response))
-
         response = raw_response.parse()
-
+        
+        response_params = _response_to_params(response)
         messages.append(
             {
                 "role": "assistant",
-                "content": response.content,
+                "content": response_params,
             }
         )
 
-        tool_result_content: list[ToolResultBlockParam] = []
-        for content_block in response.content:
+        # Yield the assistant's response for API compatibility
+        yield json.dumps({"role": "assistant", "content": response_params})
+
+        # Process callback
+        callback_result = callback(response)
+        if hasattr(callback_result, '__await__'):
+            await callback_result
+
+        tool_result_content: list[BetaToolResultBlockParam] = []
+        for content_block in response_params:
             output_callback(content_block)
-            if content_block.type == "tool_use":
-                
+            if content_block["type"] == "tool_use":
+                # Use the environment_ip to call the tool execution API
                 async with aiohttp.ClientSession() as session:
                     payload = {
-                        "tool": content_block.name,
-                        "input": content_block.input
+                        "tool": content_block["name"],
+                        "input": cast(dict[str, Any], content_block["input"]),
+                        "tool_version": tool_version  # Pass the tool version to the environment container
                     }
-                    async with session.post("http://environment.computer-use.local:5000/execute", json=payload) as api_response:
+                    async with session.post(f"http://{environment_ip}:5000/execute", json=payload) as api_response:
                         api_result = await api_response.json()
-                        print(api_result)
-                        # Convert API response to ToolResult format
                         result = ToolResult(
                             output=api_result["result"].get("output", ""),
                             error=api_result["result"].get("error", ""),
@@ -124,20 +199,24 @@ async def sampling_loop(
                         )
                 
                 tool_result_content.append(
-                    _make_api_tool_result(result, content_block.id)
+                    _make_api_tool_result(result, content_block["id"])
                 )
-                tool_output_callback(result, content_block.id)
+                tool_output_callback(result, content_block["id"])
 
         if not tool_result_content:
-            return messages
+            # In an async generator, we can't return a value
+            break
 
         messages.append({"content": tool_result_content, "role": "user"})
+        
+        # Yield the user message with tool results for API compatibility
+        yield json.dumps({"role": "user", "content": tool_result_content})
 
 
 def _maybe_filter_to_n_most_recent_images(
-    messages: list[MessageParam],
+    messages: list[BetaMessageParam],
     images_to_keep: int,
-    min_removal_threshold: int = 10,
+    min_removal_threshold: int,
 ):
     """
     With the assumption that images are screenshots that are of diminishing value as
@@ -149,7 +228,7 @@ def _maybe_filter_to_n_most_recent_images(
         return messages
 
     tool_result_blocks = cast(
-        list[ToolResultBlockParam],
+        list[BetaToolResultBlockParam],
         [
             item
             for message in messages
@@ -183,9 +262,59 @@ def _maybe_filter_to_n_most_recent_images(
             tool_result["content"] = new_content
 
 
-def _make_api_tool_result(result: ToolResult, tool_use_id: str) -> ToolResultBlockParam:
+def _response_to_params(
+    response: BetaMessage,
+) -> list[BetaContentBlockParam]:
+    res: list[BetaContentBlockParam] = []
+    for block in response.content:
+        if isinstance(block, BetaTextBlock):
+            if block.text:
+                res.append(BetaTextBlockParam(type="text", text=block.text))
+            elif getattr(block, "type", None) == "thinking":
+                # Handle thinking blocks - include signature field
+                thinking_block = {
+                    "type": "thinking",
+                    "thinking": getattr(block, "thinking", None),
+                }
+                if hasattr(block, "signature"):
+                    thinking_block["signature"] = getattr(block, "signature", None)
+                res.append(cast(BetaContentBlockParam, thinking_block))
+        else:
+            # Handle tool use blocks normally
+            res.append(cast(BetaToolUseBlockParam, block.model_dump()))
+    return res
+
+
+def _inject_prompt_caching(
+    messages: list[BetaMessageParam],
+):
+    """
+    Set cache breakpoints for the 3 most recent turns
+    one cache breakpoint is left for tools/system prompt, to be shared across sessions
+    """
+
+    breakpoints_remaining = 3
+    for message in reversed(messages):
+        if message["role"] == "user" and isinstance(
+            content := message["content"], list
+        ):
+            if breakpoints_remaining:
+                breakpoints_remaining -= 1
+                # Use type ignore to bypass TypedDict check until SDK types are updated
+                content[-1]["cache_control"] = BetaCacheControlEphemeralParam(  # type: ignore
+                    {"type": "ephemeral"}
+                )
+            else:
+                content[-1].pop("cache_control", None)
+                # we'll only every have one extra turn per loop
+                break
+
+
+def _make_api_tool_result(
+    result: ToolResult, tool_use_id: str
+) -> BetaToolResultBlockParam:
     """Convert an agent ToolResult to an API ToolResultBlockParam."""
-    tool_result_content: list[TextBlockParam | ImageBlockParam] | str = []
+    tool_result_content: list[BetaTextBlockParam | BetaImageBlockParam] | str = []
     is_error = False
     if result.error:
         is_error = True

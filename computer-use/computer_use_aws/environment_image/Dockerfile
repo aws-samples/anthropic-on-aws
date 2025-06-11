@@ -83,7 +83,7 @@ RUN mkdir -p /var/run/dcv && \
     chmod 755 /var/run/dcv && \
     chmod 755 /var/log/dcv && \
     mkdir -p /etc/dcv && \
-    echo -e "[security]\nauthentication=none\n\n[display/linux]\ndisable-local-console=false" > /etc/dcv/dcv.conf && \
+    echo "[security]\nauthentication=none\n\n[display/linux]\ndisable-local-console=false" > /etc/dcv/dcv.conf && \
     echo "computeruse:admin" | chpasswd
 
 # Copy the dbus config file to allow non-root users
@@ -132,3 +132,5 @@ EXPOSE 5000
 EXPOSE 8443
 
 ENTRYPOINT [ "./entrypoint.sh" ]
+
+STOPSIGNAL SIGTERM
