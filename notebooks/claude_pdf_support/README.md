@@ -2,11 +2,11 @@
 
 ## 🚀 Unlock the Full Power of PDF Analysis with Claude's Native Support
 
-This notebook demonstrates how to leverage Claude's native PDF handling capabilities on Amazon Bedrock, enabling direct document analysis without preprocessing. Through comprehensive examples and performance comparisons, you'll discover why native PDF support is a game-changer for document intelligence applications.
+This repository contains a comprehensive Jupyter notebook ([pdf-handling-bedrock-demo.ipynb](./pdf-handling-bedrock-demo.ipynb)) that demonstrates how to leverage Claude's native PDF handling capabilities on Amazon Bedrock, enabling direct document analysis without preprocessing. Through comprehensive examples and performance comparisons, you'll discover why native PDF support is a game-changer for document intelligence applications.
 
 ## 📊 Key Findings from Our Analysis
 
-Our notebook demonstrates Claude's impressive native PDF handling capabilities on Amazon Bedrock through practical examples and real-world testing.
+Our [notebook](./pdf-handling-bedrock-demo.ipynb) demonstrates Claude's impressive native PDF handling capabilities on Amazon Bedrock through practical examples and real-world testing.
 
 ### Why Native PDF Handling Matters
 
@@ -144,10 +144,10 @@ response = bedrock_client.converse(
 )
 ```
 
-## 🔍 What the Notebook Demonstrates
+## 🔍 What the [Notebook](./pdf-handling-bedrock-demo.ipynb) Demonstrates
 
 ### Visual Content Analysis
-The notebook shows Claude accurately identifying and describing:
+The [notebook](./pdf-handling-bedrock-demo.ipynb) shows Claude accurately identifying and describing:
 - **Bar charts** comparing model performance metrics
 - **Line graphs** showing token usage patterns over time
 - **Data tables** with precise value extraction
@@ -163,7 +163,7 @@ From our test document analysis:
 
 ### Prompt Caching Benefits
 
-The notebook demonstrates how prompt caching reduces token usage:
+The [notebook](./pdf-handling-bedrock-demo.ipynb#prompt-caching) demonstrates how prompt caching reduces token usage:
 ```python
 # First call: Creates cache
 Cache created with 6,793 tokens
@@ -200,7 +200,7 @@ Cache hit! Read 6,793 tokens from cache
 
 ## 📈 Business Impact
 
-Implementing native PDF handling can deliver:
+Based on the examples in our [notebook](./pdf-handling-bedrock-demo.ipynb), implementing native PDF handling can deliver:
 
 - **Time Savings**: Eliminate complex preprocessing pipelines
 - **Enhanced Analysis**: Direct interpretation of visual elements and layouts
@@ -221,12 +221,13 @@ Implementing native PDF handling can deliver:
 
 3. **Run the Notebook**:
    - Clone this repository
-   - Open `pdf-handling-bedrock-demo.ipynb`
+   - Open [`pdf-handling-bedrock-demo.ipynb`](./pdf-handling-bedrock-demo.ipynb)
    - Follow along with the examples
 
 ## 🎓 What You'll Learn
 
-- How to analyze PDFs without preprocessing
+By exploring the [notebook](./pdf-handling-bedrock-demo.ipynb), you'll learn how to:
+- Analyze PDFs without complex preprocessing
 - Extract precise citations with page numbers
 - Understand visual content (charts, graphs, tables)
 - Optimize performance with prompt caching
@@ -250,4 +251,4 @@ After exploring this notebook, you can:
 
 ---
 
-**Ready to revolutionize your PDF processing?** Dive into the notebook and discover how Claude's native PDF support on Amazon Bedrock can transform your document intelligence applications! 🎯
+**Ready to revolutionize your PDF processing?** Dive into the [notebook](./pdf-handling-bedrock-demo.ipynb) and discover how Claude's native PDF support on Amazon Bedrock can transform your document intelligence applications! 🎯
