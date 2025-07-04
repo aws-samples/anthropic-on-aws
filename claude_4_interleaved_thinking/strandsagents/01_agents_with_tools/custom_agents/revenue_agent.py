@@ -51,7 +51,7 @@ def create_revenue_calculator_agent(
         max_tokens=8000,
         cache_tools="default",  # recommended - enable tool caching optional
         cache_prompt="default",  # optional - enable system prompt caching
-        additionalModelRequestFields={
+        additional_request_fields={
             "anthropic_beta": ["interleaved-thinking-2025-05-14"],
             "reasoning_config": {"type": "enabled", "budget_tokens": 6000},
         },

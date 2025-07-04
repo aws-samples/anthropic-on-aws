@@ -42,7 +42,7 @@ def create_revenue_calculator_agent(
         region_name=region_name,
         temperature=0.7,
         max_tokens=4000,
-        additionalModelRequestFields={
+        additional_request_fields={
             "anthropic_beta": ["interleaved-thinking-2025-05-14"],
             "reasoning_config": {"type": "enabled", "budget_tokens": 3000},
         },
