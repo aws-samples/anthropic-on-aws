@@ -35,7 +35,7 @@ def database_agent(query: str) -> str:
             model_id=AGENT_MODEL_ID,  # Tool agent model as specified
             region_name=REGION_NAME,
             temperature=0.5,
-            additionalModelRequestFields={
+            additional_request_fields={
                 "anthropic_beta": ["interleaved-thinking-2025-05-14"],
                 "reasoning_config": {"type": "enabled", "budget_tokens": 1000},
             },
