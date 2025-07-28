@@ -49,7 +49,7 @@ def trip_planner(
         max_tokens=10000,
         cache_tools="default",
         cache_prompt="default",
-        additionalModelRequestFields={
+        additional_request_fields={
             "anthropic_beta": ["interleaved-thinking-2025-05-14"],
             "reasoning_config": {"type": "enabled", "budget_tokens": 8000},
         },
