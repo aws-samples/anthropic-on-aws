@@ -1,0 +1,21 @@
+{
+  "aws": {
+    "profile": "[YOUR-PROFILE]",
+    "region": "us-west-2",
+    "timeout": 600,
+    "max_retries": 25
+  },
+  
+  "model": {
+    "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+    "anthropic_beta": ["context-1m-2025-08-07"],
+    "temperature": 0.0,
+    "top_p": 0.9
+  },
+  
+  "longcodebench": {
+    "max_examples_per_bin": 50,
+    "context_bins": [32000, 64000, 128000, 256000, 512000, 1000000],
+    "save_intermediate_results": true
+  }
+}
