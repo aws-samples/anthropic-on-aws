@@ -154,31 +154,32 @@ class LongCodeBench:
         
     
     def count_tokens(self, text: str, show_progress: bool = False) -> int:
-        """Count tokens using Anthropic's dedicated token counting API. Bedrock doesn't provide this yet."""
+        """Count tokens using Bedrock's native token counting API."""
         try:
-            import anthropic
-            
             if show_progress:
                 char_count = len(text)
                 print(f"        Counting tokens for {char_count:,} characters...", end=" ")
             
-            # Use Anthropic's token counting API (not model invocation)
-            client = anthropic.Anthropic()
-            
-            # Map Bedrock model ID to Anthropic API model name
-            anthropic_model = "claude-sonnet-4-20250514"
-            
-            token_count = client.beta.messages.count_tokens(
-                model=anthropic_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": text
+            # Use Bedrock's native token counting API
+            # Remove region prefix from model ID for count_tokens API (us., eu., etc.)
+            model_id = self.config['model']['model_id']
+            if '.' in model_id and model_id.split('.')[0] in ['us', 'eu', 'apac']:
+                model_id = '.'.join(model_id.split('.')[1:])
+            response = self.bedrock.count_tokens(
+                modelId=model_id,
+                input={
+                    "converse": {
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [{"text": text}]
+                            }
+                        ],
                     }
-                ]
+                }
             )
             
-            result = token_count.input_tokens
+            result = response['inputTokens']
             if show_progress:
                 print(f"{result:,} tokens")
             
