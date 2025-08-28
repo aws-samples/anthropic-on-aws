@@ -1,0 +1,123 @@
+{
+  "name": "Notifications Hook Configuration",
+  "description": "Team alerting and notification system hooks",
+  "hooks": {
+    "PreDeploy": [
+      {
+        "type": "command",
+        "command": "curl -X POST ${SLACK_WEBHOOK} -H 'Content-Type: application/json' -d '{\"text\":\"🚀 Deployment starting for ${PROJECT_NAME} v${VERSION}\", \"channel\":\"#deployments\"}'",
+        "blocking": false,
+        "description": "Notify team of deployment start"
+      },
+      {
+        "type": "command",
+        "command": "echo 'Deployment initiated by ${USER} at $(date)' | mail -s 'Deployment Alert' team@example.com",
+        "blocking": false,
+        "description": "Email notification for deployment"
+      }
+    ],
+    "PostDeploy": [
+      {
+        "type": "command",
+        "command": "curl -X POST ${SLACK_WEBHOOK} -H 'Content-Type: application/json' -d '{\"text\":\"✅ Deployment successful for ${PROJECT_NAME} v${VERSION}\", \"channel\":\"#deployments\"}'",
+        "blocking": false,
+        "description": "Notify team of successful deployment"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/update_status_page.py --status operational",
+        "blocking": false,
+        "description": "Update status page"
+      },
+      {
+        "type": "command",
+        "command": "gh release create v${VERSION} --notes 'Automated deployment via Claude Code'",
+        "blocking": false,
+        "description": "Create GitHub release"
+      }
+    ],
+    "OnError": [
+      {
+        "type": "command",
+        "command": "curl -X POST ${PAGERDUTY_WEBHOOK} -H 'Content-Type: application/json' -d '{\"event_action\":\"trigger\",\"payload\":{\"summary\":\"Claude Code Error: ${error}\",\"severity\":\"error\",\"source\":\"claude-code\"}}'",
+        "blocking": false,
+        "description": "Page on-call for critical errors"
+      },
+      {
+        "type": "command",
+        "command": "curl -X POST ${SLACK_WEBHOOK} -H 'Content-Type: application/json' -d '{\"text\":\"🔴 Error detected: ${error}\", \"channel\":\"#alerts\"}'",
+        "blocking": false,
+        "description": "Slack error notification"
+      }
+    ],
+    "PostCommit": [
+      {
+        "type": "command",
+        "command": "git log -1 --pretty=format:'%h - %s' | xargs -I {} curl -X POST ${SLACK_WEBHOOK} -H 'Content-Type: application/json' -d '{\"text\":\"📝 New commit: {}\", \"channel\":\"#commits\"}'",
+        "blocking": false,
+        "description": "Notify team of new commits"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test '${command}' = 'rm -rf' && curl -X POST ${SLACK_WEBHOOK} -H 'Content-Type: application/json' -d '{\"text\":\"⚠️ Dangerous command attempted: ${command}\", \"channel\":\"#security\"}'",
+            "blocking": false,
+            "description": "Alert on dangerous commands"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "echo '{\"session_id\":\"${SESSION_ID}\",\"duration\":\"${DURATION}\",\"changes\":\"${CHANGES}\"}' | curl -X POST ${ANALYTICS_WEBHOOK} -H 'Content-Type: application/json' -d @-",
+        "blocking": false,
+        "description": "Send session analytics"
+      }
+    ]
+  },
+  "integrations": {
+    "slack": {
+      "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+      "channels": {
+        "deployments": "#deployments",
+        "alerts": "#alerts",
+        "commits": "#commits",
+        "security": "#security"
+      }
+    },
+    "pagerduty": {
+      "webhook_url": "https://events.pagerduty.com/v2/enqueue",
+      "routing_key": "YOUR_ROUTING_KEY"
+    },
+    "email": {
+      "smtp_server": "smtp.example.com",
+      "from_address": "claude-code@example.com",
+      "team_list": "team@example.com"
+    },
+    "discord": {
+      "webhook_url": "https://discord.com/api/webhooks/YOUR/WEBHOOK"
+    },
+    "teams": {
+      "webhook_url": "https://outlook.office.com/webhook/YOUR/WEBHOOK"
+    }
+  },
+  "templates": {
+    "deployment_message": "🚀 *Deployment Alert*\\n*Project:* ${PROJECT_NAME}\\n*Version:* ${VERSION}\\n*Environment:* ${ENVIRONMENT}\\n*Deployed by:* ${USER}\\n*Status:* ${STATUS}",
+    "error_message": "🔴 *Error Alert*\\n*Error:* ${error}\\n*File:* ${file}\\n*Line:* ${line}\\n*Time:* $(date)\\n*Action Required:* ${action}",
+    "commit_message": "📝 *New Commit*\\n*Author:* ${author}\\n*Message:* ${message}\\n*Files Changed:* ${files}\\n*Branch:* ${branch}"
+  },
+  "usage": "Configure webhook URLs and add these hooks for team notifications",
+  "environment_variables": [
+    "SLACK_WEBHOOK: Slack incoming webhook URL",
+    "PAGERDUTY_WEBHOOK: PagerDuty events API endpoint",
+    "ANALYTICS_WEBHOOK: Custom analytics endpoint",
+    "PROJECT_NAME: Your project name",
+    "VERSION: Current version being deployed",
+    "ENVIRONMENT: Deployment environment (staging/production)"
+  ]
+}

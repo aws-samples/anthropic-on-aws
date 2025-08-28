@@ -1,0 +1,128 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write", 
+      "Edit",
+      "MultiEdit",
+      "Bash",
+      "Grep",
+      "Glob",
+      "LS",
+      "Bash(git:*)",
+      "Bash(python:*)",
+      "Bash(uv:*)",
+      "Bash(npm:*)"
+    ],
+    "deny": [
+      "Read(**/.env*)",
+      "Read(**/*secret*)",
+      "Read(**/*password*)",
+      "Read(**/*credential*)",
+      "Read(**/*.key)",
+      "Read(**/*.pem)",
+      "Read(**/*.crt)",
+      "Read(**/*.cer)",
+      "Read(**/node_modules/**)",
+      "Read(**/__pycache__/**)",
+      "Read(**/.venv/**)",
+      "Read(**/venv/**)",
+      "Read(**/.git/objects/**)",
+      "Read(**/.aws/**)",
+      "Read(**/.ssh/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/log_tool_use.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/use_uv.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/security_check.py",
+            "description": "Validate file security before modifications"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/black_formatter.py"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/python_lint.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Starting Claude Code workflow' >&2",
+            "description": "Log workflow start"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Task completed' >&2"
+          }
+        ]
+      }
+    ]
+  },
+  "model": {
+    "default": "sonnet",
+    "complex_tasks": "opus"
+  },
+  "tools": {
+    "file_editor": {
+      "prefer": "MultiEdit"
+    },
+    "search": {
+      "prefer": "Grep"
+    }
+  },
+  "preferences": {
+    "auto_format": true,
+    "lint_on_save": true,
+    "test_first": true,
+    "use_uv": true,
+    "epcc_workflow": true
+  },
+  "logging": {
+    "enabled": true,
+    "directory": ".claude",
+    "max_size_mb": 10,
+    "retention_days": 30
+  }
+}

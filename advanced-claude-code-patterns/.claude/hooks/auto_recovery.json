@@ -1,0 +1,56 @@
+{
+  "name": "Auto Recovery Hook Configuration",
+  "description": "Automated error recovery and self-healing hooks",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/auto_format.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/auto_chmod.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Bash command completed' >&2"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "echo 'Session completed' >&2"
+      }
+    ],
+    "SubagentStop": [
+      {
+        "type": "command",
+        "command": "echo 'Subagent completed' >&2"
+      }
+    ]
+  },
+  "recovery_scripts": {
+    "auto_recover.sh": "#!/bin/bash\n# Auto-recovery script\nset -e\n\n# Check for common issues and fix\nif [ -f 'requirements.txt' ]; then\n    pip install -r requirements.txt --quiet\nfi\n\nif [ -f 'package.json' ]; then\n    npm install --quiet\nfi\n\n# Reset file permissions if needed\nfind . -name '*.sh' -exec chmod +x {} \\;\n\n# Clear Python cache\nfind . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true\n\necho 'Recovery attempted'"
+  },
+  "usage": "Add these hooks to enable automatic error recovery and self-healing",
+  "notes": [
+    "Recovery hooks should be non-blocking to prevent infinite loops",
+    "Test recovery scripts thoroughly before deployment",
+    "Monitor error.log for patterns that need addressing"
+  ]
+}

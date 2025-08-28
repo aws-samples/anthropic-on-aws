@@ -1,0 +1,58 @@
+# Ruff configuration for Python linting in hooks
+# Place this as .ruff.toml or ruff.toml in your project root
+
+# Exclude common directories
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    "dist",
+    "build",
+    "*.egg-info",
+    "node_modules",
+]
+
+# Same line length as Black
+line-length = 88
+
+# Target Python 3.8+
+target-version = "py38"
+
+# Enable these rule sets (similar to flake8 + more)
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings  
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "RUF",    # Ruff-specific rules
+    "PTH",    # flake8-use-pathlib
+    "SIM",    # flake8-simplify
+]
+
+# Ignore these specific rules
+ignore = [
+    "E501",   # Line too long (Black handles this)
+    "E731",   # Do not assign a lambda expression
+]
+
+# Allow autofix for these rules
+fixable = ["ALL"]
+
+# Never autofix these (safety)
+unfixable = ["F401", "F841"]  # Unused imports/variables
+
+[per-file-ignores]
+# Ignore certain rules in test files
+"test_*.py" = ["S101", "PLR2004"]
+"*_test.py" = ["S101", "PLR2004"]
+"tests/*.py" = ["S101", "PLR2004"]

@@ -1,0 +1,171 @@
+{
+  "name": "Compliance and Regulatory Validation Hooks",
+  "description": "Ensure regulatory compliance and security standards",
+  "hooks": {
+    "PreCommit": [
+      {
+        "type": "command",
+        "command": "detect-secrets scan --baseline .secrets.baseline",
+        "blocking": true,
+        "description": "Prevent secrets from being committed"
+      },
+      {
+        "type": "command",
+        "command": "grep -r 'TODO:SECURITY' --include='*.py' --include='*.js' && echo '⚠️  Security TODOs must be resolved' && exit 1 || true",
+        "blocking": true,
+        "description": "Block commits with security TODOs"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/check_pii.py",
+        "blocking": true,
+        "description": "Check for PII exposure (GDPR compliance)"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/license_check.py",
+        "blocking": false,
+        "description": "Verify license compatibility"
+      }
+    ],
+    "PreDeploy": [
+      {
+        "type": "agent",
+        "agent": "security-reviewer",
+        "args": "--compliance GDPR HIPAA PCI-DSS SOC2",
+        "blocking": true,
+        "description": "Comprehensive compliance check"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/audit_log.py --action deployment --user ${USER} --timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "blocking": false,
+        "description": "Create audit log entry"
+      },
+      {
+        "type": "command",
+        "command": "openssl dgst -sha256 -sign private_key.pem -out deployment.sig deployment.tar.gz",
+        "blocking": false,
+        "description": "Sign deployment artifacts"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/compliance_report.py --format json > compliance_report_$(date +%Y%m%d).json",
+        "blocking": false,
+        "description": "Generate compliance report"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '$(date -u +%Y-%m-%dT%H:%M:%SZ),READ,${file_path},${USER}' >> .claude/access.log",
+            "blocking": false,
+            "description": "Log file access for audit"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '$(date -u +%Y-%m-%dT%H:%M:%SZ),MODIFY,${file_path},${USER}' >> .claude/access.log",
+            "blocking": false,
+            "description": "Log file modifications for audit"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/validate_data_retention.py ${file_path}",
+            "blocking": false,
+            "description": "Check data retention compliance"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/validate_command.py '${command}' || (echo 'Command violates security policy' && exit 1)",
+            "blocking": true,
+            "description": "Validate commands against security policy"
+          }
+        ]
+      },
+      {
+        "matcher": "WebSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '$(date -u +%Y-%m-%dT%H:%M:%SZ),WEB_ACCESS,${query},${USER}' >> .claude/external_access.log",
+            "blocking": false,
+            "description": "Log external data access"
+          }
+        ]
+      }
+    ]
+  },
+  "compliance_frameworks": {
+    "GDPR": {
+      "checks": [
+        "PII detection",
+        "Data retention validation",
+        "Right to erasure implementation",
+        "Consent management",
+        "Data portability"
+      ],
+      "scripts": {
+        "check_pii.py": "# Scan for PII patterns\nimport re\npatterns = [\n    r'\\b[A-Z][a-z]+ [A-Z][a-z]+\\b',  # Names\n    r'\\b\\d{3}-\\d{2}-\\d{4}\\b',  # SSN\n    r'\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'  # Email\n]\n# Implementation here"
+      }
+    },
+    "HIPAA": {
+      "checks": [
+        "PHI encryption",
+        "Access controls",
+        "Audit logging",
+        "Data integrity",
+        "Transmission security"
+      ]
+    },
+    "PCI-DSS": {
+      "checks": [
+        "Credit card data handling",
+        "Encryption standards",
+        "Access restrictions",
+        "Network segmentation",
+        "Security testing"
+      ]
+    },
+    "SOC2": {
+      "checks": [
+        "Security controls",
+        "Availability monitoring",
+        "Processing integrity",
+        "Confidentiality measures",
+        "Privacy controls"
+      ]
+    }
+  },
+  "audit_requirements": {
+    "retention_period": "7 years",
+    "log_format": "ISO 8601 timestamp, action, resource, user, result",
+    "encryption": "AES-256 for data at rest, TLS 1.3 for data in transit",
+    "access_control": "Role-based access with principle of least privilege"
+  },
+  "validation_scripts": {
+    "validate_command.py": "#!/usr/bin/env python3\n# Command validation against security policy\nimport sys\nimport json\n\nBLOCKED_COMMANDS = [\n    'rm -rf /',\n    'chmod 777',\n    'curl | bash',\n    'eval('\n]\n\ncommand = sys.argv[1]\nfor blocked in BLOCKED_COMMANDS:\n    if blocked in command:\n        print(f'Blocked: {blocked}')\n        sys.exit(1)\nsys.exit(0)",
+    "validate_data_retention.py": "#!/usr/bin/env python3\n# Check data retention compliance\nimport sys\nimport os\nfrom datetime import datetime, timedelta\n\nfile_path = sys.argv[1]\nfile_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(file_path))\nmax_retention = timedelta(days=365*7)  # 7 years\n\nif file_age > max_retention:\n    print(f'File exceeds retention period: {file_path}')\n    sys.exit(1)"
+  },
+  "usage": "Implement these hooks to ensure regulatory compliance",
+  "notes": [
+    "Customize compliance checks based on your regulatory requirements",
+    "Regularly update validation scripts as regulations change",
+    "Maintain audit logs in tamper-proof storage",
+    "Test compliance hooks in staging before production"
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "name": "Security Gates Configuration",
+  "description": "Security validation hooks for Claude Code operations",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/security_check.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/hooks/command_security_check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "configuration": {
+    "severity_threshold": "medium",
+    "block_on_failure": true,
+    "audit_all_operations": true,
+    "require_approval_for_sensitive": true
+  },
+  "usage": {
+    "description": "Complete security hooks implementation for Claude Code",
+    "setup_instructions": [
+      "1. Copy security_check.py and command_security_check.sh to your project hooks/ directory",
+      "2. Make scripts executable: chmod +x hooks/security_check.py hooks/command_security_check.sh", 
+      "3. Add the hooks configuration to your .claude/settings.json",
+      "4. Test the security hooks with safe and dangerous operations",
+      "5. Customize security rules by editing the script files"
+    ],
+    "testing": {
+      "file_security": [
+        "echo 'API_KEY=\"sk-1234567890\"' > test.py",
+        "claude 'edit test.py to add a function'  # Should block secrets"
+      ],
+      "command_security": [
+        "claude 'run chmod 777 *'  # Should block dangerous permissions",
+        "claude 'run sudo apt update'  # Should block sudo usage",
+        "claude 'run ls -la'  # Should work normally"
+      ]
+    }
+  },
+  "customization": {
+    "security_check_py": {
+      "sensitive_file_patterns": "Edit the 'sensitive_patterns' list to add custom file patterns",
+      "secret_patterns": "Modify 'secret_patterns' to detect specific secret formats",
+      "excluded_paths": "Add paths that should be excluded from secret scanning",
+      "permission_checks": "Customize file permission validation rules"
+    },
+    "command_security_check_sh": {
+      "dangerous_commands": "Edit 'dangerous_patterns' array to block additional commands",
+      "confirmation_required": "Modify 'confirmation_patterns' for operations requiring warning",
+      "allowed_sudo_exceptions": "Add specific sudo operations if needed (not recommended)",
+      "custom_validation": "Add domain-specific command validation rules"
+    }
+  },
+  "monitoring": {
+    "audit_log_location": ".claude/security-audit.log",
+    "log_format": "TIMESTAMP EVENT_TYPE TOOL/COMMAND RESULT",
+    "log_rotation": "Logs are automatically truncated to last 1000 entries",
+    "alerting": "Consider monitoring the audit log for security events"
+  },
+  "integration_examples": {
+    "ci_cd_pipeline": "Use these hooks in CI/CD to block commits with secrets",
+    "team_enforcement": "Deploy via .claude/settings.json for team-wide security",
+    "compliance_reporting": "Parse audit logs for compliance documentation",
+    "incident_response": "Monitor audit logs for security violations"
+  },
+  "note": "These security hooks provide comprehensive protection against common security risks in AI-assisted development workflows"
+}

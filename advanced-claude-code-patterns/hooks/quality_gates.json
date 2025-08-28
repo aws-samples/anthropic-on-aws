@@ -1,0 +1,102 @@
+{
+  "name": "Quality Gates Hook Configuration",
+  "description": "Pre-commit and pre-deploy quality enforcement hooks",
+  "hooks": {
+    "PreCommit": [
+      {
+        "type": "command",
+        "command": "black --check .",
+        "blocking": true,
+        "description": "Check Python code formatting"
+      },
+      {
+        "type": "command",
+        "command": "isort --check-only .",
+        "blocking": true,
+        "description": "Check import sorting"
+      },
+      {
+        "type": "command",
+        "command": "flake8 . --max-line-length=88",
+        "blocking": true,
+        "description": "Run linting checks"
+      },
+      {
+        "type": "command",
+        "command": "mypy . --ignore-missing-imports",
+        "blocking": false,
+        "description": "Type checking (non-blocking)"
+      },
+      {
+        "type": "command",
+        "command": "pytest tests/ --quiet",
+        "blocking": true,
+        "description": "Run test suite"
+      },
+      {
+        "type": "command",
+        "command": "pytest --cov=. --cov-report=term-missing --cov-fail-under=80",
+        "blocking": false,
+        "description": "Check test coverage (warning only)"
+      }
+    ],
+    "PreDeploy": [
+      {
+        "type": "agent",
+        "agent": "security-reviewer",
+        "blocking": true,
+        "args": "--strict --check-dependencies",
+        "description": "Security vulnerability scan"
+      },
+      {
+        "type": "command",
+        "command": "python -m safety check --json",
+        "blocking": true,
+        "description": "Check for known vulnerabilities in dependencies"
+      },
+      {
+        "type": "command",
+        "command": "bandit -r . -f json -o bandit-report.json",
+        "blocking": true,
+        "description": "Security linting for Python"
+      },
+      {
+        "type": "agent",
+        "agent": "test-generator",
+        "args": "--verify-coverage",
+        "blocking": false,
+        "description": "Verify test coverage meets requirements"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '⚠️  Command review: ${command}' | tee -a .claude/command-log.txt",
+            "blocking": false,
+            "description": "Log all bash commands for audit"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f ${file_path} && echo '⚠️  Overwriting existing file: ${file_path}'",
+            "blocking": false,
+            "description": "Warn when overwriting files"
+          }
+        ]
+      }
+    ]
+  },
+  "usage": "Copy these hooks to your .claude/settings.json to enable quality gates",
+  "customization": {
+    "blocking": "Set blocking to false to convert errors to warnings",
+    "commands": "Adjust commands based on your project's tools and standards",
+    "coverage": "Modify coverage threshold in the pytest command"
+  }
+}

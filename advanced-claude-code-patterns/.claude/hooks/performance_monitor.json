@@ -1,0 +1,194 @@
+{
+  "name": "Performance Monitoring and Cost Tracking Hooks",
+  "description": "Monitor performance, track costs, and optimize efficiency",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Read operation started' >&2"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Command started' >&2"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Read completed' >&2"
+          },
+          {
+            "type": "command",
+            "command": "wc -l ${file_path} | awk '{print \"FILE_SIZE,${file_path},\"$1}' >> .claude/metrics.log",
+            "blocking": false,
+            "description": "Log file size for token estimation"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Command completed' >&2"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git diff --stat ${file_path} | tail -1 | awk '{print \"EDIT_SIZE,${file_path},\"$1\",\"$4\",\"$6}' >> .claude/metrics.log",
+            "blocking": false,
+            "description": "Track edit size (insertions/deletions)"
+          }
+        ]
+      },
+      {
+        "matcher": "WebSearch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'WEB_SEARCH,${query},$(date +%s),COST_UNITS:2' >> .claude/cost_tracking.log",
+            "blocking": false,
+            "description": "Track web search costs"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "type": "command",
+        "command": "python scripts/calculate_agent_cost.py ${agent_name} ${duration} ${model}",
+        "blocking": false,
+        "description": "Calculate agent execution cost"
+      },
+      {
+        "type": "command",
+        "command": "echo 'AGENT_COMPLETE,${agent_name},${model},${duration}' >> .claude/agent_metrics.log",
+        "blocking": false,
+        "description": "Log agent execution metrics"
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python scripts/generate_performance_report.py",
+        "blocking": false,
+        "description": "Generate session performance report"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/calculate_session_cost.py",
+        "blocking": false,
+        "description": "Calculate total session cost"
+      },
+      {
+        "type": "command",
+        "command": "python scripts/identify_bottlenecks.py",
+        "blocking": false,
+        "description": "Identify performance bottlenecks"
+      }
+    ]
+  },
+  "metrics": {
+    "performance": {
+      "response_time": "Time between request and response",
+      "throughput": "Operations completed per minute",
+      "latency": "P50, P95, P99 latency percentiles",
+      "error_rate": "Errors per 100 operations",
+      "resource_usage": "CPU, memory, disk I/O"
+    },
+    "cost": {
+      "token_usage": {
+        "sonnet": {
+          "input": "$0.003 per 1K tokens",
+          "output": "$0.015 per 1K tokens"
+        },
+        "opus": {
+          "input": "$0.015 per 1K tokens",
+          "output": "$0.075 per 1K tokens"
+        }
+      },
+      "api_calls": "Track number of API calls",
+      "agent_time": "Total agent execution time",
+      "web_searches": "Number of web searches performed"
+    },
+    "efficiency": {
+      "cache_hit_rate": "Percentage of cached responses used",
+      "duplicate_operations": "Number of repeated operations",
+      "unnecessary_reads": "Files read but not modified",
+      "optimization_opportunities": "Identified areas for improvement"
+    }
+  },
+  "monitoring_scripts": {
+    "calculate_agent_cost.py": "#!/usr/bin/env python3\nimport sys\nimport json\n\nagent_name = sys.argv[1]\nduration = float(sys.argv[2])\nmodel = sys.argv[3]\n\n# Cost calculation based on model and duration\nrates = {\n    'sonnet': 0.003,  # per second\n    'opus': 0.015     # per second\n}\n\ncost = duration * rates.get(model, 0.003)\nprint(f'Agent: {agent_name}, Cost: ${cost:.4f}')\n\n# Log to cost tracking\nwith open('.claude/cost_tracking.json', 'a') as f:\n    json.dump({\n        'agent': agent_name,\n        'model': model,\n        'duration': duration,\n        'cost': cost\n    }, f)\n    f.write('\\n')",
+    "generate_performance_report.py": "#!/usr/bin/env python3\nimport json\nimport statistics\nfrom collections import defaultdict\n\n# Parse performance logs\ntimings = defaultdict(list)\n\nwith open('.claude/performance.log', 'r') as f:\n    for line in f:\n        parts = line.strip().split(',')\n        if len(parts) >= 3:\n            operation = parts[0]\n            timings[operation].append(float(parts[2]))\n\n# Calculate statistics\nreport = {}\nfor op, times in timings.items():\n    if times:\n        report[op] = {\n            'count': len(times),\n            'mean': statistics.mean(times),\n            'median': statistics.median(times),\n            'p95': statistics.quantiles(times, n=20)[18] if len(times) > 20 else max(times)\n        }\n\n# Save report\nwith open('.claude/performance_report.json', 'w') as f:\n    json.dump(report, f, indent=2)\n\nprint('Performance report generated')",
+    "identify_bottlenecks.py": "#!/usr/bin/env python3\nimport json\n\n# Load performance report\nwith open('.claude/performance_report.json', 'r') as f:\n    report = json.load(f)\n\n# Identify bottlenecks\nbottlenecks = []\n\nfor op, stats in report.items():\n    if stats['p95'] > 1000:  # Operations taking >1 second at P95\n        bottlenecks.append({\n            'operation': op,\n            'p95_time': stats['p95'],\n            'recommendation': 'Consider optimization or caching'\n        })\n\nif bottlenecks:\n    print('Performance bottlenecks detected:')\n    for b in bottlenecks:\n        print(f\"  - {b['operation']}: {b['p95_time']}ms (P95)\")\n        print(f\"    Recommendation: {b['recommendation']}\")\nelse:\n    print('No significant bottlenecks detected')"
+  },
+  "dashboards": {
+    "grafana": {
+      "datasource": "prometheus",
+      "panels": [
+        "Response time histogram",
+        "Token usage over time",
+        "Cost breakdown by model",
+        "Error rate graph",
+        "Agent execution times"
+      ]
+    },
+    "custom_dashboard": {
+      "url": "http://localhost:3000/claude-metrics",
+      "refresh_interval": "30s",
+      "alerts": [
+        "High error rate (>5%)",
+        "Slow response time (>5s)",
+        "Cost spike (>$10/hour)",
+        "Memory usage (>80%)"
+      ]
+    }
+  },
+  "optimization_rules": [
+    {
+      "condition": "Same file read >3 times in session",
+      "action": "Suggest caching",
+      "savings": "~30% token reduction"
+    },
+    {
+      "condition": "Opus model used for simple task",
+      "action": "Suggest switching to Sonnet",
+      "savings": "~80% cost reduction"
+    },
+    {
+      "condition": "Large file reads (>10K lines)",
+      "action": "Suggest targeted grep/search",
+      "savings": "~50% token reduction"
+    },
+    {
+      "condition": "Repeated similar operations",
+      "action": "Suggest batch processing",
+      "savings": "~40% time reduction"
+    }
+  ],
+  "usage": "Implement these hooks to monitor performance and optimize costs",
+  "notes": [
+    "Adjust cost calculations based on current pricing",
+    "Set up alerting for cost or performance thresholds",
+    "Review metrics weekly to identify optimization opportunities",
+    "Consider implementing caching for frequently accessed resources"
+  ]
+}
