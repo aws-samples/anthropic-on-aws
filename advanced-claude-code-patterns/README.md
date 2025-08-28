@@ -66,7 +66,7 @@ cp agents/security-reviewer.md ~/.claude/agents/
 cp agents/security-reviewer.md .claude/agents/
 
 # Run security review
-claude "Review my code for OWASP vulnerabilities"
+claude -p "Review my code for OWASP vulnerabilities"
 ```
 
 ### Example 2: Automate PR Reviews
@@ -80,7 +80,7 @@ cp commands/code-review.md ~/.claude/commands/  # Global
 cp commands/code-review.md .claude/commands/    # Project-specific
 
 # Review a PR
-claude "/code-review PR #123"
+claude -p "/code-review PR #123"
 ```
 
 ### Example 3: Generate Smart Documentation
@@ -91,10 +91,10 @@ cp agents/docs-*.md ~/.claude/agents/
 
 # Generate comprehensive documentation with smart routing
 # Documentation is created in organized subdirectories:
-claude "/docs-create 'authentication system' --learning"  # Creates: tutorial + explanation
-claude "/docs-create 'deploy to AWS' --working"        # Creates: how-to + reference
-claude "/docs-create 'API endpoints' --complete"       # Creates: complete documentation set
-claude "/docs-create 'microservices' --understanding" # Creates: explanation + reference
+claude -p "/docs-create 'authentication system' --learning"  # Creates: tutorial + explanation
+claude -p "/docs-create 'deploy to AWS' --working"        # Creates: how-to + reference
+claude -p "/docs-create 'API endpoints' --complete"       # Creates: complete documentation set
+claude -p "/docs-create 'microservices' --understanding" # Creates: explanation + reference
 ```
 
 ### Example 4: Set Up Quality Gates
