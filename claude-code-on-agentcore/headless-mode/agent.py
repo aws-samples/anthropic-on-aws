@@ -154,15 +154,14 @@ async def run_claude_code(
                 "CLAUDE_CODE_USE_BEDROCK": "1",
                 "AWS_REGION": os.environ.get("AWS_REGION", "us-east-1"),
                 "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "4096",
-                "MAX_THINKING_TOKENS": "1024"
-            }
+                "MAX_THINKING_TOKENS": "1024",
+            },
         )
         logger.info("Created ClaudeAgentOptions with Bedrock configuration")
 
         # Collect all messages
         result_text = []
         session_id = None
-        total_cost = 0
         duration_ms = 0
         num_turns = 0
         message_count = 0
@@ -186,11 +185,10 @@ async def run_claude_code(
             elif isinstance(message, ResultMessage):
                 logger.info(f"ResultMessage - is_error: {message.is_error}")
                 session_id = message.session_id
-                total_cost = message.total_cost_usd
                 duration_ms = message.duration_ms
                 num_turns = message.num_turns
                 logger.info(
-                    f"Session: {session_id}, Cost: ${total_cost}, Duration: {duration_ms}ms, Turns: {num_turns}"
+                    f"Session: {session_id}, Duration: {duration_ms}ms, Turns: {num_turns}"
                 )
                 if message.result:
                     logger.info(f"Result summary: {message.result[:100]}...")
@@ -204,7 +202,6 @@ async def run_claude_code(
             "success": True,
             "result": "\n".join(result_text) if result_text else "Task completed",
             "session_id": session_id,
-            "total_cost_usd": total_cost,
             "duration_ms": duration_ms,
             "num_turns": num_turns,
             "model": "claude-sonnet-4.5",
@@ -274,7 +271,6 @@ async def invoke_agent(request: InvocationRequest):
             "timestamp": datetime.utcnow().isoformat(),
             "model": result.get("model", "sonnet"),
             "metadata": {
-                "cost_usd": result.get("total_cost_usd"),
                 "duration_ms": result.get("duration_ms"),
                 "num_turns": result.get("num_turns"),
                 "uploaded_files": uploaded_files if uploaded_files else None,

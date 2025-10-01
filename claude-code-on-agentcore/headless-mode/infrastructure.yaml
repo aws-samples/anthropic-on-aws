@@ -34,7 +34,6 @@ Resources:
   EcrRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: !Sub 'bedrock-agentcore-${ProjectName}'
       ImageScanningConfiguration:
         ScanOnPush: true
       ImageTagMutability: MUTABLE
@@ -66,7 +65,6 @@ Resources:
   AgentCoreExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${ProjectName}-agentcore-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

@@ -32,7 +32,7 @@ OUTPUT_FILE="response_${TIMESTAMP}.json"
 
 echo "🚀 Invoking Claude Code Agent..."
 echo "📝 Prompt: $PROMPT"
-echo "⏳ This may take 30-60 seconds..."
+echo "⏳ This may take some time depending on your prompt..."
 echo ""
 
 # Encode payload as base64

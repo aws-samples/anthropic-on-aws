@@ -137,7 +137,9 @@ region = os.environ['REGION']
 account_id = os.environ['ACCOUNT_ID']
 
 agentcore_client = boto3.client('bedrock-agentcore-control', region_name=region)
-runtime_name = "claude_code_agent_runtime"
+# Runtime name must match pattern: [a-zA-Z][a-zA-Z0-9_]{0,47}
+# Replace hyphens with underscores to comply with AgentCore naming rules
+runtime_name = f"claude_code_agent_{stack_name}".replace('-', '_')
 
 print(f"Deploying runtime: {runtime_name}")
 print(f"  Image: {image_uri}")
