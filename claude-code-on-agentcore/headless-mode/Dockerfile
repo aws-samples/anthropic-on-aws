@@ -1,6 +1,9 @@
 # Use uv's ARM64 Python base image
 FROM --platform=linux/arm64 ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
+# Build argument for output bucket name
+ARG OUTPUT_BUCKET_NAME
+
 # Set environment variables
 ENV UV_SYSTEM_PYTHON=1 \
     UV_COMPILE_BYTECODE=1 \
@@ -10,7 +13,8 @@ ENV UV_SYSTEM_PYTHON=1 \
     DOCKER_CONTAINER=1 \
     CLAUDE_CODE_USE_BEDROCK=1 \
     CLAUDE_CODE_MAX_OUTPUT_TOKENS=4096 \
-    MAX_THINKING_TOKENS=1024
+    MAX_THINKING_TOKENS=1024 \
+    OUTPUT_BUCKET_NAME=${OUTPUT_BUCKET_NAME}
 
 WORKDIR /app
 
@@ -40,8 +44,8 @@ RUN uv sync --frozen --no-cache
 # Copy application code
 COPY --chown=appuser:appuser agent.py ./
 
-# Change ownership of the app directory to appuser
-RUN chown -R appuser:appuser /app
+# Create workspace directory for generated files
+RUN mkdir -p /app/workspace && chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser

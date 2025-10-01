@@ -40,6 +40,22 @@ Claude Code is an AI-powered coding assistant that can autonomously complete pro
   pip install bedrock-agentcore-starter-toolkit
   ```
 
+## Quick Demo (3 Commands)
+
+The fastest way to get started:
+
+```bash
+# 1. Deploy the agent (one-time setup)
+cd headless-mode
+python deploy_claude_code.py
+
+# 2. Invoke the agent (use this anytime)
+./invoke_claude_code.sh "Create a simple hello world Python app"
+
+# 3. View deployment info (helpful reference)
+./show_agent_info.sh
+```
+
 ## Quick Start
 
 ### 1. Install Dependencies
@@ -128,18 +144,39 @@ python deploy_claude_code.py
 
 ### 5. Invoke the Agent
 
-After deployment, you can invoke the agent using the AWS CLI:
+After deployment, you can invoke the agent in two ways:
 
+**Option 1: Using the helper script (recommended for demos)**
 ```bash
-# Replace with your actual runtime ARN from the deployment output
+# Simple one-liner
+./invoke_claude_code.sh "Create a coffee shop website called Brew Haven"
+
+# The script automatically:
+# - Reads the runtime ARN from .runtime_arn file
+# - Invokes the agent with proper payload format
+# - Pretty-prints the response with cost and duration
+# - Saves response to timestamped file
+```
+
+**Option 2: Using AWS CLI directly**
+```bash
+# Get your runtime ARN
+cat .runtime_arn
+
+# Invoke manually
 aws bedrock-agentcore invoke-agent-runtime \
-    --agent-runtime-arn arn:aws:bedrock-agentcore:us-east-1:YOUR_ACCOUNT_ID:runtime/claude_code_agent_runtime \
+    --agent-runtime-arn $(cat .runtime_arn) \
     --region us-east-1 \
-    --payload '{"prompt": "Create a coffee shop website called Brew Haven with menu, location, and contact sections. Deploy it to S3 and CloudFront."}' \
-    claude_code_agent_response.json
+    --payload '{"input":{"prompt":"Create a coffee shop website called Brew Haven"}}' \
+    response.json
 
 # View the response
-cat claude_code_agent_response.json
+cat response.json | jq
+```
+
+**View deployment info anytime:**
+```bash
+./show_agent_info.sh
 ```
 
 #### Example Prompts
@@ -330,11 +367,14 @@ If you want Claude Code to deploy websites to S3 and CloudFront, add these permi
 
 ## Files in This Directory
 
-- **claude_code_agent.py** - Main agent implementation with AgentCore entrypoint
-- **requirements.txt** - Python dependencies for the agent
+- **agent.py** - Main agent implementation with AgentCore entrypoint
+- **deploy_claude_code.py** - Deployment script (creates .runtime_arn and .deployment_info.json)
+- **invoke_claude_code.sh** - Helper script to easily invoke the agent
+- **show_agent_info.sh** - Display deployment information and quick commands
 - **Dockerfile** - Container configuration with Claude Code CLI and Bedrock setup
+- **pyproject.toml** / **uv.lock** - Python dependencies
 - **.dockerignore** - Files to exclude from Docker build
-- **.bedrock_agentcore.yaml** - AgentCore deployment configuration
+- **iam/** - IAM role setup scripts and policies
 - **examples/** - Example prompts and usage patterns
 
 ## Testing

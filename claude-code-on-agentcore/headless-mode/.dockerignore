@@ -60,6 +60,14 @@ docs/
 # Project specific
 tests/
 
+# Deployment artifacts (don't copy to container)
+.runtime_arn
+.deployment_info.json
+response*.json
+output/
+invoke_claude_code.sh
+show_agent_info.sh
+
 # Bedrock AgentCore specific - keep config but exclude runtime files
 .bedrock_agentcore.yaml
 .dockerignore

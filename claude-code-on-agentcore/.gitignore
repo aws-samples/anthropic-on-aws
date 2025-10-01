@@ -1,0 +1,13 @@
+# Local testing output
+output/
+
+# Deployment artifacts (account-specific, not for version control)
+headless-mode/.runtime_arn
+headless-mode/.deployment_info.json
+headless-mode/deployment.json
+
+# Downloaded files
+headless-mode/downloads/
+
+# Invocation responses
+headless-mode/response*.json
