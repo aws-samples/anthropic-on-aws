@@ -1,211 +1,291 @@
-# Claude Code Integration for Amazon Bedrock AgentCore
+# Claude Code on Amazon Bedrock AgentCore
 
-This integration enables Claude Code to run autonomously on Amazon Bedrock AgentCore, providing powerful AI-driven code generation capabilities without requiring an Anthropic API key.
+Deploy Claude Code as an autonomous agent on Amazon Bedrock AgentCore.
 
-## 🎯 Overview
+## Overview
 
-Claude Code Headless Mode provides a complete implementation for deploying Claude Code as an autonomous agent on Amazon Bedrock AgentCore. This enables you to run coding tasks in the cloud with full automation capabilities.
+Claude Code is an AI-powered coding assistant that can autonomously complete programming tasks. This integration packages Claude Code as an AgentCore-compatible agent that:
 
-**Key Features:**
+- Runs autonomously without interactive UI
+- Deploys to AgentCore for serverless execution
+- Uses Amazon Bedrock (no Anthropic API key required)
+- Handles multi-step tasks with file operations
+- Single script deploys all infrastructure
 
-- ✅ **No Anthropic API Key Required** - Uses Amazon Bedrock
-- ✅ **Autonomous Operation** - Runs without human intervention
-- ✅ **Cost Effective** - ~$0.30-0.50 per complex task
-- ✅ **Scalable** - Leverages AgentCore's serverless architecture
-- ✅ **Production Ready** - Complete with monitoring and logging
+## Architecture
 
-## 🚀 Quick Start
+```mermaid
+graph LR
+    A[User Request<br/>JSON] --> B[AgentCore Runtime<br/>Container]
+    B --> C[Claude Code<br/>Headless]
+    C --> D[Code Execution<br/>& File Ops]
+    C --> E[Amazon Bedrock<br/>Claude Models]
+    D --> F[S3 Bucket<br/>Generated Files]
 
-### Prerequisites
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#f0e1ff
+    style E fill:#e1ffe1
+    style F fill:#ffe1e1
+```
 
-- **AWS Account** with Bedrock access
-- **Python 3.10+**
-- **AWS CLI** configured
-- **Docker** installed (for local testing)
-- **Bedrock Model Access** for Claude models
-- **AgentCore Toolkit**: `pip install bedrock-agentcore-starter-toolkit`
+## Prerequisites
 
-### Quick Demo (3 Commands)
+- **AWS Account** with appropriate permissions
+- **AWS CLI** configured (`aws configure`)
+- **Python 3.10+** with boto3 installed
+- **Docker** with buildx support
+- **jq** - For JSON parsing in scripts
+- **Amazon Bedrock** model access enabled for Claude models
+
+## Quick Start
 
 The fastest way to get started:
 
 ```bash
-# 1. Deploy everything (one-time setup - creates IAM, S3, ECR, and AgentCore runtime)
+# 1. Deploy everything (one-time setup)
 cd headless-mode
 ./deploy.sh
 
-# 2. Invoke the agent (files automatically uploaded to S3)
-./invoke_claude_code.sh "Create a simple Python calculator app"
+# 2. Invoke the agent
+./invoke_claude_code.sh "Create a simple hello world Python app"
 
-# 3. Download the generated files
+# 3. Download generated files
 ./download_outputs.sh
 ```
 
-**Bonus commands:**
+## Deployment
+
+### What Gets Created
+
+The `headless-mode/deploy.sh` script creates:
+
+1. **CloudFormation Stack** (`claude-code-agent-stack`):
+
+   - IAM Role with Bedrock, S3, ECR permissions
+   - S3 Bucket for output files
+   - ECR Repository for Docker image
+
+2. **Docker Image**:
+
+   - Built for ARM64/Graviton
+   - Includes Node.js 20+ and Claude Code CLI
+   - Pushed to ECR
+
+3. **AgentCore Runtime**:
+   - Deployed with the container image
+   - Receives invocations via AWS CLI
+
+### Deploy Steps
+
 ```bash
-# View deployment info
-./show_agent_info.sh
-
-# Clean up everything
-aws cloudformation delete-stack --stack-name claude-code-agent-stack
-```
-
-### Full Deployment Guide
-
-```bash
-# Step 1: Clone and navigate
-cd claude-code-on-agentcore/headless-mode
-
-# Step 2: Deploy (creates CloudFormation stack with IAM, S3, ECR + AgentCore runtime)
+cd headless-mode
 chmod +x deploy.sh
 ./deploy.sh
+```
 
-# This single script:
-# - Creates CloudFormation stack (IAM role, S3 bucket, ECR repository)
-# - Builds Docker image for ARM64/Graviton
-# - Pushes to ECR
-# - Deploys/updates AgentCore runtime
-# - Saves deployment info to deployment.json
+The script:
 
-# Step 3: Invoke the agent
-./invoke_claude_code.sh "Create a REST API with FastAPI"
+1. Deploys CloudFormation stack (IAM, S3, ECR)
+2. Builds Docker image for ARM64
+3. Pushes image to ECR
+4. Creates/updates AgentCore runtime
+5. Saves deployment info to deployment.json
 
-# Step 4: Download generated files
+**Output:**
+
+```
+✅ DEPLOYMENT SUCCESSFUL!
+
+📝 Quick start:
+  ./invoke_claude_code.sh "Create a simple hello world app"
+
+📊 View deployment info:
+  ./show_agent_info.sh
+
+📥 Download generated files:
+  ./download_outputs.sh
+```
+
+## Usage
+
+### Invoke the Agent
+
+```bash
+./invoke_claude_code.sh "Create a Python calculator app"
+```
+
+The script:
+
+- Reads runtime ARN from deployment.json
+- Invokes the agent
+- Displays response with duration and turns
+- Saves response to timestamped file
+
+### Download Generated Files
+
+```bash
 ./download_outputs.sh
 ```
 
-**What gets created:**
-- **CloudFormation Stack**: `claude-code-agent-stack`
-- **IAM Role**: With Bedrock, S3, CloudFront, ECR permissions
-- **S3 Bucket**: `claude-code-agent-outputs-{account-id}` (for generated files)
-- **ECR Repository**: `bedrock-agentcore-claude-code-agent`
-- **AgentCore Runtime**: Running your custom Docker image
-
-### Local Testing
-
-You can test the agent locally before deploying:
+### View Deployment Info
 
 ```bash
-# Build the Docker container
+./show_agent_info.sh
+```
+
+## Advanced Configuration
+
+### Environment Variables
+
+The Dockerfile sets these defaults (can be overridden):
+
+| Variable                        | Description                | Default     |
+| ------------------------------- | -------------------------- | ----------- |
+| `CLAUDE_CODE_USE_BEDROCK`       | Enable Bedrock integration | `1`         |
+| `AWS_REGION`                    | AWS region for Bedrock     | `us-east-1` |
+| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | Maximum output tokens      | `4096`      |
+| `MAX_THINKING_TOKENS`           | Maximum thinking tokens    | `1024`      |
+
+### Response Format
+
+```json
+{
+  "output": {
+    "result": "Task completed successfully. Created files...",
+    "session_id": "uuid",
+    "timestamp": "2025-10-01T14:42:41.123Z",
+    "model": "claude-sonnet-4.5",
+    "metadata": {
+      "duration_ms": 180000,
+      "num_turns": 58,
+      "uploaded_files": [
+        {
+          "file_name": "app.py",
+          "s3_url": "s3://bucket/outputs/20251001_144241/app.py"
+        }
+      ]
+    }
+  }
+}
+```
+
+## IAM Permissions
+
+The CloudFormation stack (`headless-mode/infrastructure.yaml`) creates an IAM role with these permissions:
+
+### Core Permissions
+
+- **Bedrock**: InvokeModel, InvokeModelWithResponseStream
+- **S3**: PutObject to output bucket
+- **CloudWatch**: Logs for monitoring
+- **ECR**: Access to pull container image
+
+All permissions are configured in `headless-mode/infrastructure.yaml`.
+
+## Project Structure
+
+```
+headless-mode/
+├── deploy.sh              # Unified deployment script
+├── infrastructure.yaml    # CloudFormation template (IAM, S3, ECR)
+├── agent.py              # Main agent implementation
+├── invoke_claude_code.sh # Invoke the agent
+├── show_agent_info.sh    # Display deployment info
+├── download_outputs.sh   # Download files from S3
+├── Dockerfile            # Container with Node.js and Claude Code CLI
+├── pyproject.toml        # Python dependencies
+└── uv.lock               # Dependency lock file
+```
+
+## Local Testing
+
+Test the container locally:
+
+```bash
 cd headless-mode
-docker build -t claude-code-headless .
+
+# Build container
+docker build --no-cache -t claude-code-agent .
+
+# Create output directory for generated files
+mkdir -p output
 
 # Run with AWS credentials (choose one method):
 
-# Method 1: Mount AWS credentials directory
-docker run -d --name claude-code-headless -p 8080:8080 -v ~/.aws:/root/.aws:ro claude-code-headless
-
-# Method 2: Pass AWS credentials as environment variables
-docker run -d --name claude-code-headless -p 8080:8080 \
-  -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-  -e AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN \
-  -e AWS_REGION=${AWS_REGION:-us-east-1} \
-  -e AWS_DEFAULT_REGION=${AWS_REGION:-us-east-1} \
-  claude-code-headless
-
-# Optional: Mount a volume to persist generated files on your host
-# This maps ./output on your host to /app/workspace in the container
-docker run -d --name claude-code-headless -p 8080:8080 \
-  -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-  -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-  -e AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN \
-  -e AWS_REGION=${AWS_REGION:-us-east-1} \
-  -e AWS_DEFAULT_REGION=${AWS_REGION:-us-east-1} \
+# Method 1: Mount AWS credentials directory (recommended)
+docker run -d --name claude-code-test \
+  -p 8080:8080 \
+  -v ~/.aws:/root/.aws:ro \
   -v $(pwd)/output:/app/workspace \
-  claude-code-headless
+  -e AWS_REGION=us-east-1 \
+  claude-code-agent
 
-# Test the agent
+# Method 2: Pass credentials as environment variables
+docker run -d --name claude-code-test \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/workspace \
+  -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+  -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+  -e AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN \
+  -e AWS_REGION=us-east-1 \
+  claude-code-agent
+
+# Method 3: Use AWS profile
+docker run -d --name claude-code-test \
+  -p 8080:8080 \
+  -v ~/.aws:/root/.aws:ro \
+  -v $(pwd)/output:/app/workspace \
+  -e AWS_PROFILE=your-profile-name \
+  -e AWS_REGION=us-east-1 \
+  claude-code-agent
+
+# Test endpoint
 curl -X POST http://localhost:8080/invocations \
   -H "Content-Type: application/json" \
-  -d '{"input": {"prompt": "Create a simple hello.py file that prints Hello, World!"}}' \
-  | python3 -m json.tool
+  -d '{"input":{"prompt":"Create a hello.py file that prints Hello, World!"}}' | jq
 
-# View files in your local output directory
+# View generated files immediately in ./output directory
 ls -la output/
 cat output/hello.py
 
+# View container logs
+docker logs -f claude-code-test
+
 # Clean up
-docker stop claude-code-headless
-docker rm claude-code-headless
+docker stop claude-code-test
+docker rm claude-code-test
 ```
 
-## 📚 Documentation
+## Monitoring
 
-- [Headless Mode Documentation](headless-mode/README.md) - Detailed deployment guide
-- [Example Prompts](headless-mode/examples/example_prompts.json) - Sample tasks for testing
-
-## 🎯 Use Cases
-
-- **Code Generation** - Create complete applications from descriptions
-- **Code Refactoring** - Improve existing code quality and performance
-- **Test Creation** - Generate comprehensive test suites
-- **Documentation** - Auto-generate documentation for codebases
-- **Migration** - Convert code between frameworks or languages
-- **Analysis** - Review code for security, performance, and best practices
-- **AWS Infrastructure** - Generate CloudFormation/CDK templates and deploy resources
-
-## 📦 Project Structure
-
-```
-claude-code/
-├── README.md                    # This file
-├── requirements.txt             # Python dependencies
-├── test_headless_mode.py        # Test script for headless mode
-│
-└── headless-mode/              # AgentCore deployment
-    ├── agent.py                # Main agent implementation
-    ├── deploy_claude_code.py   # Deployment script
-    ├── Dockerfile              # Container configuration
-    ├── pyproject.toml          # Python project configuration
-    ├── uv.lock                 # Dependency lock file
-    ├── README.md              # Detailed deployment guide
-    ├── examples/              # Example prompts
-    │   └── example_prompts.json
-    └── iam/                   # IAM configuration
-        ├── permissions-policy.json
-        ├── trust-policy.json
-        └── setup-iam-role.sh
-```
-
-## 🧪 Testing
-
-Test script is provided in the root directory:
+View CloudWatch logs:
 
 ```bash
-# Test headless mode deployment
-python test_headless_mode.py
+# Find your log group
+aws logs describe-log-groups --log-group-name-prefix /aws/bedrock-agentcore
+
+# Tail logs
+aws logs tail /aws/bedrock-agentcore/runtimes/claude_code_agent_runtime --follow
 ```
 
-## 📊 Performance & Cost
+### Clean Up
 
-- **Task Duration**: 10-30 seconds for typical tasks
-- **Cost**: ~$0.30-0.50 per complex task
-- **Concurrency**: Supports multiple simultaneous requests
-- **Scaling**: Auto-scales based on demand
+To delete everything:
 
-## 🔄 Coming Soon
+```bash
+# Delete CloudFormation stack (removes IAM, S3, ECR)
+aws cloudformation delete-stack --stack-name claude-code-agent-stack --region us-east-1
 
-- **Python SDK** - A Python wrapper for programmatic access to Claude Code will be added in a future update, enabling:
-  - Integration into Python applications
-  - Custom workflow development
-  - Batch processing capabilities
-  - Advanced session management
+# Delete AgentCore runtime
+aws bedrock-agentcore delete-agent-runtime --agent-runtime-id <runtime-id>
+```
 
-## 🤝 Contributing
+## What Gets Deployed
 
-Contributions are welcome! Please:
+After running `./deploy.sh`:
 
-1. Test your changes locally
-2. Update relevant documentation
-3. Submit a pull request
-
-## 📄 License
-
-This integration is provided as-is for educational and experimental purposes. Ensure compliance with your organization's policies and AWS service terms.
-
-## 🙏 Acknowledgments
-
-- Claude Code by Anthropic
-- Amazon Bedrock AgentCore team
-- AWS SDK for Python (boto3)
+- CloudFormation stack with IAM role, S3 bucket, ECR repository
+- Docker image in ECR containing Claude Code CLI
+- AgentCore runtime executing the container
+- Configuration saved to `headless-mode/deployment.json`
