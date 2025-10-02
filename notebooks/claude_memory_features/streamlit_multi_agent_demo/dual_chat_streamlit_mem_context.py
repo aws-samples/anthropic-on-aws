@@ -1018,12 +1018,22 @@ def call_claude_stream(
 
             # Context management stats are now handled in usage_debug event handler
 
-        # Add assistant's response to messages
-        messages.append({"role": "assistant", "content": content_blocks})
+        # Add assistant's response to messages (filter empty text blocks)
+        filtered_content = filter_empty_content_blocks(content_blocks)
+        if filtered_content:  # Only append if there's actual content
+            messages.append({"role": "assistant", "content": filtered_content})
 
         # If no tool use, we're done
         if not tool_uses:
-            yield {"type": "done", "messages": messages}
+            # Ensure we have valid content before returning
+            if filtered_content:
+                yield {"type": "done", "messages": messages}
+            else:
+                # Edge case: no text and no tool use (shouldn't happen, but be safe)
+                yield {
+                    "type": "error",
+                    "content": "Assistant response had no content",
+                }
             return
 
         # Handle tool uses

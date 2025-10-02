@@ -784,32 +784,8 @@ def handle_memory_tool(tool_input):
             else f"mem_{len(list(MEMORY_DIR.glob('*.md')))}.md"
         )
         filepath = MEMORY_DIR / filename
-        file_text = tool_input.get("file_text", "")
-        filepath.write_text(file_text)
-
-        # Extract a preview/description from the content
-        preview = file_text[:200] + "..." if len(file_text) > 200 else file_text
-
-        # Create a detailed summary
-        lines = file_text.split("\n")
-        word_count = len(file_text.split())
-
-        return {
-            "success": True,
-            "created": filename,
-            "path": f"/memories/{filename}",
-            "size_bytes": len(file_text),
-            "size_characters": len(file_text),
-            "line_count": len(lines),
-            "word_count": word_count,
-            "operation": "create",
-            "timestamp": datetime.now().isoformat(),
-            "content_preview": preview,
-            "content_full": file_text,
-            "message": f"Successfully created memory file '{filename}' with {len(file_text)} characters ({word_count} words, {len(lines)} lines). File is now available at /memories/{filename} for future retrieval and updates.",
-            "description": f"Stored content in {filename}: {preview}",
-            "summary": f"Created new memory file containing {word_count} words across {len(lines)} lines. Content includes: {preview}",
-        }
+        filepath.write_text(tool_input.get("file_text", ""))
+        return {"success": True, "created": filename}
 
     elif command == "str_replace":
         # Update existing memory file (.txt -> .md conversion)
@@ -821,52 +797,17 @@ def handle_memory_tool(tool_input):
             new_str = tool_input.get("new_str", "")
             updated_content = content.replace(old_str, new_str)
             filepath.write_text(updated_content)
-
-            # Add preview of changes
-            preview_old = old_str[:100] + "..." if len(old_str) > 100 else old_str
-            preview_new = new_str[:100] + "..." if len(new_str) > 100 else new_str
-            content_preview = (
-                updated_content[:200] + "..."
-                if len(updated_content) > 200
-                else updated_content
-            )
-
-            return {
-                "success": True,
-                "operation": "str_replace",
-                "file": filename,
-                "path": f"/memories/{filename}",
-                "replacements_made": content.count(old_str),
-                "old_length": len(content),
-                "new_length": len(updated_content),
-                "old_word_count": len(content.split()),
-                "new_word_count": len(updated_content.split()),
-                "replaced_text": preview_old,
-                "new_text": preview_new,
-                "updated_content_preview": content_preview,
-                "timestamp": datetime.now().isoformat(),
-                "message": f"Successfully updated '{filename}'. Made {content.count(old_str)} replacement(s). File size changed from {len(content)} to {len(updated_content)} characters.",
-                "summary": f"Updated {filename} by replacing '{preview_old}' with '{preview_new}'. Result: {content_preview}",
-            }
-        return {"error": "Memory not found", "path": path, "attempted_file": filename}
+            return {"success": True}
+        return {"error": "Memory not found"}
 
     elif command == "delete":
         # Delete memory file (.txt -> .md conversion)
         filename = path.split("/")[-1].replace(".txt", ".md")
         filepath = MEMORY_DIR / filename
         if filepath.exists():
-            file_size = filepath.stat().st_size
             filepath.unlink()
-            return {
-                "success": True,
-                "operation": "delete",
-                "deleted": filename,
-                "path": f"/memories/{filename}",
-                "size_freed": file_size,
-                "timestamp": datetime.now().isoformat(),
-                "message": f"Successfully deleted memory file '{filename}'. Freed {file_size} bytes of storage. File is no longer accessible.",
-            }
-        return {"error": "Memory not found", "path": path, "attempted_file": filename}
+            return {"success": True, "deleted": filename}
+        return {"error": "Memory not found"}
 
     return {"status": "handled", "command": command}
 
@@ -896,12 +837,7 @@ def filter_empty_content_blocks(content_blocks):
     return filtered
 
 
-def call_claude_stream(
-    client,
-    messages,
-    system_prompt="You are a helpful assistant.",
-    context_management=None,
-):
+def call_claude_stream(client, messages, system_prompt="You are a helpful assistant."):
     """Call Claude Sonnet 4.5 via Bedrock API with streaming and memory tool support"""
     max_iterations = 5
     iteration = 0
@@ -923,10 +859,6 @@ def call_claude_stream(
             "temperature": 1.0,
         }
 
-        # Add context management if provided
-        if context_management:
-            body["context_management"] = context_management
-
         # Invoke with streaming
         response = client.invoke_model_with_response_stream(
             modelId="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -937,30 +869,10 @@ def call_claude_stream(
         content_blocks = []
         current_text = ""
         tool_uses = []
-        usage_metadata = None
 
         for event in response["body"]:
             if "chunk" in event:
                 chunk = json.loads(event["chunk"]["bytes"].decode())
-
-                # Remove debug chunk logging
-
-                # Capture usage metadata (including context management stats)
-                if chunk["type"] == "message_start" and "message" in chunk:
-                    # Get usage from message_start
-                    usage_metadata = chunk["message"].get("usage", {})
-                elif chunk["type"] == "message_delta":
-                    # Update with final output tokens and context management info
-                    if "usage" in chunk:
-                        if usage_metadata is None:
-                            usage_metadata = {}
-                        usage_metadata.update(chunk["usage"])
-                    if "context_management" in chunk:
-                        if usage_metadata is None:
-                            usage_metadata = {}
-                        usage_metadata["context_management"] = chunk[
-                            "context_management"
-                        ]
 
                 if chunk["type"] == "content_block_start":
                     idx = chunk["index"]
@@ -1003,27 +915,22 @@ def call_claude_stream(
                         "content": f"Invalid JSON in tool use: {block['input']}",
                     }
 
-        # Yield context management stats if available
-        if usage_metadata:
-            # Always show usage info
-            input_tokens = usage_metadata.get("input_tokens", 0)
-            output_tokens = usage_metadata.get("output_tokens", 0)
-
-            yield {
-                "type": "usage_debug",
-                "usage": usage_metadata,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-            }
-
-            # Context management stats are now handled in usage_debug event handler
-
-        # Add assistant's response to messages
-        messages.append({"role": "assistant", "content": content_blocks})
+        # Add assistant's response to messages (filter empty text blocks)
+        filtered_content = filter_empty_content_blocks(content_blocks)
+        if filtered_content:  # Only append if there's actual content
+            messages.append({"role": "assistant", "content": filtered_content})
 
         # If no tool use, we're done
         if not tool_uses:
-            yield {"type": "done", "messages": messages}
+            # Ensure we have valid content before returning
+            if filtered_content:
+                yield {"type": "done", "messages": messages}
+            else:
+                # Edge case: no text and no tool use (shouldn't happen, but be safe)
+                yield {
+                    "type": "error",
+                    "content": "Assistant response had no content",
+                }
             return
 
         # Handle tool uses
@@ -1203,43 +1110,10 @@ def render_chat_interface(chat_id, chat_data, bedrock_client):
             text_placeholder = None
             full_text = ""
 
-            # Build context management config if enabled
-            context_mgmt = None
-            if st.session_state.context_mgmt_enabled:
-                context_mgmt = {
-                    "edits": [
-                        {
-                            "type": "clear_tool_uses_20250919",
-                            "trigger": {
-                                "type": "input_tokens",
-                                "value": st.session_state.context_trigger_threshold,
-                            },
-                            "keep": {
-                                "type": "tool_uses",
-                                "value": st.session_state.context_keep_tools,
-                            },
-                            "clear_at_least": {
-                                "type": "input_tokens",
-                                "value": st.session_state.context_clear_at_least,
-                            },
-                        }
-                    ]
-                }
-                # Show context management config
-                with stream_container:
-                    st.info(
-                        f"⚙️ CM Config - Trigger: {context_mgmt['edits'][0]['trigger']['value']} | Keep: {context_mgmt['edits'][0]['keep']['value']} | Clear≥: {context_mgmt['edits'][0]['clear_at_least']['value']}"
-                    )
-
             try:
                 for event in call_claude_stream(
-                    bedrock_client,
-                    chat_data["messages"],
-                    chat_data["system_prompt"],
-                    context_mgmt,
+                    bedrock_client, chat_data["messages"], chat_data["system_prompt"]
                 ):
-                    # Remove all debug noise
-
                     if event["type"] == "text":
                         full_text += event["content"]
                         if text_placeholder is None:
@@ -1279,91 +1153,16 @@ def render_chat_interface(chat_id, chat_data, bedrock_client):
                                 st.markdown("**🔧 Tool Result**")
                                 st.json(event["result"], expanded=True)
 
-                    elif event["type"] == "debug_chunk":
-                        # Debug: Show chunk types (keep these temporary)
-                        pass  # Commenting out to reduce noise
-                        # with stream_container:
-                        #     st.warning(f"🔍 **Debug:** Chunk type: `{event['chunk_type']}`")
-                        #     with st.expander("Full chunk data"):
-                        #         st.json(event['chunk'])
-
-                    elif event["type"] == "usage_debug":
-                        # Show usage metadata and save it
-                        input_tok = event["input_tokens"]
-                        output_tok = event["output_tokens"]
-                        usage = event["usage"]
-
-                        usage_msg = f"📊 Input: {input_tok:,} tokens | Output: {output_tok:,} tokens"
-
-                        if "context_management" in usage:
-                            cm = usage["context_management"]
-                            applied_edits = cm.get("applied_edits", [])
-
-                            # Always show what we got for debugging
-                            with stream_container:
-                                with st.expander("🔍 CM Data"):
-                                    st.json(cm)
-
-                            # Update stats IMMEDIATELY when we see applied edits
-                            if applied_edits and len(applied_edits) > 0:
-                                total_cleared = sum(
-                                    edit.get("count", 0) for edit in applied_edits
-                                )
-                                total_saved = sum(
-                                    edit.get("input_tokens", 0)
-                                    for edit in applied_edits
-                                )
-
-                                # Save to session state NOW
-                                if chat_id not in st.session_state.context_stats:
-                                    st.session_state.context_stats[chat_id] = {
-                                        "clear_count": 0,
-                                        "tokens_saved": 0,
-                                        "last_clear": None,
-                                    }
-
-                                st.session_state.context_stats[chat_id][
-                                    "clear_count"
-                                ] += 1
-                                st.session_state.context_stats[chat_id][
-                                    "tokens_saved"
-                                ] += total_saved
-                                st.session_state.context_stats[chat_id][
-                                    "last_clear"
-                                ] = datetime.now().strftime("%H:%M:%S")
-
-                                usage_msg += f" | ✂️ Cleared {total_cleared} tool(s), saved {total_saved} tokens"
-                            else:
-                                usage_msg += " | ⏳ No clearing yet"
-
-                        # Store for persistent display
-                        last_usage = usage_msg
-
-                        # Display it temporarily during streaming
-                        with stream_container:
-                            st.info(usage_msg)
-
-                    # Removed context_management event handler - stats handled in usage_debug now
-
                     elif event["type"] == "done":
                         chat_data["messages"] = event["messages"]
-                        # Store the last usage info in chat data for display
-                        if "last_usage" in locals():
-                            chat_data["last_usage"] = last_usage
                         st.rerun()
 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
-    # Show last usage info if available
-    if "last_usage" in chat_data:
-        st.caption(chat_data["last_usage"])
-
     # Clear button (small)
     if st.button(f"Clear Chat", key=f"clear_{chat_id}", type="secondary"):
         chat_data["messages"] = []
-        if "last_usage" in chat_data:
-            del chat_data["last_usage"]
         st.rerun()
 
 
@@ -1381,22 +1180,6 @@ if "chats" not in st.session_state:
     }
 if "next_chat_id" not in st.session_state:
     st.session_state.next_chat_id = 1
-
-# Context management settings
-if "context_mgmt_enabled" not in st.session_state:
-    st.session_state.context_mgmt_enabled = True
-if "context_trigger_threshold" not in st.session_state:
-    st.session_state.context_trigger_threshold = 50
-if "context_keep_tools" not in st.session_state:
-    st.session_state.context_keep_tools = 0
-if "context_clear_at_least" not in st.session_state:
-    st.session_state.context_clear_at_least = 10
-
-# Context statistics per chat
-if "context_stats" not in st.session_state:
-    st.session_state.context_stats = (
-        {}
-    )  # {chat_id: {clear_count, tokens_saved, last_clear}}
 
 # Page config
 st.set_page_config(page_title="Déjà Vu by Claude", layout="wide")
@@ -1423,94 +1206,6 @@ try:
 except Exception as e:
     st.error(f"Failed to initialize Bedrock client: {str(e)}")
     st.stop()
-
-st.markdown("---")
-
-# Context Management Settings
-with st.expander("⚙️ Context Management Settings", expanded=False):
-    st.markdown(
-        """
-    **Context Editing** automatically clears old tool results when conversations grow large,
-    while preserving memory files. This keeps multi-agent conversations efficient.
-    """
-    )
-
-    col1, col2 = st.columns([1, 3])
-
-    with col1:
-        st.session_state.context_mgmt_enabled = st.toggle(
-            "Enable Context Management",
-            value=st.session_state.context_mgmt_enabled,
-            help="Automatically clear old tool results to manage context size",
-        )
-
-    with col2:
-        if st.session_state.context_mgmt_enabled:
-            col2a, col2b, col2c = st.columns(3)
-
-            with col2a:
-                st.session_state.context_trigger_threshold = st.slider(
-                    "Trigger Threshold",
-                    min_value=10,
-                    max_value=100,
-                    value=min(max(st.session_state.context_trigger_threshold, 10), 100),
-                    step=5,
-                    help="Start clearing when input tokens exceed this value",
-                )
-                st.caption(f"{st.session_state.context_trigger_threshold} tokens")
-
-            with col2b:
-                st.session_state.context_keep_tools = st.number_input(
-                    "Keep Last N Tool Uses",
-                    min_value=0,
-                    max_value=10,
-                    value=st.session_state.context_keep_tools,
-                    help="Number of recent tool uses to preserve (0 = clear all old tools)",
-                )
-
-            with col2c:
-                st.session_state.context_clear_at_least = st.number_input(
-                    "Clear At Least (tokens)",
-                    min_value=1,
-                    max_value=100,
-                    value=min(max(st.session_state.context_clear_at_least, 1), 100),
-                    step=5,
-                    help="Minimum tokens to clear per operation",
-                )
-
-# Example workflows
-with st.expander("💡 Example Multi-Agent Workflows", expanded=False):
-    st.markdown(
-        """
-    ### Suggested System Prompts for Multi-Agent Demo:
-
-    **Agent 1 - Discovery:**
-    ```
-    You are helping discover customer requirements. Ask clarifying questions and remember
-    important details about their needs, budget, timeline, and pain points. Store everything
-    you learn in memory for other agents to use.
-    ```
-
-    **Agent 2 - Solution Architect:**
-    ```
-    You design solutions based on customer requirements from memory. Always check memory first
-    before designing. Reference specific customer details when architecting solutions.
-    ```
-
-    **Agent 3 - Proposal Writer:**
-    ```
-    You draft proposals using customer details and solution architecture from memory.
-    Create personalized, compelling proposals that address specific pain points.
-    ```
-
-    ### To See Context Management in Action:
-    1. Enable context management in settings above
-    2. Have long conversations with multiple agents
-    3. Use memory extensively (Claude will store and retrieve frequently)
-    4. Watch as old tool results are cleared while memory files persist
-    5. Check statistics dashboard to see tokens saved
-    """
-    )
 
 st.markdown("---")
 
@@ -1623,65 +1318,6 @@ with st.expander("📁 Memory Files", expanded=False):
                     st.rerun()
     else:
         st.info("No memory files yet. Claude will create them during conversations.")
-
-# Context Management Dashboard
-if st.session_state.context_mgmt_enabled:
-    st.divider()
-
-    with st.expander("📊 Context Management Statistics", expanded=False):
-        if st.session_state.context_stats:
-            st.markdown("### Per-Chat Context Metrics")
-
-            for chat_id, chat_data in st.session_state.chats.items():
-                if chat_id in st.session_state.context_stats:
-                    stats = st.session_state.context_stats[chat_id]
-
-                    with st.container():
-                        st.markdown(f"#### {chat_data['title']}")
-
-                        col1, col2, col3, col4 = st.columns(4)
-
-                        with col1:
-                            st.metric("Times Cleared", stats.get("clear_count", 0))
-
-                        with col2:
-                            st.metric(
-                                "Tokens Saved", f"{stats.get('tokens_saved', 0):,}"
-                            )
-
-                        with col3:
-                            st.metric("Messages", len(chat_data["messages"]))
-
-                        with col4:
-                            last_clear = stats.get("last_clear", "Never")
-                            st.metric("Last Cleared", last_clear)
-
-                        st.markdown("---")
-
-            # Overall statistics
-            total_clears = sum(
-                s.get("clear_count", 0) for s in st.session_state.context_stats.values()
-            )
-            total_saved = sum(
-                s.get("tokens_saved", 0)
-                for s in st.session_state.context_stats.values()
-            )
-
-            st.markdown("### Overall Statistics")
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-                st.metric("Total Context Clears", total_clears)
-            with col2:
-                st.metric("Total Tokens Saved", f"{total_saved:,}")
-            with col3:
-                avg_saved = total_saved / total_clears if total_clears > 0 else 0
-                st.metric("Avg Saved per Clear", f"{avg_saved:,.0f}")
-
-        else:
-            st.info(
-                "💡 **Tip:** Have longer conversations to see context management in action! The system will automatically clear old tool results while preserving memory files."
-            )
 
 # Footer
 st.divider()
