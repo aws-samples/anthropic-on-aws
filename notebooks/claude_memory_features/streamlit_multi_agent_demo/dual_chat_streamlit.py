@@ -1180,7 +1180,7 @@ def render_chat_interface(chat_id, chat_data, bedrock_client):
                 }
                 # Show context management config
                 with stream_container:
-                    st.info(f"⚙️ CM Config - Trigger: {context_mgmt['edits'][0]['trigger']['value']} | Keep: {context_mgmt['edits'][0]['keep']['value']} | Clear≥: {context_mgmt['edits'][0]['clear_at_least']['value']}")
+                    st.info(f"⚙️ CM Config - Trigger: {context_mgmt['edits'][0]['trigger']['value']:,} tokens | Keep: {context_mgmt['edits'][0]['keep']['value']} tools | Clear≥: {context_mgmt['edits'][0]['clear_at_least']['value']:,} tokens")
 
             try:
                 for event in call_claude_stream(
@@ -1254,8 +1254,8 @@ def render_chat_interface(chat_id, chat_data, bedrock_client):
 
                             # Update stats IMMEDIATELY when we see applied edits
                             if applied_edits and len(applied_edits) > 0:
-                                total_cleared = sum(edit.get("count", 0) for edit in applied_edits)
-                                total_saved = sum(edit.get("input_tokens", 0) for edit in applied_edits)
+                                total_cleared = sum(edit.get("cleared_tool_uses", 0) for edit in applied_edits)
+                                total_saved = sum(edit.get("cleared_input_tokens", 0) for edit in applied_edits)
 
                                 # Save to session state NOW
                                 if chat_id not in st.session_state.context_stats:
@@ -1265,7 +1265,11 @@ def render_chat_interface(chat_id, chat_data, bedrock_client):
                                 st.session_state.context_stats[chat_id]["tokens_saved"] += total_saved
                                 st.session_state.context_stats[chat_id]["last_clear"] = datetime.now().strftime("%H:%M:%S")
 
-                                usage_msg += f" | ✂️ Cleared {total_cleared} tool(s), saved {total_saved} tokens"
+                                usage_msg += f" | ✂️ Cleared {total_cleared} tool(s), saved {total_saved:,} tokens"
+
+                                # Show prominent success message
+                                with stream_container:
+                                    st.success(f"🎉 Context Management Active! Cleared {total_cleared} old tool use(s) and saved {total_saved:,} tokens.")
                             else:
                                 usage_msg += " | ⏳ No clearing yet"
 
@@ -1319,11 +1323,11 @@ if "next_chat_id" not in st.session_state:
 if "context_mgmt_enabled" not in st.session_state:
     st.session_state.context_mgmt_enabled = True
 if "context_trigger_threshold" not in st.session_state:
-    st.session_state.context_trigger_threshold = 50
+    st.session_state.context_trigger_threshold = 10000
 if "context_keep_tools" not in st.session_state:
     st.session_state.context_keep_tools = 0
 if "context_clear_at_least" not in st.session_state:
-    st.session_state.context_clear_at_least = 10
+    st.session_state.context_clear_at_least = 1000
 
 # Context statistics per chat
 if "context_stats" not in st.session_state:
@@ -1362,6 +1366,10 @@ with st.expander("⚙️ Context Management Settings", expanded=False):
     st.markdown("""
     **Context Editing** automatically clears old tool results when conversations grow large,
     while preserving memory files. This keeps multi-agent conversations efficient.
+
+    **💡 Tip:** With default settings (10,000 token trigger), you'll need about 20-50 memory
+    operations before seeing your first context clear. Memory operations typically use 100-500
+    tokens each. Lower the threshold to 2,000-3,000 tokens to see clearing sooner in demos.
     """)
 
     col1, col2 = st.columns([1, 3])
@@ -1380,13 +1388,13 @@ with st.expander("⚙️ Context Management Settings", expanded=False):
             with col2a:
                 st.session_state.context_trigger_threshold = st.slider(
                     "Trigger Threshold",
-                    min_value=10,
-                    max_value=100,
-                    value=min(max(st.session_state.context_trigger_threshold, 10), 100),
-                    step=5,
+                    min_value=1000,
+                    max_value=50000,
+                    value=min(max(st.session_state.context_trigger_threshold, 1000), 50000),
+                    step=1000,
                     help="Start clearing when input tokens exceed this value"
                 )
-                st.caption(f"{st.session_state.context_trigger_threshold} tokens")
+                st.caption(f"{st.session_state.context_trigger_threshold:,} tokens")
 
             with col2b:
                 st.session_state.context_keep_tools = st.number_input(
@@ -1400,10 +1408,10 @@ with st.expander("⚙️ Context Management Settings", expanded=False):
             with col2c:
                 st.session_state.context_clear_at_least = st.number_input(
                     "Clear At Least (tokens)",
-                    min_value=1,
-                    max_value=100,
-                    value=min(max(st.session_state.context_clear_at_least, 1), 100),
-                    step=5,
+                    min_value=100,
+                    max_value=10000,
+                    value=min(max(st.session_state.context_clear_at_least, 100), 10000),
+                    step=100,
                     help="Minimum tokens to clear per operation"
                 )
 
@@ -1599,7 +1607,11 @@ if st.session_state.context_mgmt_enabled:
                 st.metric("Avg Saved per Clear", f"{avg_saved:,.0f}")
 
         else:
-            st.info("💡 **Tip:** Have longer conversations to see context management in action! The system will automatically clear old tool results while preserving memory files.")
+            st.info("""💡 **No context clears yet.** To see context management in action:
+1. Have multiple memory-heavy conversations across the chats
+2. With the default 10,000 token trigger, you'll need ~20-50 memory operations
+3. Try lowering the trigger to 2,000-3,000 tokens in settings above for faster demos
+4. When clearing happens, you'll see a success message and stats will appear here!""")
 
 # Footer
 st.divider()
