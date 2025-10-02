@@ -739,17 +739,6 @@ def get_bedrock_client():
 MEMORY_DIR = Path("./memories")
 MEMORY_DIR.mkdir(exist_ok=True)
 
-# Context Management Configuration
-# Production-grade settings for realistic demo
-DEFAULT_CONTEXT_MANAGEMENT = {
-    "edits": [{
-        "type": "clear_tool_uses_20250919",
-        "trigger": {"type": "input_tokens", "value": 15000},  # Start clearing at 15K tokens
-        "keep": {"type": "tool_uses", "value": 3},  # Keep last 3 tool uses
-        "clear_at_least": {"type": "input_tokens", "value": 1000}  # Clear at least 1K tokens
-    }]
-}
-
 
 def handle_memory_tool(tool_input):
     """File-based handler for Claude Sonnet 4.5's memory tool requests"""
