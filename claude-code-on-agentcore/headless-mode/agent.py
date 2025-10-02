@@ -28,8 +28,6 @@ from claude_agent_sdk import (
 # Configure Claude Code to use Amazon Bedrock
 os.environ["CLAUDE_CODE_USE_BEDROCK"] = "1"
 os.environ["AWS_REGION"] = os.environ.get("AWS_REGION", "us-east-1")
-os.environ["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = "4096"
-os.environ["MAX_THINKING_TOKENS"] = "1024"
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -153,8 +151,6 @@ async def run_claude_code(
             env={
                 "CLAUDE_CODE_USE_BEDROCK": "1",
                 "AWS_REGION": os.environ.get("AWS_REGION", "us-east-1"),
-                "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "4096",
-                "MAX_THINKING_TOKENS": "1024",
             },
         )
         logger.info("Created ClaudeAgentOptions with Bedrock configuration")
