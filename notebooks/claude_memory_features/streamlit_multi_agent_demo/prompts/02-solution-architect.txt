@@ -1,0 +1,27 @@
+# Solution Architect User Prompts
+
+These prompts guide Claude to act as a solution architect designing systems based on requirements in memory.
+Use these in Chat Context 2 with the shared system prompt.
+
+### Simple Request
+Hi, I'm John from TechCorp. Based on the customer information you have in memory about Alice and ACME Corp, please design a cloud migration architecture.
+
+### After Design
+Update the memory with the details about our architecture. Sam will need this info later to create a customer proposal.
+
+### Alternative Phrasing
+Based on the customer in memory, design a cloud migration architecture.
+
+### More Specific Request
+Design a solution for the TechCorp customer in memory. Focus on:
+- Cost optimization strategies
+- Scalability approach
+- Compliance requirements
+- Migration phases
+
+### Request with Constraints
+Review the customer requirements from memory and design a solution that:
+- Stays within the $500K budget
+- Can be completed in 9 months
+- Maintains SOC 2 compliance throughout
+- Minimizes downtime to under 4 hours per application

@@ -1,0 +1,118 @@
+# Discovery Agent User Prompts
+
+These prompts guide Claude to act as a discovery agent gathering customer requirements.
+Use these in Chat Context 1 with the shared system prompt.
+
+### Quick Introduction (Simple)
+I'm Alice from TechCorp. We need help with a cloud migration project.
+
+### Detailed Introduction (Comprehensive)
+I'm Alice from TechCorp. We need help with a cloud migration project for ACME Corp. Here are the requirements:
+
+- Budget: $500K
+- Timeline: 9 months
+- Need to migrate 50 applications
+- Must maintain SOC 2 compliance
+- Team has limited cloud expertise
+
+Please update my memory with these details.
+
+### Full Requirements Document (Demo Script Version)
+I'm Alice, a Technical Account Manager (TAM) from TechCorp.
+
+We need help with a cloud migration project for a customer ACME Corp. Here are the requirements:
+
+# ACME Corp. Cloud Migration Project Requirements
+
+## Demo Scenario Overview
+This document outlines the requirements for our cloud migration project.
+
+---
+
+## 1. Current Infrastructure
+
+**What we're migrating from:**
+- On-premises data center with aging hardware (8+ years old)
+- Mix of physical servers and VMware virtualization
+- Legacy monolithic applications running on Windows Server 2012 R2 and RHEL 7
+- Traditional three-tier architecture with web, application, and database layers
+- On-premises SQL Server 2014 databases
+
+---
+
+## 2. Target Cloud Platform
+
+**Preferred provider:** AWS
+
+**Rationale:**
+- Existing enterprise agreement in place
+- Team has foundational AWS knowledge
+- Strong regional presence in our target markets
+
+---
+
+## 3. Scale & Scope
+
+**Workload types:**
+- 3 customer-facing web applications
+- 2 internal business applications
+- 1 data analytics platform
+- File storage and backup systems
+
+**Data volume:**
+- Approximately 15 TB of structured data
+- 25 TB of unstructured data (files, backups, archives)
+
+**Application count:**
+- 5 primary applications
+- 12 supporting microservices
+- 8 databases
+
+---
+
+## 4. Key Objectives
+
+**Primary goals (in priority order):**
+1. **Cost optimization** - Reduce infrastructure costs by 30-40%
+2. **Scalability** - Handle 3x traffic spikes during peak seasons
+3. **Business continuity** - Achieve 99.9% uptime with automated disaster recovery
+4. **Modernization** - Refactor key applications to cloud-native architecture
+5. **Security** - Improve security posture and compliance readiness
+
+---
+
+## 5. Timeline
+
+**Target completion:** 9 months from project kickoff
+
+**Key milestones:**
+- Month 1-2: Assessment and planning
+- Month 3-5: Pilot migration (non-production environments)
+- Month 6-8: Production migration (phased approach)
+- Month 9: Optimization and knowledge transfer
+
+---
+
+## 6. Current Challenges
+
+**Key concerns and blockers:**
+
+- **Downtime constraints** - Customer-facing apps require <4 hours maintenance window
+- **Compliance** - Must maintain SOC 2 compliance throughout migration
+- **Data dependencies** - Complex interdependencies between legacy applications
+- **Skills gap** - Limited cloud expertise within current IT team (training needed)
+- **Budget constraints** - Migration must fit within approved capital budget
+- **Legacy architecture** - Some applications tightly coupled to on-premises infrastructure
+
+---
+
+## Success Criteria
+
+- Zero data loss during migration
+- Minimal business disruption (<8 hours total downtime across all applications)
+- Cost savings realized within 12 months post-migration
+- All applications meeting or exceeding current performance benchmarks
+- Team trained and capable of managing cloud infrastructure independently
+
+### Follow-up Prompt (After Requirements Provided)
+Commit those details to Memory if you haven't already. My co-worker John is going to provide you with the additional details you need.

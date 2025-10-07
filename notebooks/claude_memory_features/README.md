@@ -22,7 +22,9 @@ This demo uses a **file-based persistence model** where:
 ## Files
 
 - **`claude_memory_tutorial.ipynb`** - Interactive tutorial notebook with step-by-step learning (45 min)
+- **`claude_memory_agentcore_tutorial.ipynb`** - Interactive tutorial notebook with step-by-step learning (45 min)
 - **`docs/tutorials/claude-memory-quickstart.md`** - Comprehensive setup and reference guide
+- **`streamlit_multi_agent_demo/`** - Interactive Streamlit demo/tutorial showcasing multi-agent memory 
 
 ## Key Features Demonstrated
 
@@ -201,9 +203,16 @@ This demo is designed for learning and experimentation. For production use, cons
 
 ## Additional Documentation
 
-- **AWS Bedrock**: https://docs.aws.amazon.com/bedrock/
-- **Anthropic Documentation**: https://docs.anthropic.com/
-- **Model Access**: Request in AWS Bedrock Console → Model access
+### External Resources
+- [Anthropic Memory and Context Editing Cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/tool_use/memory_cookbook.ipynb)
+- [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
+- [Anthropic API Documentation](https://docs.anthropic.com/)
+- [Memory Tool API](https://docs.anthropic.com/en/docs/build-with-claude/tool-use/memory-tool)
+- [Context Management Guide](https://docs.anthropic.com/en/docs/build-with-claude/context-editing)
+
+## License
+
+MIT-0
 
 ---
 

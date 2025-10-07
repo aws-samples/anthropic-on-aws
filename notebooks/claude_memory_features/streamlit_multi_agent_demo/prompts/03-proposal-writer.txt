@@ -1,0 +1,31 @@
+# Proposal Writer User Prompts
+
+These prompts guide Claude to act as a proposal writer creating compelling proposals from requirements and solutions in memory.
+Use these in Chat Context 3 with the shared system prompt.
+
+### Simple Request
+Hi, I'm Sam from TechCorp. Please create a proposal for ACME Corp based on the customer requirements and solution architecture you have in memory.
+
+### Alternative Phrasing
+Create a proposal based on the customer requirements and solution in memory.
+
+### More Specific Request
+Write a proposal for TechCorp based on memory. Include:
+- Executive summary
+- Understanding of their challenges
+- Proposed solution overview
+- Timeline and milestones
+- Pricing
+- Risk mitigation
+- Success criteria
+
+### Request with Emphasis
+Create a compelling proposal for ACME Corp that:
+- Addresses their pain points around downtime and compliance
+- Highlights cost savings (30-40% reduction)
+- Demonstrates our understanding of their legacy infrastructure
+- Shows clear ROI within 12 months
+- Positions the solution as low-risk with phased approach
+
+### Follow-up Request
+Please save the key points from this proposal to memory for future reference and handoff to the sales team.
