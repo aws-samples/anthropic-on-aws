@@ -253,7 +253,8 @@ Modify `ANTHROPIC_STYLE` in the code to customize colors and layout.
 - **[Documentation Hub](./docs/README.md)** - Central documentation index
 
 ### External Resources
-- [Anthropic Memory and Context Editing Cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/tool_use/memory_cookbook.ipynb)
+- [Anthropic Memory and Context Editing Cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/tool_use/memory_cookbook.ipynb) 
+- **A Special thanks to [**Alex Notov**](https://github.com/zealoushacker) from **Anthropic** for contributing to this repo**
 - [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
 - [Anthropic API Documentation](https://docs.anthropic.com/)
 - [Memory Tool API](https://docs.anthropic.com/en/docs/build-with-claude/tool-use/memory-tool)
