@@ -13,7 +13,7 @@ module.exports = function (root) {
     defaultReleaseBranch: 'main',
     name: 'classification-with-intercom',
     appEntrypoint: 'classification-with-intercom.ts',
-    outdir: 'classification-with-intercom',
+    outdir: 'cdk-applications/classification-with-intercom',
     jest: false,
     deps: [
       'dotenv',
@@ -66,15 +66,15 @@ module.exports = function (root) {
 
   root.addUpgradeProjectWorkflow(
     'classification-with-intercom',
-    'classification-with-intercom',
+    'cdk-applications/classification-with-intercom',
   );
   root.addUpgradeProjectWorkflow(
     'classification-with-intercom-client',
-    'classification-with-intercom/intercom-client',
+    'cdk-applications/classification-with-intercom/intercom-client',
   );
   root.addBuildWorkflow(
     'classification-with-intercom',
-    'classification-with-intercom',
+    'cdk-applications/classification-with-intercom',
   );
 
   classificationWithIntercom.synth();

@@ -12,7 +12,19 @@ def copy_images(source_root, dest_root):
 
         if 'images' in dirs:
             source_image_dir = os.path.join(root, 'images')
-            project_name = os.path.relpath(root, source_root).split(os.sep)[0]
+            rel_path = os.path.relpath(root, source_root)
+            path_parts = rel_path.split(os.sep)
+
+            # Handle nested structure (e.g., cdk-applications/metaprompt-generator)
+            # If path has 2+ parts and first part is a category folder, use second part as project name
+            category_folders = {'cdk-applications', 'streamlit-applications', 'deployment-examples',
+                               'workshops', 'code-samples', 'notebooks', 'cookbooks'}
+            if len(path_parts) >= 2 and path_parts[0] in category_folders:
+                project_name = path_parts[1]
+            else:
+                # For root-level projects, use first part
+                project_name = path_parts[0]
+
             dest_image_dir = os.path.join(dest_root, 'projects', project_name, 'images')
 
             if project_name == 'docs':

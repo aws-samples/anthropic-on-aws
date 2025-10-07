@@ -15,7 +15,7 @@ module.exports = function (root) {
     name: 'anthropic-metaprompt-generator',
     appEntrypoint: 'anthropic-metaprompt-generator.ts',
     packageManager: NodePackageManager.YARN_CLASSIC,
-    outdir: 'metaprompt-generator',
+    outdir: 'cdk-applications/metaprompt-generator',
     devDeps: ['esbuild'],
     jest: false,
     deps: [
@@ -75,13 +75,13 @@ module.exports = function (root) {
 
   root.addUpgradeProjectWorkflow(
     'metaprompt-generator',
-    'metaprompt-generator',
+    'cdk-applications/metaprompt-generator',
   );
   root.addUpgradeProjectWorkflow(
     'metaprompt-generator-client',
-    'metaprompt-generator/metaprompt-generator-client',
+    'cdk-applications/metaprompt-generator/metaprompt-generator-client',
   );
-  root.addBuildWorkflow('metaprompt-generator', 'metaprompt-generator');
+  root.addBuildWorkflow('metaprompt-generator', 'cdk-applications/metaprompt-generator');
 
   metapromptGenerator.synth();
 

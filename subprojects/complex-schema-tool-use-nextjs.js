@@ -7,7 +7,7 @@ module.exports = function (root) {
     defaultReleaseBranch: 'main',
     parent: root,
     name: 'nextjs-chatbot',
-    outdir: 'complex-schema-tool-use/nextjs-typescript-example',
+    outdir: 'deployment-examples/nextjs-complex-schema',
     tailwind: false,
     deps: [
       '@aws-sdk/client-bedrock-runtime',
@@ -19,12 +19,12 @@ module.exports = function (root) {
 
   root.addUpgradeProjectWorkflow(
     'complex-schema-tool-use-nextjs',
-    'complex-schema-tool-use/nextjs-typescript-example',
+    'deployment-examples/nextjs-complex-schema',
   );
 
   root.addBuildWorkflow(
     'complex-schema-tool-use-nextjs',
-    'complex-schema-tool-use/nextjs-typescript-example',
+    'deployment-examples/nextjs-complex-schema',
   );
 
   complexSchemaToolUseNextJS.synth();

@@ -13,7 +13,7 @@ module.exports = function (root) {
     defaultReleaseBranch: 'main',
     name: 'claude-tools-chatbot',
     appEntrypoint: 'claude-tools-chatbot.ts',
-    outdir: 'claude-tools-chatbot',
+    outdir: 'cdk-applications/claude-tools-chatbot',
     devDeps: ['esbuild', 'cdk-nag'],
     jest: false,
     deps: [
@@ -84,13 +84,13 @@ module.exports = function (root) {
 
   root.addUpgradeProjectWorkflow(
     'claude-tools-chatbot',
-    'claude-tools-chatbot',
+    'cdk-applications/claude-tools-chatbot',
   );
   root.addUpgradeProjectWorkflow(
     'claude-tools-chatbot-client',
-    'claude-tools-chatbot/claude-tools-chatbot-client',
+    'cdk-applications/claude-tools-chatbot/claude-tools-chatbot-client',
   );
-  root.addBuildWorkflow('claude-tools-chatbot', 'claude-tools-chatbot');
+  root.addBuildWorkflow('claude-tools-chatbot', 'cdk-applications/claude-tools-chatbot');
 
   claudeToolsChatbot.synth();
 
