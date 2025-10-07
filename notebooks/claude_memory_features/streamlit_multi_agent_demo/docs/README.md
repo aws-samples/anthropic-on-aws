@@ -241,4 +241,3 @@ This documentation is provided as-is for educational purposes. The Streamlit app
 
 **Ready to start? Pick your path above and dive in!**
 
-*Last updated: January 2025*
