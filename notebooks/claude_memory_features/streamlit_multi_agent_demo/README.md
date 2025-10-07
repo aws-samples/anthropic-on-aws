@@ -259,7 +259,12 @@ Modify `ANTHROPIC_STYLE` in the code to customize colors and layout.
 - [Anthropic API Documentation](https://docs.anthropic.com/)
 - [Memory Tool API](https://docs.anthropic.com/en/docs/build-with-claude/tool-use/memory-tool)
 - [Context Management Guide](https://docs.anthropic.com/en/docs/build-with-claude/context-editing)
-
+  
+### Contributors ###
+- [Johnathan Evans](https://www.linkedin.com/in/jonathan-evans-29b150133/)
+- [Jawhny Cooke](www.linkedin.com/in/jawhnycooke)
+- [Alex Notov](https://www.linkedin.com/in/zealoushacker/)
+- [Massimiliano Angelino](https://www.linkedin.com/in/massimiliano-angelino/)
 ## License
 
 MIT-0
