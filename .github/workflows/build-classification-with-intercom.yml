@@ -19,10 +19,10 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Install dependencies
         run: yarn install --check-files
-        working-directory: classification-with-intercom
+        working-directory: cdk-applications/classification-with-intercom
       - name: Build
         run: npx projen build
-        working-directory: classification-with-intercom
+        working-directory: cdk-applications/classification-with-intercom
       - name: Find mutations
         id: self_mutation
         run: "
@@ -32,7 +32,7 @@ jobs:
           \            git diff --staged --patch --exit-code > .repo.patch || echo \"self_mutation_happened=true\" >> $GITHUB_OUTPUT
 
           \          "
-        working-directory: classification-with-intercom
+        working-directory: cdk-applications/classification-with-intercom
       - name: Upload patch
         if: steps.self_mutation.outputs.self_mutation_happened
         uses: actions/upload-artifact@v4

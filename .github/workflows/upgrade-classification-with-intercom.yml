@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: "20"
       - run: yarn install --check-files --frozen-lockfile
-        working-directory: classification-with-intercom
+        working-directory: cdk-applications/classification-with-intercom
       - run: yarn upgrade
-        working-directory: classification-with-intercom
+        working-directory: cdk-applications/classification-with-intercom
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:

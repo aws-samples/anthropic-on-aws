@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: "20"
       - run: yarn install --check-files --frozen-lockfile
-        working-directory: complex-schema-tool-use/nextjs-typescript-example
+        working-directory: deployment-examples/nextjs-complex-schema
       - run: yarn upgrade
-        working-directory: complex-schema-tool-use/nextjs-typescript-example
+        working-directory: deployment-examples/nextjs-complex-schema
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:

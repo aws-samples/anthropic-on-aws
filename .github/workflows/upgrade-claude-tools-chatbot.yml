@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: "20"
       - run: yarn install --check-files --frozen-lockfile
-        working-directory: claude-tools-chatbot
+        working-directory: cdk-applications/claude-tools-chatbot
       - run: yarn upgrade
-        working-directory: claude-tools-chatbot
+        working-directory: cdk-applications/claude-tools-chatbot
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:

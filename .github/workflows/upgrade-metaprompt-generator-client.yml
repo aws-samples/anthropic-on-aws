@@ -20,9 +20,9 @@ jobs:
         with:
           node-version: "20"
       - run: yarn install --check-files --frozen-lockfile
-        working-directory: metaprompt-generator/metaprompt-generator-client
+        working-directory: cdk-applications/metaprompt-generator/metaprompt-generator-client
       - run: yarn upgrade
-        working-directory: metaprompt-generator/metaprompt-generator-client
+        working-directory: cdk-applications/metaprompt-generator/metaprompt-generator-client
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:

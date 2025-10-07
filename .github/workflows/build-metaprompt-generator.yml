@@ -19,10 +19,10 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Install dependencies
         run: yarn install --check-files
-        working-directory: metaprompt-generator
+        working-directory: cdk-applications/metaprompt-generator
       - name: Build
         run: npx projen build
-        working-directory: metaprompt-generator
+        working-directory: cdk-applications/metaprompt-generator
       - name: Find mutations
         id: self_mutation
         run: "
@@ -32,7 +32,7 @@ jobs:
           \            git diff --staged --patch --exit-code > .repo.patch || echo \"self_mutation_happened=true\" >> $GITHUB_OUTPUT
 
           \          "
-        working-directory: metaprompt-generator
+        working-directory: cdk-applications/metaprompt-generator
       - name: Upload patch
         if: steps.self_mutation.outputs.self_mutation_happened
         uses: actions/upload-artifact@v4
