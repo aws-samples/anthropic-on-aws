@@ -6,11 +6,11 @@ A multi-chat Streamlit interface demonstrating Claude Sonnet 4.5's memory capabi
 
 **Brand new beginner-friendly tutorial!** Learn Claude's Memory and Context Management features through hands-on practice:
 
-- **[60-Minute Tutorial](/docs/tutorials/memory-and-context-management.md)** - Complete hands-on guide
-- **[10-Minute Quick Start](/docs/tutorials/quick-start.md)** - Get running fast
-- **[Visual Guide](/docs/tutorials/visual-guide.md)** - See the architecture
-- **[Ready-to-Use Prompts](/prompts/)** - Organized prompt collection
-- **[Documentation Index](/docs/README.md)** - Full documentation hub
+- **[20-Minute Tutorial](./docs/tutorials/memory-and-context-management.md)** - Complete hands-on guide
+- **[10-Minute Quick Start](./docs/tutorials/quick-start.md)** - Get running fast
+- **[Visual Guide](./docs/tutorials/visual-guide.md)** - See the architecture
+- **[Ready-to-Use Prompts](./prompts/)** - Organized prompt collection
+- **[Documentation Index](./docs/README.md)** - Full documentation hub
 
 **Perfect for**: Beginners, learners, presenters, and anyone new to Claude's memory features!
 
@@ -244,13 +244,13 @@ Modify `ANTHROPIC_STYLE` in the code to customize colors and layout.
 ## Related Resources
 
 ### New Tutorials and Guides
-- **[Complete Tutorial](/docs/tutorials/memory-and-context-management.md)** - 60-minute hands-on guide (START HERE!)
-- **[Quick Start](/docs/tutorials/quick-start.md)** - 10-minute fast path
-- **[Visual Guide](/docs/tutorials/visual-guide.md)** - Architecture diagrams and flow
-- **[Live Demo Script](/live-demo-script.md)** - 5-minute presentation guide
-- **[Trigger Guide](/trigger-context-clearing-guide.md)** - Context management strategies
-- **[Prompts Collection](/prompts/)** - Ready-to-use prompts for all scenarios
-- **[Documentation Hub](/docs/README.md)** - Central documentation index
+- **[Complete Tutorial](./docs/tutorials/memory-and-context-management.md)** - 60-minute hands-on guide (START HERE!)
+- **[Quick Start](./docs/tutorials/quick-start.md)** - 10-minute fast path
+- **[Visual Guide](./docs/tutorials/visual-guide.md)** - Architecture diagrams and flow
+- **[Live Demo Script](live-demo-script.md)** - 5-minute presentation guide
+- **[Trigger Guide](trigger-context-clearing-guide.md)** - Context management strategies
+- **[Prompts Collection](./prompts/)** - Ready-to-use prompts for all scenarios
+- **[Documentation Hub](./docs/README.md)** - Central documentation index
 
 ### External Resources
 - [Anthropic Memory and Context Editing Cookbook](https://github.com/anthropics/claude-cookbooks/blob/main/tool_use/memory_cookbook.ipynb)
