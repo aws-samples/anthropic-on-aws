@@ -6,7 +6,7 @@ Welcome to the Claude Memory and Context Management documentation!
 
 Choose your path based on your goal:
 
-### I want to learn the fundamentals (60 minutes)
+### I want to learn the fundamentals (30-60 minutes)
 **Tutorial**: [Memory and Context Management](/docs/tutorials/memory-and-context-management.md)
 
 A hands-on, beginner-friendly tutorial that teaches:
