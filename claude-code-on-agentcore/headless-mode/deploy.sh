@@ -9,7 +9,7 @@
 
 set -e
 
-STACK_NAME="claude-code-agent-stack"
+STACK_NAME="claude-code-agent-memory-stack"
 REGION="${AWS_REGION:-us-east-1}"
 
 echo "╔════════════════════════════════════════════════════════════════╗"
@@ -35,9 +35,20 @@ aws cloudformation deploy \
 echo "✅ CloudFormation stack deployed"
 echo ""
 
-# Step 2: Get CloudFormation outputs
+# Step 2: Setup AgentCore Memory (if not exists)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 2: Retrieving stack outputs..."
+echo "Step 2: Setting up AgentCore Memory..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+python3 setup_memory.py create --region "$REGION" || {
+    echo "⚠️  Memory setup encountered an issue (may already exist)"
+}
+
+echo ""
+
+# Step 3: Get CloudFormation outputs
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Step 3: Retrieving stack outputs..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 ROLE_ARN=$(aws cloudformation describe-stacks \
@@ -70,9 +81,9 @@ echo "✅ ECR URI:        $ECR_URI"
 echo "✅ Account ID:     $ACCOUNT_ID"
 echo ""
 
-# Step 3: Setup Docker buildx
+# Step 4: Setup Docker buildx
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 3: Setting up Docker buildx..."
+echo "Step 4: Setting up Docker buildx..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if ! docker buildx ls | grep -q claude-code-builder; then
@@ -85,9 +96,9 @@ docker buildx inspect --bootstrap
 echo "✅ Docker buildx ready"
 echo ""
 
-# Step 4: Build and push Docker image
+# Step 5: Build and push Docker image
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 4: Building and pushing Docker image..."
+echo "Step 5: Building and pushing Docker image..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Login to ECR
@@ -111,9 +122,9 @@ docker buildx build \
 echo "✅ Image pushed to ECR"
 echo ""
 
-# Step 5: Deploy AgentCore runtime using Python script
+# Step 6: Deploy AgentCore runtime using Python script
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 5: Deploying AgentCore runtime..."
+echo "Step 6: Deploying AgentCore runtime..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Export variables for Python script to use
@@ -208,7 +219,7 @@ PYTHON_SCRIPT
 
 echo ""
 
-# Step 6: Display success message
+# Step 7: Display success message
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ DEPLOYMENT SUCCESSFUL!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
