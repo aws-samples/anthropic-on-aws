@@ -74,7 +74,7 @@ class ClaudeCodeMemoryManager:
         context_parts = []
         
         # Dynamic K based on context needs
-        k = max_turns or int(os.environ.get("MEMORY_MAX_TURNS", "3"))
+        k = max_turns or int(os.environ.get("MEMORY_MAX_TURNS", "10"))
         
         try:
             # Load short-term memory (recent conversation turns)
@@ -146,3 +146,130 @@ class ClaudeCodeMemoryManager:
     def get_memory_id(self) -> Optional[str]:
         """Get the memory resource ID"""
         return self.memory_id
+    
+    def get_conversation_history(self, actor_id: str, session_id: str, max_turns: int = 20) -> List[Dict]:
+        """
+        Get conversation history (short-term memory) for a specific session.
+        
+        Args:
+            actor_id: The actor/user ID
+            session_id: The session ID
+            max_turns: Maximum number of turns to retrieve (default: 20)
+            
+        Returns:
+            List of conversation turns
+        """
+        try:
+            turns = self.client.get_last_k_turns(
+                memory_id=self.memory_id,
+                actor_id=actor_id,
+                session_id=session_id,
+                k=max_turns
+            )
+            logger.info(f"Retrieved {len(turns) if turns else 0} conversation turns for session {session_id}")
+            return turns or []
+        except Exception as e:
+            logger.error(f"Failed to get conversation history: {e}")
+            return []
+    
+    def get_long_term_memories(self, actor_id: str, query: str = "coding knowledge", top_k: int = 10) -> List[Dict]:
+        """
+        Get long-term memories (extracted facts, preferences, summaries) for an actor.
+        
+        Args:
+            actor_id: The actor/user ID
+            query: Search query for relevant memories
+            top_k: Maximum number of memories to retrieve
+            
+        Returns:
+            List of memory records
+        """
+        all_memories = []
+        
+        # Query different namespaces for comprehensive memory retrieval
+        namespaces = [
+            f"coding/user/{actor_id}/facts",        # SEMANTIC - factual information
+            f"coding/user/{actor_id}/preferences",  # USER_PREFERENCE - user preferences
+        ]
+        
+        for namespace in namespaces:
+            try:
+                memories = self.client.retrieve_memories(
+                    memory_id=self.memory_id,
+                    namespace=namespace,
+                    query=query,
+                    top_k=top_k
+                )
+                
+                if memories:
+                    for memory in memories:
+                        memory['namespace'] = namespace  # Add namespace for context
+                        all_memories.append(memory)
+                    logger.info(f"Retrieved {len(memories)} memories from namespace: {namespace}")
+                    
+            except Exception as e:
+                logger.warning(f"Could not retrieve memories from namespace {namespace}: {e}")
+        
+        return all_memories
+    
+    def get_session_summaries(self, actor_id: str) -> List[Dict]:
+        """
+        Get conversation summaries for all sessions of an actor.
+        Uses list_memory_records to get summaries from session-specific namespaces.
+        
+        Args:
+            actor_id: The actor/user ID
+            
+        Returns:
+            List of summary records with session information
+        """
+        summaries = []
+        
+        try:
+            # Use boto3 client directly for list_memory_records
+            bedrock_client = boto3.client('bedrock-agentcore', region_name=self.region)
+            
+            # First, list all sessions for this actor
+            try:
+                sessions_response = bedrock_client.list_sessions(
+                    memoryId=self.memory_id,
+                    actorId=actor_id,
+                    maxResults=10
+                )
+                
+                # For each session, get its summaries
+                for session_summary in sessions_response.get('sessionSummaries', []):
+                    session_id = session_summary.get('sessionId')
+                    
+                    if session_id:
+                        # Get summaries for this specific session
+                        namespace = f"coding/user/{actor_id}/{session_id}"
+                        
+                        try:
+                            records_response = bedrock_client.list_memory_records(
+                                memoryId=self.memory_id,
+                                namespace=namespace,
+                                maxResults=10
+                            )
+                            
+                            for record in records_response.get('memoryRecordSummaries', []):
+                                summary_data = {
+                                    'session_id': session_id,
+                                    'namespace': namespace,
+                                    'content': record.get('content', {}),
+                                    'created_at': record.get('createdAt'),
+                                }
+                                summaries.append(summary_data)
+                                
+                            logger.info(f"Retrieved {len(records_response.get('memoryRecordSummaries', []))} summaries for session {session_id}")
+                            
+                        except Exception as e:
+                            logger.warning(f"Could not retrieve summaries for session {session_id}: {e}")
+                
+            except Exception as e:
+                logger.warning(f"Could not list sessions: {e}")
+                
+        except Exception as e:
+            logger.error(f"Failed to get session summaries: {e}")
+        
+        return summaries

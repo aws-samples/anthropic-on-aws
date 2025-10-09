@@ -71,12 +71,6 @@ def view_memories(actor_id):
             
             # Skip namespaces with unresolved placeholders (like {sessionId})
             if "{" in namespace or "}" in namespace:
-                print(f"📁 {context_type.upper()} Memories")
-                print(f"   Namespace: {namespace_template}")
-                print(f"   ⚠️  Skipped: Contains session-specific placeholder")
-                print("")
-                print("─" * 70)
-                print("")
                 continue
             
             print(f"📁 {context_type.upper()} Memories")
@@ -113,6 +107,68 @@ def view_memories(actor_id):
             print("")
             print("─" * 70)
             print("")
+        
+        # Get session summaries using list_memory_records
+        print("📋 CONVERSATION SUMMARIES")
+        print("")
+        
+        try:
+            bedrock_client = boto3.client('bedrock-agentcore', region_name=region)
+            
+            # List all sessions for this actor
+            sessions_response = bedrock_client.list_sessions(
+                memoryId=memory_id,
+                actorId=actor_id,
+                maxResults=10
+            )
+            
+            summaries_found = 0
+            for session_summary in sessions_response.get('sessionSummaries', []):
+                session_id = session_summary.get('sessionId')
+                
+                if session_id:
+                    # Get summaries for this specific session
+                    namespace = f"coding/user/{actor_id}/{session_id}"
+                    
+                    try:
+                        records_response = bedrock_client.list_memory_records(
+                            memoryId=memory_id,
+                            namespace=namespace,
+                            maxResults=10
+                        )
+                        
+                        for record in records_response.get('memoryRecordSummaries', []):
+                            summaries_found += 1
+                            content = record.get('content', {})
+                            
+                            if isinstance(content, dict):
+                                text = content.get('text', '').strip()
+                            else:
+                                text = str(content)
+                            
+                            if text:
+                                session_short = session_id[:8]
+                                print(f"   {summaries_found}. Session: {session_short}...")
+                                # Truncate long summaries for display
+                                display_text = text if len(text) <= 200 else text[:200] + "..."
+                                print(f"      {display_text}")
+                                print("")
+                    
+                    except Exception as e:
+                        pass  # Skip sessions with no summaries
+            
+            if summaries_found > 0:
+                print(f"   Total: {summaries_found} summaries found")
+            else:
+                print("   No summaries found yet.")
+                print("   💡 Summaries are extracted automatically after conversations.")
+            
+        except Exception as e:
+            print(f"   ⚠️  Error retrieving summaries: {e}")
+        
+        print("")
+        print("─" * 70)
+        print("")
         
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("")
