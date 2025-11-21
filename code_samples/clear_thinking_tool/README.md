@@ -77,5 +77,5 @@ This shows that old thinking blocks are being automatically removed, reducing th
 
 ## Documentation
 
-- AWS Bedrock Tool Use: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-tool-use.html
-- Anthropic Context Editing: https://docs.anthropic.com/en/docs/build-with-claude/context-editing
+- [Amazon Bedrock Tool Use](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-tool-use.html)
+- [Anthropic Context Editing](https://docs.anthropic.com/en/docs/build-with-claude/context-editing)
