@@ -90,6 +90,23 @@ Resources:
                   - 'arn:aws:bedrock:*::foundation-model/*'
                   - 'arn:aws:bedrock:*:*:inference-profile/*'
 
+        - PolicyName: AgentCoreMemoryAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: MemoryOperations
+                Effect: Allow
+                Action:
+                  - 'bedrock-agentcore:CreateMemory'
+                  - 'bedrock-agentcore:GetMemory'
+                  - 'bedrock-agentcore:ListMemories'
+                  - 'bedrock-agentcore:DeleteMemory'
+                  - 'bedrock-agentcore:CreateEvent'
+                  - 'bedrock-agentcore:GetLastKTurns'
+                  - 'bedrock-agentcore:QueryMemory'
+                  - 'bedrock-agentcore:ListMemoryRecords'
+                Resource: '*'
+
         - PolicyName: S3Access
           PolicyDocument:
             Version: '2012-10-17'
@@ -157,6 +174,16 @@ Resources:
                   - 'ecr:GetDownloadUrlForLayer'
                   - 'ecr:BatchGetImage'
                 Resource: '*'
+
+        - PolicyName: SSMAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssm:GetParameter'
+                  - 'ssm:PutParameter'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/claude-code-agent/*'
 
       Tags:
         - Key: Name
