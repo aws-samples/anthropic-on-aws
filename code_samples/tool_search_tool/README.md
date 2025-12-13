@@ -58,11 +58,10 @@ Tools without `defer_loading` (or with `defer_loading: false`) are always visibl
 ## Running the Example
 
 1. Configure your AWS credentials:  
-
-```bash
-export AWS_PROFILE=your-profile
-export AWS_DEFAULT_REGION=us-west-2
-```
+   ```bash
+   export AWS_PROFILE=your-profile
+   export AWS_DEFAULT_REGION=us-west-2
+   ```
 
 2. Run the script:
    ```
