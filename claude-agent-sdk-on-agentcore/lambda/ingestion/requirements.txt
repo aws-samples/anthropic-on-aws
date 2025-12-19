@@ -1,0 +1,6 @@
+# Ingestion Lambda Dependencies
+#
+# Note: boto3 and botocore are pre-installed in AWS Lambda Python runtime
+# Listed here for local testing and version reference
+
+boto3>=1.35.0
