@@ -10,6 +10,8 @@ dependencies = [
     "boto3>=1.28.0",
     "python-json-logger>=2.0.7",
     "claude-agent-sdk",
+    "bedrock-agentcore>=0.1.7",
+    "streamlit>=1.28.0",
 ]
 
 [build-system]

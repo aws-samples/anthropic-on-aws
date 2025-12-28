@@ -9,7 +9,7 @@
 
 set -e
 
-STACK_NAME="claude-code-agent-stack"
+STACK_NAME="claude-code-agent-memory-stack"
 REGION="${AWS_REGION:-us-east-1}"
 
 echo "╔════════════════════════════════════════════════════════════════╗"
@@ -35,9 +35,133 @@ aws cloudformation deploy \
 echo "✅ CloudFormation stack deployed"
 echo ""
 
-# Step 2: Get CloudFormation outputs
+# Step 2: Setup AgentCore Memory (if not exists)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 2: Retrieving stack outputs..."
+echo "Step 2: Setting up AgentCore Memory..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+SSM_MEMORY_PARAM="/claude-code-agent/memory-id"
+MEMORY_NAME="ClaudeCodeAgentMemory"
+
+# Check if memory ID exists in SSM
+EXISTING_MEMORY_ID=$(aws ssm get-parameter --name "$SSM_MEMORY_PARAM" --region "$REGION" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+
+if [ -n "$EXISTING_MEMORY_ID" ]; then
+    echo "📖 Found existing memory ID in SSM: $EXISTING_MEMORY_ID"
+    
+    # Verify memory still exists in AgentCore
+    MEMORY_EXISTS=$(aws bedrock-agentcore list-memories --region "$REGION" --query "memories[?id=='$EXISTING_MEMORY_ID'].id" --output text 2>/dev/null || echo "")
+    
+    if [ -n "$MEMORY_EXISTS" ]; then
+        echo "✅ Memory is valid and active"
+        MEMORY_ID="$EXISTING_MEMORY_ID"
+    else
+        echo "⚠️  Memory ID in SSM not found in AgentCore, will create new one"
+        EXISTING_MEMORY_ID=""
+    fi
+fi
+
+# If no valid memory found, create or find one
+if [ -z "$EXISTING_MEMORY_ID" ]; then
+    echo "🔄 Checking for existing memory by name..."
+    
+    # Try to find memory by name
+    FOUND_MEMORY_ID=$(aws bedrock-agentcore list-memories --region "$REGION" --query "memories[?name=='$MEMORY_NAME'].id | [0]" --output text 2>/dev/null || echo "")
+    
+    if [ -n "$FOUND_MEMORY_ID" ] && [ "$FOUND_MEMORY_ID" != "None" ]; then
+        echo "📋 Found existing memory: $FOUND_MEMORY_ID"
+        MEMORY_ID="$FOUND_MEMORY_ID"
+    else
+        echo "🔄 Creating new memory resource..."
+        
+        # Create memory using Python inline script (simpler than pure bash for JSON)
+        MEMORY_ID=$(python3 << PYTHON_MEMORY_SCRIPT
+import boto3
+import sys
+from bedrock_agentcore.memory import MemoryClient
+from bedrock_agentcore.memory.constants import StrategyType
+
+region = "$REGION"
+memory_name = "$MEMORY_NAME"
+
+try:
+    memory_client = MemoryClient(region_name=region)
+    
+    strategies = [
+        {
+            StrategyType.SEMANTIC.value: {
+                "name": "fact_extractor",
+                "description": "Extracts and stores factual information about coding patterns",
+                "namespaces": ["coding/user/{actorId}/facts"]
+            }
+        },
+        {
+            StrategyType.SUMMARY.value: {
+                "name": "conversation_summary",
+                "description": "Captures summaries of coding conversations",
+                "namespaces": ["coding/user/{actorId}/{sessionId}"]
+            }
+        },
+        {
+            StrategyType.USER_PREFERENCE.value: {
+                "name": "user_preferences",
+                "description": "Captures user coding preferences",
+                "namespaces": ["coding/user/{actorId}/preferences"]
+            }
+        }
+    ]
+    
+    memory = memory_client.create_memory_and_wait(
+        name=memory_name,
+        strategies=strategies,
+        description="Memory for Claude Code autonomous agent",
+        event_expiry_days=30,
+    )
+    
+    print(memory['id'])
+    
+except Exception as e:
+    if "already exists" in str(e).lower():
+        # Memory exists, find it
+        memories = memory_client.list_memories()
+        memory_id = next((m['id'] for m in memories if m.get('name') == memory_name), None)
+        if memory_id:
+            print(memory_id)
+        else:
+            sys.stderr.write(f"Error: Could not find memory\n")
+            sys.exit(1)
+    else:
+        sys.stderr.write(f"Error: {e}\n")
+        sys.exit(1)
+PYTHON_MEMORY_SCRIPT
+)
+        
+        if [ $? -eq 0 ] && [ -n "$MEMORY_ID" ]; then
+            echo "✅ Memory created successfully: $MEMORY_ID"
+        else
+            echo "❌ Failed to create memory"
+            exit 1
+        fi
+    fi
+    
+    # Store memory ID in SSM
+    aws ssm put-parameter \
+        --name "$SSM_MEMORY_PARAM" \
+        --value "$MEMORY_ID" \
+        --type String \
+        --overwrite \
+        --description "Memory ID for Claude Code Agent" \
+        --region "$REGION" > /dev/null
+    
+    echo "🔐 Stored memory ID in SSM: $SSM_MEMORY_PARAM"
+fi
+
+echo "✅ Memory setup complete: $MEMORY_ID"
+echo ""
+
+# Step 3: Get CloudFormation outputs
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Step 3: Retrieving stack outputs..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 ROLE_ARN=$(aws cloudformation describe-stacks \
@@ -70,9 +194,9 @@ echo "✅ ECR URI:        $ECR_URI"
 echo "✅ Account ID:     $ACCOUNT_ID"
 echo ""
 
-# Step 3: Setup Docker buildx
+# Step 4: Setup Docker buildx
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 3: Setting up Docker buildx..."
+echo "Step 4: Setting up Docker buildx..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if ! docker buildx ls | grep -q claude-code-builder; then
@@ -85,9 +209,9 @@ docker buildx inspect --bootstrap
 echo "✅ Docker buildx ready"
 echo ""
 
-# Step 4: Build and push Docker image
+# Step 5: Build and push Docker image
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 4: Building and pushing Docker image..."
+echo "Step 5: Building and pushing Docker image..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Login to ECR
@@ -111,9 +235,9 @@ docker buildx build \
 echo "✅ Image pushed to ECR"
 echo ""
 
-# Step 5: Deploy AgentCore runtime using Python script
+# Step 6: Deploy AgentCore runtime using Python script
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Step 5: Deploying AgentCore runtime..."
+echo "Step 6: Deploying AgentCore runtime..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Export variables for Python script to use
@@ -208,7 +332,7 @@ PYTHON_SCRIPT
 
 echo ""
 
-# Step 6: Display success message
+# Step 7: Display success message
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ DEPLOYMENT SUCCESSFUL!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
