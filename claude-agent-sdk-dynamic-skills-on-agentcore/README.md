@@ -4,11 +4,14 @@ This sample demonstrates **the architecture for dynamic skill management** using
 
 ## What Problem Does This Solve?
 
-Existing AgentCore samples bundle skills statically in containers, requiring rebuilds for capability changes. This sample solves that limitation by:
+**AgentCore Runtime Challenge**: AgentCore does not provide persistent storage between container lifecycles. Traditional approaches require rebuilding containers to update agent capabilities.
 
-- **Dynamic Skill Loading**: Skills loaded from S3 at runtime, not build time
-- **Centralized Management**: Multiple agent instances share the same skill repository
-- **Zero-Downtime Updates**: Update skills in S3 without rebuilding containers
+This sample solves these limitations by:
+
+- **Dynamic Skill Loading**: Skills loaded from S3 at container startup (once per container lifecycle, not per request)
+- **Persistent Storage Workaround**: S3 acts as the persistent skill repository, bypassing AgentCore's ephemeral storage
+- **Centralized Management**: Multiple agent instances share the same S3 skill repository
+- **Zero-Downtime Updates**: Update skills in S3 → AgentCore spins up new containers → fresh skills loaded
 - **Skill Modularity**: Reusable skills across different agent deployments
 
 ## Architecture
@@ -51,10 +54,17 @@ Existing AgentCore samples bundle skills statically in containers, requiring reb
 **Note**: The included skills provide **conceptual frameworks and prompting strategies** that guide Claude's responses. This architecture can be extended with custom implementations, APIs, and specialized tools to create production-ready agents.
 
 **Skill Loading Process**:
-1. Container starts → `startup.sh` executes
+1. Container starts → `startup.sh` executes (once per container lifecycle)
 2. S3 skill loader downloads skills from S3 to `.claude/skills/`
 3. Claude Agent SDK discovers skills in standard directory structure
-4. Agent ready with dynamic capabilities loaded from S3
+4. Container serves multiple requests using the same loaded skills
+5. When container is replaced → new container repeats steps 1-3 with fresh S3 download
+
+**Important**: Skills are loaded **once per container lifecycle**, not per request. This means:
+- ✅ Fast request handling (no S3 download per request)
+- ✅ Minimal S3 API calls (one download per container startup)
+- ✅ Skills persist across all requests handled by that container
+- ✅ New containers automatically get updated skills from S3
 
 ## Prerequisites
 
@@ -84,7 +94,7 @@ aws s3 mb s3://$BUCKET_NAME
 mkdir -p skills/code-analysis skills/web-research skills/data-fetcher
 
 # Create code-analysis skill
-cat > skills/code-analysis/skill.md << 'EOF'
+cat > skills/code-analysis/SKILL.md << 'EOF'
 ---
 description: "Advanced code analysis for security vulnerabilities and best practices"
 tags: ["security", "analysis", "code-review"]
@@ -102,7 +112,7 @@ tags: ["security", "analysis", "code-review"]
 EOF
 
 # Create web-research skill
-cat > skills/web-research/skill.md << 'EOF'
+cat > skills/web-research/SKILL.md << 'EOF'
 ---
 description: "Web research and information synthesis with citations"
 tags: ["research", "web", "synthesis"]
@@ -118,7 +128,7 @@ tags: ["research", "web", "synthesis"]
 EOF
 
 # Create data-fetcher skill
-cat > skills/data-fetcher/skill.md << 'EOF'
+cat > skills/data-fetcher/SKILL.md << 'EOF'
 ---
 description: "Multi-source data retrieval and processing"
 tags: ["data", "api", "database", "files"]
@@ -250,27 +260,27 @@ The setup process creates an S3 bucket with sample skills:
 s3://your-skills-bucket/
 └── skills/
     ├── code-analysis/
-    │   ├── skill.md          # Skill description and instructions
+    │   ├── SKILL.md          # Skill description and instructions
     │   └── implementation.py # Skill execution logic (advanced version)
     ├── web-research/
-    │   ├── skill.md
+    │   ├── SKILL.md
     │   └── implementation.py
     ├── data-fetcher/
-    │   ├── skill.md
+    │   ├── SKILL.md
     │   └── implementation.py
     ├── document-generator/
-    │   ├── skill.md
+    │   ├── SKILL.md
     │   └── implementation.py
     ├── report-generator/
-    │   ├── skill.md
+    │   ├── SKILL.md
     │   └── implementation.py
     └── data-analysis-workflow/
-        ├── skill.md          # Orchestrator skill
+        ├── SKILL.md          # Orchestrator skill
         └── orchestrator.py   # Coordinates other skills
 ```
 
 Each skill has:
-- **skill.md**: YAML frontmatter + description (for Claude SDK discovery)
+- **SKILL.md**: YAML frontmatter + description (for Claude SDK discovery)
 - **implementation.py**: Python execution logic (for advanced workflows)
 
 ## Configuration
@@ -354,7 +364,7 @@ async for message in query(prompt=prompt, options=options):
 
 1. **Update skills in S3**:
    ```bash
-   aws s3 cp new-skill.md s3://your-bucket/skills/new-skill/skill.md
+   aws s3 cp new-skill.md s3://your-bucket/skills/new-skill/SKILL.md
    ```
 
 2. **Restart containers** (AgentCore handles this):
@@ -368,7 +378,7 @@ async for message in query(prompt=prompt, options=options):
 
 1. Create skill directory in S3:
    ```bash
-   aws s3 cp skill.md s3://your-bucket/skills/my-new-skill/skill.md
+   aws s3 cp SKILL.md s3://your-bucket/skills/my-new-skill/SKILL.md
    aws s3 cp implementation.py s3://your-bucket/skills/my-new-skill/implementation.py
    ```
 
@@ -383,8 +393,8 @@ async for message in query(prompt=prompt, options=options):
 
 **Cost Optimization**:
 - Use `--local-build` to avoid CodeBuild charges
-- Skills cached in container memory during session
-- S3 requests minimized (one-time loading per container start)
+- Skills cached in container memory during container lifetime
+- S3 requests minimized (one-time loading per container startup)
 
 ## Cleanup
 
