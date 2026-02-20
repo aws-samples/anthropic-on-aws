@@ -216,8 +216,8 @@ agentcore launch --local-build
 agentcore status
 
 # Test 1: Verify Dynamic Skill Loading
-agentcore invoke '{"prompt": "What skills do you have loaded from S3?"}'
-# Expected: Agent lists code-analysis, web-research, and data-fetcher skills loaded from S3
+agentcore invoke '{"prompt": "What skills do you have?"}'
+# Expected: Agent lists code-analysis, web-research, and data-fetcher skills
 
 # Test 2: Skill-Guided Code Review
 agentcore invoke '{"prompt": "Using your code-analysis skill, review this Python function: def login(user, password): if user == \"admin\" and password == \"admin123\": return True"}'
