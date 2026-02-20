@@ -236,21 +236,29 @@ agentcore invoke '{"prompt": "Using your web-research skill approach, explain be
 
 ## Implementation Options
 
-This sample provides **two implementation approaches**:
+This sample provides **two implementation approaches** to demonstrate the concept at different complexity levels:
 
-### Option 1: Simple Claude SDK (Recommended)
+### Option 1: Simple Claude SDK (Recommended for Learning)
 **File**: `claude_sdk_bedrock.py`
 - Direct Bedrock API integration
 - Skills injected into system prompt
 - ~60 lines of code, easy to understand
 - Perfect for learning the concepts
+- **Use when**: Prototyping, learning, or building simple internal tools
 
-### Option 2: Advanced Claude Agent SDK
+**Why this exists**: Demonstrates the core concept without complexity. You can read the entire implementation in 5 minutes and understand exactly how S3 skills work. Great for proof-of-concepts and educational purposes.
+
+### Option 2: Advanced Claude Agent SDK (Recommended for Production)
 **File**: `agent/agent.py`
 - Native Claude Agent SDK integration
 - True skill discovery and assembly
 - Async/await patterns, production-ready
 - Advanced error handling and deduplication
+- **Use when**: Building production systems or need advanced SDK features
+
+**Why this exists**: Shows production-ready patterns with proper error handling, async operations, and native SDK integration. Use this as a template for real-world deployments where reliability and maintainability matter.
+
+**Both approaches achieve the same goal** (dynamic S3 skill loading), just at different complexity levels. Start with Option 1 to understand the concept, then move to Option 2 for production deployments.
 
 ## Skills Repository Structure
 
@@ -410,6 +418,38 @@ aws s3 rb s3://$SKILLS_S3_BUCKET
 # Clean up local files
 rm -rf skills/ .env
 ```
+
+## Limitations and Considerations
+
+### Container Lifecycle
+- **Automatic termination**: Containers terminate after 15 minutes idle or 8 hours max lifetime (configurable via lifecycle settings)
+- **Predictable replacement**: AgentCore replaces containers when idle timeout or max lifetime is reached, triggering fresh S3 downloads
+- **Cold start on replacement**: Each new container must download skills from S3 (time varies based on skill size and S3 latency)
+- **Skills loaded once per container**: Not per request. To update skills, AgentCore must provision new containers
+
+### S3 Dependencies
+- **S3 availability required**: Container startup fails if S3 is unavailable
+- **Network latency**: S3 download time depends on region, skill size, and network conditions
+- **S3 costs**: Minimal but consider GET request costs for frequent container replacements
+
+### Skill Management
+- **No versioning**: Skills are overwritten in S3. Consider using S3 versioning for rollback capability
+- **No validation**: Skills are not validated before loading. Malformed skills may cause runtime errors
+- **Skill size limits**: Large skills increase container startup time
+
+### Resource Constraints
+- **Ephemeral storage**: Skills stored in container filesystem, lost when container terminates
+- **No persistent storage**: AgentCore sessions are ephemeral - data persists only for session duration
+- **Container resources**: Subject to AgentCore Runtime resource limits (configurable per deployment)
+
+### Best Practices
+- ✅ Keep skills small and focused (< 100KB per skill recommended)
+- ✅ Use S3 versioning for skill rollback capability
+- ✅ Monitor S3 GET request costs in high-traffic scenarios
+- ✅ Test skill updates in non-production environments first
+- ✅ Include skill validation in your CI/CD pipeline
+- ✅ Configure lifecycle settings based on your use case (idle timeout, max lifetime)
+- ✅ Verify model availability in your AWS region before deployment
 
 ## Security Considerations
 
