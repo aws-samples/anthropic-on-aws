@@ -50,7 +50,7 @@ def load_skills():
                     # Download skill description
                     skill_obj = s3_client.get_object(
                         Bucket=SKILLS_S3_BUCKET,
-                        Key=f'skills/{skill_name}/skill.md'
+                        Key=f'skills/{skill_name}/SKILL.md'
                     )
                     skill_content = skill_obj['Body'].read().decode('utf-8')
 

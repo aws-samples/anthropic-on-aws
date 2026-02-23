@@ -92,8 +92,8 @@ class ClaudeSkillLoader:
         os.makedirs(skill_dir, exist_ok=True)
 
         try:
-            # Download main skill file (skill.md)
-            skill_key = f'skills/{skill_name}/skill.md'
+            # Download main skill file (SKILL.md)
+            skill_key = f'skills/{skill_name}/SKILL.md'
             local_skill_path = os.path.join(skill_dir, 'SKILL.md')
 
             self.s3_client.download_file(
@@ -117,7 +117,7 @@ class ClaudeSkillLoader:
                 )
                 print(f"  📥 Downloaded skill: {skill_name} (with implementation)")
 
-            except self.s3_client.exceptions.NoSuchKey:
+            except Exception:
                 # Implementation file is optional
                 print(f"  📥 Downloaded skill: {skill_name} (description only)")
 

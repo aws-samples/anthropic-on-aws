@@ -1,15 +1,15 @@
 #!/bin/bash
-"""
-Container Startup Script for Claude Agent with Dynamic Skills
-
-This script orchestrates the container startup process:
-1. Load skills from S3 into .claude/skills/ directory
-2. Verify skills are properly formatted
-3. Start the Claude agent with loaded skills
-
-Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-SPDX-License-Identifier: MIT-0
-"""
+#
+# Container Startup Script for Claude Agent with Dynamic Skills
+#
+# This script orchestrates the container startup process:
+# 1. Load skills from S3 into .claude/skills/ directory
+# 2. Verify skills are properly formatted
+# 3. Start the Claude agent with loaded skills
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+#
 
 set -e  # Exit on any error
 
