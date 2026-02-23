@@ -1,5 +1,5 @@
 # Claude Agent SDK with Dynamic Skills on AgentCore Runtime
-# Multi-stage Docker build for production deployment
+# Production-ready Docker build with minimal base image
 #
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0

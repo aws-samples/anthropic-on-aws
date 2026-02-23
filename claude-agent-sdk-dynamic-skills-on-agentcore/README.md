@@ -51,7 +51,7 @@ This sample solves these limitations by:
 - **Web Research**: Shows information synthesis patterns with citation tracking
 - **Data Processing**: Illustrates multi-source data handling approaches
 
-**Note**: The included skills provide **conceptual frameworks and prompting strategies** that guide Claude's responses. This architecture can be extended with custom implementations, APIs, and specialized tools to create production-ready agents.
+**Note**: The included skills provide **conceptual frameworks and prompting strategies** that guide Claude's responses. The `implementation.py` files in the sample skills are structural placeholders showing where custom code would go - the Claude Agent SDK primarily uses the `SKILL.md` files as context. This architecture can be extended with custom implementations, APIs, and specialized tools to create production-ready agents.
 
 **Skill Loading Process**:
 1. Container starts → `startup.sh` executes (once per container lifecycle)
@@ -103,10 +103,10 @@ tags: ["security", "analysis", "code-review"]
 # Code Analysis Skill
 
 **What This Skill Does:**
-- **Security Analysis**: Detects OWASP Top 10 vulnerabilities (SQL injection, XSS, CSRF, insecure authentication, etc.)
-- **Performance Review**: Identifies N+1 queries, inefficient algorithms, memory leaks, and bottlenecks
-- **Code Quality**: Checks naming conventions, code complexity, maintainability metrics
-- **Dependency Audit**: Scans for known CVEs in third-party libraries
+- **Security Analysis**: Guides Claude to analyze code for OWASP Top 10 vulnerabilities (SQL injection, XSS, CSRF, insecure authentication, etc.)
+- **Performance Review**: Guides Claude to identify N+1 queries, inefficient algorithms, memory leaks, and bottlenecks
+- **Code Quality**: Guides Claude to check naming conventions, code complexity, maintainability metrics
+- **Dependency Audit**: Guides Claude to consider known CVE risks in third-party libraries
 
 **Supported Languages:** Python, JavaScript/TypeScript, Java, Go, C/C++, Rust
 EOF
@@ -121,10 +121,10 @@ tags: ["research", "web", "synthesis"]
 # Web Research Skill
 
 **What This Skill Does:**
-- **Multi-Source Research**: Gathers information from documentation, forums, GitHub, Stack Overflow, and technical blogs
-- **Fact Verification**: Cross-references information across multiple sources to ensure accuracy
-- **Synthesis**: Combines information from different sources into coherent, comprehensive summaries
-- **Citation Tracking**: Maintains source links and attribution for all research findings
+- **Multi-Source Research**: Guides Claude to synthesize information from documentation, forums, GitHub, Stack Overflow, and technical blogs
+- **Fact Verification**: Guides Claude to cross-reference information across multiple sources to ensure accuracy
+- **Synthesis**: Guides Claude to combine information from different sources into coherent, comprehensive summaries
+- **Citation Tracking**: Guides Claude to maintain source links and attribution for all research findings
 EOF
 
 # Create data-fetcher skill
@@ -137,10 +137,10 @@ tags: ["data", "api", "database", "files"]
 # Data Fetcher Skill
 
 **What This Skill Does:**
-- **API Integration**: Connects to REST APIs with OAuth, API keys, or basic auth
-- **Database Queries**: Retrieves data from PostgreSQL, MySQL, MongoDB, DynamoDB
-- **File Processing**: Parses CSV, JSON, XML, Excel files from local or cloud storage
-- **Cloud Storage**: Accesses S3, Google Cloud Storage, Azure Blob for data files
+- **API Integration**: Provides framework for REST API integration patterns with OAuth, API keys, or basic auth
+- **Database Queries**: Guides Claude on data retrieval patterns from PostgreSQL, MySQL, MongoDB, DynamoDB
+- **File Processing**: Guides Claude to parse CSV, JSON, XML, Excel files from local or cloud storage
+- **Cloud Storage**: Provides patterns for accessing S3, Google Cloud Storage, Azure Blob for data files
 EOF
 
 # Upload skills to S3
@@ -456,7 +456,7 @@ rm -rf skills/ .env
 - **IAM Least Privilege**: Execution role has minimal S3 and Bedrock permissions
 - **VPC Isolation**: Can be deployed in private VPC (configure AgentCore network settings)
 - **Skill Validation**: Skills downloaded from trusted S3 bucket only
-- **Container Security**: Multi-stage Docker build with minimal surface area
+- **Container Security**: Minimal base image (python:3.12-slim) with reduced attack surface
 
 ## Comparison with Existing AgentCore Examples
 
