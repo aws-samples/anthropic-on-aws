@@ -11,3 +11,6 @@ headless-mode/downloads/
 
 # Invocation responses
 headless-mode/response*.json
+
+# Q CLI session files
+qsession
