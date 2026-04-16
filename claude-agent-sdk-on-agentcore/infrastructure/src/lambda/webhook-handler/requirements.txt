@@ -1,0 +1,5 @@
+# Lambda function dependencies
+# boto3 is provided by Lambda runtime (no need to include)
+
+# No additional dependencies required for webhook handler
+# All required libraries (hmac, hashlib, json) are part of Python standard library

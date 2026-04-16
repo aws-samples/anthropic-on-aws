@@ -1,0 +1,16 @@
+# Claude Agent SDK with Dynamic Skills - Python Dependencies
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Core AgentCore Runtime SDK
+bedrock-agentcore>=0.1.0
+
+# Claude SDK with Bedrock support
+anthropic[bedrock]>=0.40.0
+
+# AWS SDK for S3 access
+boto3>=1.26.0
+
+# YAML parsing for skill metadata
+pyyaml>=6.0

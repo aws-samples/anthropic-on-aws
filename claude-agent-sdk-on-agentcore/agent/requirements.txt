@@ -1,0 +1,34 @@
+# Agent Python Dependencies
+# For AWS Bedrock AgentCore with Claude Agent SDK
+
+# Core agent framework
+claude-agent-sdk>=0.1.0
+
+# Strands multi-agent orchestration framework
+# https://strandsagents.com/latest/documentation/docs/user-guide/quickstart/python/
+strands-agents>=1.0.0
+strands-agents-tools>=0.2.17  # Includes workflow tool for async orchestration
+
+# FastAPI framework for HTTP server
+fastapi>=0.109.0
+
+# Uvicorn ASGI server
+uvicorn[standard]>=0.27.0
+
+# AWS SDK for Secrets Manager, Bedrock, etc.
+boto3>=1.34.0
+
+# AWS Bedrock AgentCore Memory SDK
+bedrock-agentcore>=0.1.0
+bedrock-agentcore-starter-toolkit>=0.1.0
+
+# HTTP client for GitHub API
+httpx>=0.26.0
+
+# JSON parsing and validation (required by FastAPI)
+pydantic>=2.5.0
+
+# AWS OpenTelemetry auto-instrumentation
+aws-opentelemetry-distro>=0.10.1
+opentelemetry-instrumentation-fastapi>=0.45b0
+opentelemetry-exporter-otlp>=1.22.0

@@ -1,0 +1,20 @@
+# Compiled output
+*.js
+!jest.config.js
+*.d.ts
+dist/
+node_modules/
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# CDK context (CRITICAL - contains account-specific data)
+cdk.context.json
+
+# Environment variables
+.env
+
+# Build artifacts
+*.log
+.DS_Store
