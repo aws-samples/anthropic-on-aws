@@ -42,7 +42,7 @@ COPY --chown=appuser:appuser pyproject.toml uv.lock* ./
 RUN uv sync --frozen --no-cache
 
 # Copy application code
-COPY --chown=appuser:appuser agent.py ./
+COPY --chown=appuser:appuser agent.py memory_manager.py ./
 
 # Create workspace directory for generated files
 RUN mkdir -p /app/workspace && chown -R appuser:appuser /app
