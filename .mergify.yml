@@ -3,14 +3,13 @@
 queue_rules:
   - name: default
     update_method: merge
-    conditions:
+    merge_conditions:
       - "#approved-reviews-by>=1"
       - -label~=(do-not-merge)
       - status-success=build
 pull_request_rules:
   - name: Automatic merge on approval and successful build
     actions:
-      delete_head_branch: {}
       queue:
         method: squash
         name: default
