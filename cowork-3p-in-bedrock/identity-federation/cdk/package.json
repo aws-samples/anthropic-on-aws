@@ -1,0 +1,29 @@
+{
+  "name": "cowork-federation-cdk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CDK app that provisions OIDC federation to Bedrock for Claude Cowork 3P",
+  "license": "MIT-0",
+  "bin": {
+    "cowork-federation": "bin/cowork-federation.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "destroy": "cdk destroy --all",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "aws-cdk": "^2.1120.0",
+    "source-map-support": "^0.5.21",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.5.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.250.0",
+    "constructs": "^10.3.0"
+  }
+}
