@@ -30,6 +30,7 @@ export COWORK_OIDC_CLIENT_ID="${COWORK_OIDC_CLIENT_ID:-REPLACE_WITH_CLIENT_ID}"
 export COWORK_ROLE_ARN="${COWORK_ROLE_ARN:-REPLACE_WITH_ROLE_ARN}"
 export COWORK_AWS_REGION="${COWORK_AWS_REGION:-us-west-2}"
 export COWORK_CALLBACK_PORT="${COWORK_CALLBACK_PORT:-8765}"
+export COWORK_SCOPES="${COWORK_SCOPES:-openid email profile offline_access}"
 export COWORK_SESSION_DURATION="${COWORK_SESSION_DURATION:-3600}"
 
 # ---------------------------------------------------------------------------
