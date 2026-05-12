@@ -5,3 +5,7 @@ cdk.out/
 *.d.ts
 .DS_Store
 *.log
+
+# Override root .gitignore which excludes **/bin/ and **/lib/
+!bin/
+!lib/
