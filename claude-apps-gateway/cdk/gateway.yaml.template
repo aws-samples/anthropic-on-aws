@@ -1,0 +1,68 @@
+# Claude Apps Gateway Configuration Template
+# Copy this file to gateway.yaml and replace the ${...} variables with your values.
+# Secrets are read from environment variables at runtime.
+
+listen:
+  host: 0.0.0.0
+  port: 8080
+  public_url: https://<your-gateway-hostname>
+
+oidc:
+  issuer: https://<your-idp>/
+  client_id: <your-client-id>
+  client_secret: ${OIDC_CLIENT_SECRET}
+  allowed_email_domains: [<yourcompany.com>]
+  userinfo_fallback: true
+
+session:
+  jwt_secret: ${GATEWAY_JWT_SECRET}
+  ttl_hours: 1
+
+store:
+  postgres_url: ${GATEWAY_POSTGRES_URL}
+  password: ${DB_PASSWORD}
+
+upstreams:
+  - provider: bedrock
+    region: us-east-1
+    auth: {}
+
+# Alternative: Claude Platform on AWS
+# upstreams:
+#   - provider: anthropicAws
+#     region: us-east-1
+#     workspace_id: <your-workspace-id>
+#     auth:
+#       api_key: ${ANTHROPIC_AWS_API_KEY}
+#     # OR use IAM role (SigV4):
+#     # auth: {}
+
+auto_include_builtin_models: true
+
+# Optional: per-group model access policies
+# managed:
+#   policies:
+#     - match: { groups: [contractors] }
+#       cli:
+#         availableModels: [claude-haiku-4-5]
+#     - match: {}
+#       cli:
+#         availableModels: [claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5]
+
+# Optional: spend limit admin API
+# admin:
+#   write_keys:
+#     - { id: terraform, key: "${GATEWAY_ADMIN_WRITE_KEY}" }
+#   read_keys:
+#     - { id: reporting, key: "${GATEWAY_ADMIN_READ_KEY}" }
+#   blocked_message: "Contact your platform team to request a higher limit."
+
+# Optional: telemetry forwarding
+# telemetry:
+#   forward_to:
+#     - url: https://your-otlp-collector:4318
+#       headers:
+#         Authorization: Bearer ${OTLP_TOKEN}
+#       metrics: true
+#       logs: false
+#       traces: false

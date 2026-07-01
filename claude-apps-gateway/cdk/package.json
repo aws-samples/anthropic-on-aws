@@ -1,0 +1,21 @@
+{
+  "name": "claude-gateway-cdk",
+  "version": "1.0.0",
+  "description": "CDK stack for deploying Claude Gateway on ECS Fargate with ALB and RDS",
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy",
+    "synth": "cdk synth"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.150.0",
+    "constructs": "^10.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "aws-cdk": "^2.150.0"
+  }
+}
