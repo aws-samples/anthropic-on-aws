@@ -30,11 +30,6 @@ module.exports = function (root) {
         schedule: UpgradeDependenciesSchedule.WEEKLY,
       },
     },
-    autoApproveOptions: {
-      secret: 'GITHUB_TOKEN',
-      allowedUsernames: ['schuettc'],
-    },
-    autoApproveUpgrades: true,
     depsUpgrade: true,
   });
 

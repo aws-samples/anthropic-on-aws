@@ -26,11 +26,6 @@ const root = new NodeProject({
     },
   },
   workflowNodeVersion: '20.x',
-  autoApproveOptions: {
-    secret: 'GITHUB_TOKEN',
-    allowedUsernames: ['schuettc'],
-  },
-  autoApproveUpgrades: true,
   projenUpgradeSecret: 'PROJEN_GITHUB_TOKEN',
   defaultReleaseBranch: 'main',
   packageManager: NodePackageManager.YARN_CLASSIC,

@@ -21,11 +21,6 @@ module.exports = function (root) {
         schedule: UpgradeDependenciesSchedule.WEEKLY,
       },
     },
-    autoApproveOptions: {
-      secret: 'GITHUB_TOKEN',
-      allowedUsernames: ['schuettc'],
-    },
-    autoApproveUpgrades: true,
     projenUpgradeSecret: 'PROJEN_GITHUB_TOKEN',
     defaultReleaseBranch: 'main',
     name: 'pdf-knowledge-base-with-citations',
