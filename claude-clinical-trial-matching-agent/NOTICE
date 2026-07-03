@@ -1,0 +1,38 @@
+Clinical Trial Matching Agent
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+---
+
+This project uses data from the following third-party sources:
+
+ClinicalTrials.gov
+- Source: U.S. National Library of Medicine, National Institutes of Health
+- URL: https://clinicaltrials.gov/
+- API: https://clinicaltrials.gov/api/v2/studies
+- License: Public domain (U.S. Government work)
+- Usage: Clinical trial data is fetched via the public, unauthenticated API v2
+  and used for demonstration purposes only.
+
+---
+
+This project uses the following open-source libraries:
+
+Strands Agents SDK
+- URL: https://github.com/strands-agents/sdk-python
+- License: Apache License 2.0
+
+boto3 (AWS SDK for Python)
+- URL: https://github.com/boto/boto3
+- License: Apache License 2.0
+
+requests
+- URL: https://github.com/psf/requests
+- License: Apache License 2.0
+
+opensearch-py
+- URL: https://github.com/opensearch-project/opensearch-py
+- License: Apache License 2.0
+
+requests-aws4auth
+- URL: https://github.com/tedder/requests-aws4auth
+- License: MIT License
