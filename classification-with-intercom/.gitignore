@@ -31,7 +31,7 @@ jspm_packages/
 .cache
 !/test/
 !/tsconfig.json
-!/tsconfig.dev.json
+!/test/tsconfig.json
 !/src/
 /lib
 /dist/
