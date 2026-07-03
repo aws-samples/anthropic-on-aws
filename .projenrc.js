@@ -53,7 +53,6 @@ const common_exclude = [
   'cdk.out',
   'cdk.context.json',
   'yarn-error.log',
-  'dependabot.yml',
   '.DS_Store',
   '.venv',
   'cdk-nag-output.txt',

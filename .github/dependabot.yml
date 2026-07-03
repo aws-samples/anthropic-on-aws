@@ -1,0 +1,70 @@
+# Security-only, grouped dependency updates.
+#
+# This repo is a collection of independent experiments/samples. We do NOT want
+# a wave of routine version-bump PRs to maintain. So:
+#   - open-pull-requests-limit: 0  -> disables routine *version* updates.
+#   - Dependabot *security* updates still run (own internal track, unaffected by
+#     the 0 limit) and are batched into a single PR per ecosystem via `groups`
+#     with `applies-to: security-updates`.
+#
+# Net effect: no routine churn, but real CVE fixes still arrive — grouped.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - "/**"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: pip
+    directories:
+      - "/**"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directories:
+      - "/**"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: gomod
+    directories:
+      - "/**"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      gomod-security:
+        applies-to: security-updates
+        patterns:
+          - "*"

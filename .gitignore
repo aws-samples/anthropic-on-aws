@@ -58,7 +58,6 @@ jspm_packages/
 cdk.out
 cdk.context.json
 yarn-error.log
-dependabot.yml
 .DS_Store
 .venv
 cdk-nag-output.txt
