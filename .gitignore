@@ -5,7 +5,6 @@
 !/.projen/files.json
 !/.github/workflows/pull-request-lint.yml
 !/.gitpod.yml
-!/.github/workflows/auto-approve.yml
 !/package.json
 !/LICENSE
 !/.npmignore
@@ -58,7 +57,6 @@ jspm_packages/
 cdk.out
 cdk.context.json
 yarn-error.log
-dependabot.yml
 .DS_Store
 .venv
 cdk-nag-output.txt

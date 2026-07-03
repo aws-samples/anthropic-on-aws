@@ -31,7 +31,6 @@ jobs:
           branch: auto/projen-upgrade-metaprompt-generator-client
           title: "chore: upgrade metaprompt-generator-client"
           body: This PR upgrades metaprompt-generator-client
-          labels: auto-merge, auto-approve
           author: github-actions <github-actions@github.com>
           committer: github-actions <github-actions@github.com>
           signoff: true

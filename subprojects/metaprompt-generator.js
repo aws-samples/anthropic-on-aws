@@ -35,15 +35,9 @@ module.exports = function (root) {
     depsUpgradeOptions: {
       workflow: true,
       workflowOptions: {
-        labels: ['auto-approve', 'auto-merge'],
         schedule: UpgradeDependenciesSchedule.WEEKLY,
       },
     },
-    autoApproveOptions: {
-      secret: 'GITHUB_TOKEN',
-      allowedUsernames: ['schuettc'],
-    },
-    autoApproveUpgrades: true,
     depsUpgrade: true,
   });
 

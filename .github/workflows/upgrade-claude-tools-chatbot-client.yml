@@ -31,7 +31,6 @@ jobs:
           branch: auto/projen-upgrade-claude-tools-chatbot-client
           title: "chore: upgrade claude-tools-chatbot-client"
           body: This PR upgrades claude-tools-chatbot-client
-          labels: auto-merge, auto-approve
           author: github-actions <github-actions@github.com>
           committer: github-actions <github-actions@github.com>
           signoff: true

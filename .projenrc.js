@@ -21,16 +21,10 @@ const root = new NodeProject({
   depsUpgradeOptions: {
     ignoreProjen: false,
     workflowOptions: {
-      labels: ['auto-approve', 'auto-merge'],
       schedule: UpgradeDependenciesSchedule.WEEKLY,
     },
   },
   workflowNodeVersion: '20.x',
-  autoApproveOptions: {
-    secret: 'GITHUB_TOKEN',
-    allowedUsernames: ['schuettc'],
-  },
-  autoApproveUpgrades: true,
   projenUpgradeSecret: 'PROJEN_GITHUB_TOKEN',
   defaultReleaseBranch: 'main',
   packageManager: NodePackageManager.YARN_CLASSIC,
@@ -53,7 +47,6 @@ const common_exclude = [
   'cdk.out',
   'cdk.context.json',
   'yarn-error.log',
-  'dependabot.yml',
   '.DS_Store',
   '.venv',
   'cdk-nag-output.txt',

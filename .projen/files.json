@@ -2,7 +2,6 @@
   "files": [
     ".gitattributes",
     ".github/pull_request_template.md",
-    ".github/workflows/auto-approve.yml",
     ".github/workflows/build-classification-with-intercom.yml",
     ".github/workflows/build-claude-tools-chatbot.yml",
     ".github/workflows/build-complex-schema-tool-use-nextjs.yml",

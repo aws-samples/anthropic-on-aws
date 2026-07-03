@@ -27,7 +27,6 @@ jobs:
           branch: auto/submodules-update-undefined
           title: "chore: update submodules for undefined"
           body: This PR updates submodules for undefined
-          labels: auto-merge, auto-approve
           author: github-actions <github-actions@github.com>
           committer: github-actions <github-actions@github.com>
           signoff: true
