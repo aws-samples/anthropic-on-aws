@@ -21,7 +21,6 @@ const root = new NodeProject({
   depsUpgradeOptions: {
     ignoreProjen: false,
     workflowOptions: {
-      labels: ['auto-approve', 'auto-merge'],
       schedule: UpgradeDependenciesSchedule.WEEKLY,
     },
   },

@@ -35,7 +35,6 @@ module.exports = function (root) {
     depsUpgradeOptions: {
       workflow: true,
       workflowOptions: {
-        labels: ['auto-approve', 'auto-merge'],
         schedule: UpgradeDependenciesSchedule.WEEKLY,
       },
     },
