@@ -34,6 +34,9 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   },
+  "resolutions": {
+    "fast-xml-parser": "^4.5.4"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.25.1",
     "@apollo/client": "^3.11.4",

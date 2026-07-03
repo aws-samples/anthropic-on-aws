@@ -9,6 +9,9 @@
     "start": "next start",
     "lint": "next lint"
   },
+  "resolutions": {
+    "fast-xml-parser": "^4.5.4"
+  },
   "dependencies": {
     "@aws-sdk/client-bedrock-agent-runtime": "^3.620.0",
     "@aws-sdk/client-bedrock-runtime": "^3.637.0",
@@ -17,7 +20,7 @@
     "@cloudscape-design/global-styles": "^1.0.32",
     "@mui/styles": "^5.16.5",
     "@types/react-pdf": "^7.0.0",
-    "next": "14.2.21",
+    "next": "14.2.25",
     "react": "^18",
     "react-dom": "^18",
     "react-pdf": "8"
