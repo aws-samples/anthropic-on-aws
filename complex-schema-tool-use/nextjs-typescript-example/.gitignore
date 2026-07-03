@@ -36,3 +36,4 @@ jspm_packages/
 /lib
 /dist/
 /.next/
+next-env.d.ts

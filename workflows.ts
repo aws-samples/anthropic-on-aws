@@ -57,7 +57,12 @@ NodeProject.prototype.addUpgradeProjectWorkflow = function (
 
 NodeProject.prototype.addBuildWorkflow = function (projectName, directory) {
   const buildWorkflow = this.github.addWorkflow('build-' + projectName);
-  buildWorkflow.on({ pullRequest: {}, workflowDispatch: {} });
+  // The subprojects are independent, so only build one when its own directory
+  // changes. Without this path filter every subproject build runs on every PR.
+  buildWorkflow.on({
+    pullRequest: { paths: [`${directory}/**`] },
+    workflowDispatch: {},
+  });
 
   buildWorkflow.addJobs({
     'build': {

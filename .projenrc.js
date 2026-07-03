@@ -25,7 +25,7 @@ const root = new NodeProject({
       schedule: UpgradeDependenciesSchedule.WEEKLY,
     },
   },
-  workflowNodeVersion: '18.x',
+  workflowNodeVersion: '20.x',
   autoApproveOptions: {
     secret: 'GITHUB_TOKEN',
     allowedUsernames: ['schuettc'],

@@ -38,7 +38,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 18.x
+          node-version: 20.x
           package-manager-cache: false
       - name: Install dependencies
         run: yarn install --check-files --frozen-lockfile
@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v6
         with:
-          node-version: 18.x
+          node-version: 20.x
           package-manager-cache: false
       - name: Download build artifacts
         uses: actions/download-artifact@v8

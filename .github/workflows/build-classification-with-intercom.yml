@@ -2,7 +2,9 @@
 
 name: build-classification-with-intercom
 on:
-  pull_request: {}
+  pull_request:
+    paths:
+      - classification-with-intercom/**
   workflow_dispatch: {}
 jobs:
   build:
