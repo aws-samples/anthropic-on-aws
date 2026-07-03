@@ -42,6 +42,19 @@ classificationWithIntercom(root);
 
 root.addUpgradeSubmodulesWorkflow();
 
+// Projen (0.101.4) still emits Mergify's deprecated `commit_message_template`
+// on the queue rule, which Mergify is retiring on 2026-09-30. Override the
+// generated .mergify.yml to the current declarative `commit_message_format`
+// until projen emits it natively.
+const mergifyFile = root.tryFindObjectFile('.mergify.yml');
+if (mergifyFile) {
+  mergifyFile.addDeletionOverride('queue_rules.0.commit_message_template');
+  mergifyFile.addOverride('queue_rules.0.commit_message_format', {
+    title: 'pr-title',
+    body: 'pr-body',
+  });
+}
+
 const common_exclude = [
   '.yalc',
   'cdk.out',
