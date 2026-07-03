@@ -28,6 +28,11 @@
     "strictPropertyInitialization": true,
     "stripInternal": true,
     "target": "es5",
+    "types": [
+      "node",
+      "react",
+      "react-dom"
+    ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "jsx": "preserve",
@@ -54,5 +59,7 @@
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
-  "exclude": []
+  "exclude": [
+    "node_modules"
+  ]
 }

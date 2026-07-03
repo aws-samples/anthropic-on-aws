@@ -2,7 +2,9 @@
 
 name: build-claude-tools-chatbot
 on:
-  pull_request: {}
+  pull_request:
+    paths:
+      - claude-tools-chatbot/**
   workflow_dispatch: {}
 jobs:
   build:

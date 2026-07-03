@@ -51,11 +51,13 @@ module.exports = function (root) {
     exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json claude-tools-chatbot-client/public/',
   });
 
+  // projen relocated tsconfigDev to test/tsconfig.json (rootDir: ".."), so
+  // include globs are resolved relative to test/ and must reach back with ../
   claudeToolsChatbot.tsconfigDev.file.addOverride('include', [
-    'test/*.ts',
-    'src/**/*.ts',
-    'claude-tools-chatbot-client/src/**/*.tsx',
-    './.projenrc.ts',
+    '../test/*.ts',
+    '../src/**/*.ts',
+    '../claude-tools-chatbot-client/src/**/*.tsx',
+    '../.projenrc.ts',
   ]);
 
   claudeToolsChatbot.eslint.addOverride({

@@ -2,7 +2,9 @@
 
 name: build-metaprompt-generator
 on:
-  pull_request: {}
+  pull_request:
+    paths:
+      - metaprompt-generator/**
   workflow_dispatch: {}
 jobs:
   build:

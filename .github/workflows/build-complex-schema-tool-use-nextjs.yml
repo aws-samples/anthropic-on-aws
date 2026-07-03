@@ -2,7 +2,9 @@
 
 name: build-complex-schema-tool-use-nextjs
 on:
-  pull_request: {}
+  pull_request:
+    paths:
+      - complex-schema-tool-use/nextjs-typescript-example/**
   workflow_dispatch: {}
 jobs:
   build:
