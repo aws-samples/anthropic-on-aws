@@ -10,7 +10,7 @@ const { off } = require('process');
 module.exports = function (root) {
   const metapromptGenerator = new AwsCdkTypeScriptApp({
     parent: root,
-    cdkVersion: '2.130.0',
+    cdkVersion: '2.246.0',
     defaultReleaseBranch: 'main',
     name: 'anthropic-metaprompt-generator',
     appEntrypoint: 'anthropic-metaprompt-generator.ts',

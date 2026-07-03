@@ -9,7 +9,7 @@ module.exports = function (root) {
     license: 'MIT-0',
     copyrightOwner: 'Amazon.com, Inc.',
     authorAddress: 'https://aws.amazon.com',
-    cdkVersion: '2.130.0',
+    cdkVersion: '2.246.0',
     defaultReleaseBranch: 'main',
     name: 'claude-tools-chatbot',
     appEntrypoint: 'claude-tools-chatbot.ts',
