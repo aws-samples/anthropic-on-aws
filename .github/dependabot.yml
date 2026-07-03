@@ -16,6 +16,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(deps)"
     groups:
       npm-security:
         applies-to: security-updates
@@ -28,6 +30,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(deps)"
     groups:
       pip-security:
         applies-to: security-updates
@@ -39,6 +43,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(deps)"
     groups:
       actions-security:
         applies-to: security-updates
@@ -51,6 +57,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(deps)"
     groups:
       docker-security:
         applies-to: security-updates
@@ -63,6 +71,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(deps)"
     groups:
       gomod-security:
         applies-to: security-updates
