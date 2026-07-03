@@ -42,9 +42,12 @@ module.exports = function (root) {
     exec: 'yarn cdk deploy --require-approval never && ./update-intercom-secret.sh',
   });
 
+  // projen relocated tsconfigDev to test/tsconfig.json (rootDir: ".."), so
+  // include globs are resolved relative to test/ and must reach back with ../
   classificationWithIntercom.tsconfigDev.file.addOverride('include', [
-    'src/**/*.ts',
-    './.projenrc.ts',
+    '../src/**/*.ts',
+    '../test/*.ts',
+    '../.projenrc.ts',
   ]);
 
   classificationWithIntercom.eslint.addOverride({

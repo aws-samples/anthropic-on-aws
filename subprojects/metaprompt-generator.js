@@ -59,10 +59,12 @@ module.exports = function (root) {
     exec: 'aws s3 cp s3://$(yarn run --silent getBucket)/config.json metaprompt-generator-client/public/',
   });
 
+  // projen relocated tsconfigDev to test/tsconfig.json (rootDir: ".."), so
+  // include globs are resolved relative to test/ and must reach back with ../
   metapromptGenerator.tsconfigDev.file.addOverride('include', [
-    'src/*.ts',
-    'src/**/*.ts',
-    'test/*.ts',
+    '../src/*.ts',
+    '../src/**/*.ts',
+    '../test/*.ts',
   ]);
   metapromptGenerator.eslint.addOverride({
     files: ['./*.ts', './test/*.ts'],

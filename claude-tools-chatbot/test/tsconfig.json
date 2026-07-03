@@ -6,10 +6,10 @@
     "rootDir": ".."
   },
   "include": [
-    "test/*.ts",
-    "src/**/*.ts",
-    "claude-tools-chatbot-client/src/**/*.tsx",
-    "./.projenrc.ts"
+    "../test/*.ts",
+    "../src/**/*.ts",
+    "../claude-tools-chatbot-client/src/**/*.tsx",
+    "../.projenrc.ts"
   ],
   "exclude": [
     "node_modules"

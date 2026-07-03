@@ -6,8 +6,9 @@
     "rootDir": ".."
   },
   "include": [
-    "src/**/*.ts",
-    "./.projenrc.ts"
+    "../src/**/*.ts",
+    "../test/*.ts",
+    "../.projenrc.ts"
   ],
   "exclude": [
     "node_modules"
