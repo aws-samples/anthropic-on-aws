@@ -21,6 +21,9 @@
     "upgrade": "scripts/run-task.cjs upgrade",
     "watch": "scripts/run-task.cjs watch"
   },
+  "resolutions": {
+    "fast-xml-parser": "^4.5.4"
+  },
   "devDependencies": {
     "@types/node": "^18",
     "@typescript-eslint/eslint-plugin": "^7",

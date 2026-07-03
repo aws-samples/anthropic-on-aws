@@ -7,6 +7,10 @@
     "start": "webpack serve --config ./webpack.config.js --mode development",
     "build": "webpack --config webpack.config.js --mode production"
   },
+  "resolutions": {
+    "fast-xml-parser": "^4.5.4",
+    "shell-quote": "^1.8.4"
+  },
   "dependencies": {
     "@apollo/client": "^3.10.4",
     "@aws-amplify/ui-react": "^6.1.1",
