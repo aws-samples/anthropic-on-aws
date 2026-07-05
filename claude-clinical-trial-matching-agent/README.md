@@ -1,6 +1,6 @@
 # Clinical Trial Matching Agent
 
-An AWS reference implementation that uses the [Strands Agents SDK](https://github.com/strands-agents/sdk-python) with **Claude Sonnet 4** on [Amazon Bedrock](https://aws.amazon.com/bedrock/) to match synthetic patient profiles against real, currently-recruiting clinical trials from [ClinicalTrials.gov](https://clinicaltrials.gov/).
+An AWS reference implementation that uses the [Strands Agents SDK](https://github.com/strands-agents/sdk-python) with **Claude Sonnet 5** on [Amazon Bedrock](https://aws.amazon.com/bedrock/) to match synthetic patient profiles against real, currently-recruiting clinical trials from [ClinicalTrials.gov](https://clinicaltrials.gov/).
 
 The agent orchestrates four purpose-built tools to fetch patient data, search live trials, retrieve detailed eligibility criteria from a Knowledge Base, and evaluate per-criterion eligibility with structured reasoning — all from a Jupyter notebook you can run end-to-end.
 
@@ -27,7 +27,7 @@ The agent uses **deterministic business logic** for verdict aggregation and bord
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │                    Strands Agent                               │  │
-│  │              (Claude Sonnet 4 on Bedrock)                     │  │
+│  │              (Claude Sonnet 5 on Bedrock)                     │  │
 │  │                                                               │  │
 │  │  System Prompt: workflow, safety rules, output contract        │  │
 │  └──────────┬──────────┬──────────────┬──────────────┬───────────┘  │
@@ -64,7 +64,7 @@ The agent uses **deterministic business logic** for verdict aggregation and bord
 | `get_patient_profile` | Retrieve a synthetic patient record | In-memory (12 profiles embedded in notebook) |
 | `search_trials` | Find recruiting trials by condition + location | ClinicalTrials.gov API v2 (live, unauthenticated) |
 | `retrieve_trial_kb` | Get detailed eligibility criteria for a trial | Amazon Bedrock Knowledge Base (OpenSearch Serverless) |
-| `evaluate_eligibility` | Assess patient against each criterion | Claude Sonnet 4 via Bedrock + deterministic verdict logic |
+| `evaluate_eligibility` | Assess patient against each criterion | Claude Sonnet 5 via Bedrock + deterministic verdict logic |
 
 ### Deterministic Logic
 
@@ -80,7 +80,7 @@ The agent delegates per-criterion reasoning to Claude, but final decisions are c
 - **Python 3.12+**
 - **AWS credentials** configured (`aws configure`) with access to Amazon Bedrock
 - **Amazon Bedrock model access** enabled for:
-  - `anthropic.claude-sonnet-4-20250514-v1:0` (Claude Sonnet 4)
+  - `global.anthropic.claude-sonnet-5` (Claude Sonnet 5)
   - `amazon.titan-embed-text-v2:0` (only needed for Knowledge Base setup)
 
 Enable model access in the [Amazon Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess).
@@ -105,7 +105,7 @@ jupyter notebook clinical_trial_matching_agent.ipynb
 Run cells top-to-bottom. The agent will:
 1. Load 12 synthetic patient profiles from memory
 2. Search ClinicalTrials.gov for live recruiting trials
-3. Evaluate eligibility using Claude Sonnet 4
+3. Evaluate eligibility using Claude Sonnet 5
 4. Return ranked matches with per-criterion reasoning
 
 ### With Knowledge Base (Optional — Richer Results)
@@ -214,7 +214,7 @@ All profiles are **entirely fictional** and tagged with `synthetic: true`.
 
 ## Cost Considerations
 
-- **Bedrock (Claude Sonnet 4)** — Per-token pricing for agent reasoning + eligibility evaluation. A full matching run (1 patient, ~5 trials evaluated) typically costs $0.05–$0.15.
+- **Bedrock (Claude Sonnet 5)** — Per-token pricing for agent reasoning + eligibility evaluation. A full matching run (1 patient, ~5 trials evaluated) typically costs $0.05–$0.15.
 - **ClinicalTrials.gov API** — Free, unauthenticated, no rate limiting for reasonable use.
 - **Knowledge Base (optional)** — OpenSearch Serverless has a minimum cost (~$0.24/hour for OCU). Consider running the cleanup cell in `setup_knowledge_base.ipynb` when done.
 
