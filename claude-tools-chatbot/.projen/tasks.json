@@ -199,9 +199,6 @@
           "exec": "yarn upgrade @stylistic/eslint-plugin @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser aws-cdk cdk-nag esbuild eslint-import-resolver-typescript eslint-plugin-import eslint ts-node typescript @types/aws-lambda @types/fs-extra @types/jest @types/mocha aws-cdk-lib constructs dotenv fs-extra"
         },
         {
-          "exec": "scripts/run-task.cjs"
-        },
-        {
           "spawn": "post-upgrade"
         }
       ]
