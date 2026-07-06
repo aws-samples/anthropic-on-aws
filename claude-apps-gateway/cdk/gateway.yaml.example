@@ -30,7 +30,7 @@ listen:
   # and discovery doc ONLY from this — never from X-Forwarded-* (those are
   # client-spoofable). Must resolve to PRIVATE IPs only on developer machines, or
   # `/login` rejects it. Here it is the internal ALB's hostname.
-  public_url: @@PUBLIC_URL@@
+  public_url: https://claude-gateway.example.com
   # The ALB terminates TLS (bring-your-own ACM cert), so the gateway speaks plain
   # HTTP behind it — no `tls:` block. Trust X-Forwarded-For only from the ALB so
   # real client IPs surface for per-IP rate limits and audit. Set to the ALB
@@ -40,10 +40,10 @@ listen:
 
 oidc:
   # All three below are non-secret, known at deploy, and rarely change → baked.
-  issuer: @@OIDC_ISSUER@@
-  client_id: @@OIDC_CLIENT_ID@@
+  issuer: https://example.okta.com
+  client_id: 0oa1example2
   client_secret: ${OIDC_CLIENT_SECRET}   # the one secret in this block (env-injected)
-  allowed_email_domains: [@@ALLOWED_EMAIL_DOMAINS@@]
+  allowed_email_domains: [example.com]
   # Per-IdP notes — uncomment what your provider needs:
   #   Okta (org server https://example.okta.com): id_token omits email/groups →
   #     userinfo_fallback: true
@@ -54,11 +54,6 @@ oidc:
   #   Keycloak / Dex behind corporate PKI: set `ca_cert_pem:`; lightweight access
   #     tokens need `userinfo_fallback: true`.
   # userinfo_fallback: true
-  # Google-only: stamp-config.sh auto-fills the block below when the issuer is
-  # accounts.google.com (Google rejects the default `offline_access` scope; refresh
-  # tokens come from access_type=offline + prompt=consent instead). Non-Google
-  # issuers stamp to nothing here and keep the default scopes.
-@@OIDC_GOOGLE_BLOCK@@
 
 session:
   jwt_secret: ${GATEWAY_JWT_SECRET}   # >= 32 bytes, e.g. `openssl rand -base64 32`
@@ -79,22 +74,22 @@ store:
   # Credentials are split OUT of the URL (store.username/password take precedence
   # over any creds in the URL) so they stay in the RDS-generated secret. The host
   # is a deploy-created fact, so it's an env var, not baked; the db-name is baked.
-  postgres_url: postgres://${DB_HOST}:5432/@@DB_NAME@@?sslmode=require
+  postgres_url: postgres://${DB_HOST}:5432/claude_gateway?sslmode=require
   username: ${DB_USER}
   password: ${DB_PASSWORD}
   # max_connections: 5   # keep replicas x this below RDS max_connections
 
 upstreams:
   - provider: bedrock
-    region: @@AWS_REGION@@
+    region: us-east-1
     auth: {}                 # AWS default credential chain → the ECS task role
     # FIPS / VPC-endpoint override:
-    # base_url: https://bedrock-runtime-fips.@@AWS_REGION@@.amazonaws.com
+    # base_url: https://bedrock-runtime-fips.us-east-1.amazonaws.com
   # Multi-upstream failover (provisioned-throughput → on-demand → second region).
   # Give each a distinct `name:`; 5xx/429/timeout fail over, other 4xx does not:
   # - name: bedrock-pt
   #   provider: bedrock
-  #   region: @@AWS_REGION@@
+  #   region: us-east-1
   #   auth: {}
   # - name: bedrock-od
   #   provider: bedrock
@@ -111,7 +106,7 @@ telemetry:
   # listen.public_url are both set; the gateway then pushes OTEL_* env to clients
   # (one-time client approval dialog).
   forward_to:
-    - url: @@PUBLIC_URL@@:4318
+    - url: https://claude-gateway.example.com:4318
       # Default is metrics-only. Metrics are aggregate counters (tokens, requests,
       # latency). logs/traces can carry full bash commands, tool inputs, and file
       # paths — enable them ONLY on a destination with the access controls and

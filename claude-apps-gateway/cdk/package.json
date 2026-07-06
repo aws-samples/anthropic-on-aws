@@ -1,21 +1,29 @@
 {
   "name": "claude-gateway-cdk",
   "version": "1.0.0",
-  "description": "CDK stack for deploying Claude Gateway on ECS Fargate with ALB and RDS",
+  "description": "CDK app: Claude apps gateway on AWS ECS Fargate with Amazon Bedrock (worked example)",
+  "private": true,
+  "bin": {
+    "gateway": "bin/gateway.js"
+  },
   "scripts": {
     "build": "tsc",
-    "cdk": "cdk",
-    "deploy": "cdk deploy",
-    "destroy": "cdk destroy",
-    "synth": "cdk synth"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "^2.150.0",
-    "constructs": "^10.0.0",
-    "dotenv": "^16.4.0"
+    "watch": "tsc -w",
+    "test": "jest",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "aws-cdk": "^2.150.0"
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.0",
+    "aws-cdk": "^2.260.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.11",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.7.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.260.0",
+    "constructs": "^10.4.2"
   }
 }
