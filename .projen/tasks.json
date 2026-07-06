@@ -189,9 +189,6 @@
           "exec": "yarn upgrade commit-and-tag-version"
         },
         {
-          "exec": "scripts/run-task.cjs"
-        },
-        {
           "spawn": "post-upgrade"
         }
       ]

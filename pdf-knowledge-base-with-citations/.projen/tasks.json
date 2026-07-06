@@ -200,9 +200,6 @@
           "exec": "yarn upgrade @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser aws-cdk esbuild eslint-import-resolver-typescript eslint-plugin-import eslint ts-node typescript @aws-sdk/client-bedrock-agent @aws-sdk/client-bedrock-agent-runtime @aws-sdk/client-bedrock-runtime @aws-sdk/client-cloudformation @aws-sdk/client-s3 @cdklabs/generative-ai-cdk-constructs @cloudscape-design/components @types/aws-lambda @types/react-pdf aws-cdk-lib constructs dotenv react-pdf"
         },
         {
-          "exec": "scripts/run-task.cjs"
-        },
-        {
           "spawn": "post-upgrade"
         }
       ]

@@ -183,9 +183,6 @@
           "exec": "yarn upgrade @stylistic/eslint-plugin @types/node @typescript-eslint/eslint-plugin @typescript-eslint/parser aws-cdk esbuild eslint-import-resolver-typescript eslint-plugin-import eslint ts-node typescript @aws-sdk/client-bedrock-runtime @aws-sdk/client-secrets-manager @types/aws-lambda @types/node-fetch aws-cdk-lib constructs dotenv node-fetch"
         },
         {
-          "exec": "scripts/run-task.cjs"
-        },
-        {
           "spawn": "post-upgrade"
         }
       ]
