@@ -1,0 +1,244 @@
+# Standalone OpenTelemetry collector for Claude Code client telemetry.
+#
+# TEMPLATE — do not deploy this file directly. Render it with your own values:
+#   set -a && . ./deploy.env && set +a          # your real values (gitignored)
+#   envsubst < k8s/otel-collector.template.yaml | kubectl apply -f -
+# See deploy.env.example for the variables and README-OTEL.md Step 3.
+#
+# The Claude Code CLI sends OTLP to the gateway, which relays it to this
+# collector's internal ALB (${OTEL_HOST}), authenticating with a bearer token
+# mounted from Secrets Manager. The collector exports to CloudWatch via the
+# awsemf (EMF) exporter.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: claude-gateway
+  annotations:
+    # IRSA annotation: the Secrets Store CSI AWS provider resolves the role from
+    # here (AssumeRoleWithWebIdentity). The role also has a Pod Identity
+    # association (Terraform) which the collector runtime uses for CloudWatch.
+    eks.amazonaws.com/role-arn: arn:aws:iam::${AWS_ACCOUNT_ID}:role/claude-otel-collector-pod-identity-role
+---
+# Mount the client bearer token from Secrets Manager via the Secrets Store CSI
+# driver, matching the gateway's existing secret-mount pattern.
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: claude-otel-collector-secrets
+  namespace: claude-gateway
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "claude-gateway/otel-bearer-token"
+        objectType: "secretsmanager"
+        objectAlias: "otel-bearer-token"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: claude-gateway
+data:
+  config.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+        path: /
+      # Server-side bearer auth: validates the Authorization header clients send.
+      # Token is read from the CSI-mounted file so rotation is a secret update.
+      bearertokenauth:
+        filename: /secrets/otel-bearer-token
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            include_metadata: true
+            auth:
+              authenticator: bearertokenauth
+          http:
+            endpoint: 0.0.0.0:4318
+            include_metadata: true
+            auth:
+              authenticator: bearertokenauth
+
+    processors:
+      batch/metrics:
+        timeout: 60s
+      # Promote per-user attribution headers (stamped by the CLI from the
+      # gateway JWT) to metric dimensions.
+      attributes:
+        actions:
+          - key: user.email
+            from_context: metadata.x-user-email
+            action: upsert
+          - key: user.id
+            from_context: metadata.x-user-id
+            action: upsert
+          - key: user.name
+            from_context: metadata.x-user-name
+            action: upsert
+          - key: organization
+            from_context: metadata.x-organization
+            action: upsert
+      resource:
+        attributes:
+          - key: aws.account_id
+            value: "${AWS_ACCOUNT_ID}"
+            action: insert
+          - key: deployment.environment
+            value: "production"
+            action: insert
+
+    exporters:
+      awsemf:
+        namespace: ClaudeCode
+        log_group_name: /aws/claude-code/metrics
+        region: ${AWS_REGION}
+        output_destination: cloudwatch
+        log_retention: 7
+        dimension_rollup_option: NoDimensionRollup
+        resource_to_telemetry_conversion:
+          enabled: true
+        metric_declarations:
+          - dimensions: [[user.email, model, type], [user.email]]
+            metric_name_selectors: ["claude_code.token.usage"]
+          - dimensions: [[user.email, model], [user.email]]
+            metric_name_selectors: ["claude_code.cost.usage"]
+          - dimensions: [[model], [user.email]]
+            metric_name_selectors: [".*"]
+
+    service:
+      extensions: [health_check, bearertokenauth]
+      telemetry:
+        logs:
+          level: info
+          encoding: json
+          output_paths: [stdout]
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: [attributes, resource, batch/metrics]
+          exporters: [awsemf]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: claude-gateway
+  labels:
+    app: otel-collector
+spec:
+  # Single replica: this is a single-principal deployment and the EKS Auto Mode
+  # node is CPU-constrained. Scale up if client fan-out grows.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: otel-collector
+          # contrib distro, not ADOT: the AWS-curated ADOT image (v0.48.0) does
+          # NOT bundle the bearertokenauth extension. Contrib includes
+          # bearertokenauth + sigv4auth + awsemf (all verified present).
+          image: otel/opentelemetry-collector-contrib:0.112.0
+          args: ["--config=/etc/otel/config.yaml"]
+          ports:
+            - { containerPort: 4318, protocol: TCP } # OTLP/HTTP
+            - { containerPort: 4317, protocol: TCP } # OTLP/gRPC
+            - { containerPort: 13133, protocol: TCP } # health_check
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: otel-config
+              mountPath: /etc/otel
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: otel-config
+          configMap:
+            name: otel-collector-config
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: claude-otel-collector-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: claude-gateway
+  labels:
+    app: otel-collector
+spec:
+  type: ClusterIP
+  selector:
+    app: otel-collector
+  ports:
+    - { name: otlp-http, port: 4318, targetPort: 4318, protocol: TCP }
+    - { name: otlp-grpc, port: 4317, targetPort: 4317, protocol: TCP }
+---
+# Internal ALB terminating TLS with your ACM cert (its SAN must cover
+# ${OTEL_HOST}). The gateway pod resolves ${OTEL_HOST} to an ALB private IP via
+# a hostAliases entry (see k8s/deployment.yaml) and relays telemetry to it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: otel-collector
+  namespace: claude-gateway
+  annotations:
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    # Backend speaks plain HTTP OTLP on 4318; health check on the collector's
+    # dedicated health port (13133) via traffic-port override.
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-port: "13133"
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600,access_logs.s3.enabled=true,access_logs.s3.bucket=${ALB_LOGS_BUCKET},access_logs.s3.prefix=otel
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/subnets: ${ALB_SUBNETS}
+spec:
+  ingressClassName: alb
+  rules:
+    - host: ${OTEL_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: otel-collector
+                port:
+                  number: 4318

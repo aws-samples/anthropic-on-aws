@@ -1,0 +1,41 @@
+gateway.yaml
+admin-dashboard/
+build/
+.DS_Store
+
+# Local Claude Code harness state (settings, worktrees, locks).
+.claude/
+
+# Deployment values & rendered manifests (contain account IDs / ARNs / subnets).
+# Commit the *.template.yaml + deploy.env.example instead.
+deploy.env
+.env
+.env.*
+k8s/otel-collector.yaml
+k8s/deployment.yaml
+k8s/ingress.yaml
+
+# Local docs & operational notes (real IPs/account IDs, specs — keep out of the public repo).
+docs/
+
+# Terraform
+# Provider/module cache
+**/.terraform/*
+# State and backups (may contain secrets — never commit)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+# Crash logs
+crash.log
+crash.*.log
+# Variable files that may hold secrets (commit *.tfvars.example instead)
+*.tfvars
+*.tfvars.json
+# CLI config / plan output
+.terraformrc
+terraform.rc
+*.tfplan
+# Provider lock file. HashiCorp recommends COMMITTING this so provider versions
+# are pinned across machines/CI. Remove this line and `git add -f` it if you
+# want that; it's ignored here to match the existing repo convention.
+.terraform.lock.hcl

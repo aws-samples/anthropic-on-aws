@@ -1,0 +1,171 @@
+listen:
+  host: 0.0.0.0
+  port: 8080
+  public_url: https://<YOUR_DOMAIN>
+  trusted_proxies: [<YOUR_VPC_CIDR>]
+
+oidc:
+  issuer: https://accounts.google.com
+  client_id: <YOUR_GOOGLE_OAUTH_CLIENT_ID>
+  client_secret: ${file:/secrets/oidc-client-secret}
+  allowed_email_domains: [<YOUR_EMAIL_DOMAIN>]
+  scopes: [openid, profile, email]
+  extra_auth_params: { access_type: offline, prompt: consent }
+
+session:
+  jwt_secret: ${file:/secrets/jwt-secret}
+
+store:
+  postgres_url: ${file:/secrets/postgres-url}
+
+admin:
+  read_keys:
+    - { id: reporting, key: "${file:/secrets/admin-read-key}" }
+  write_keys:
+    - { id: admin, key: "${file:/secrets/admin-write-key}" }
+  admin_groups: [<YOUR_ADMIN_EMAIL>]
+
+# Client telemetry: gateway RELAY (the documented, first-class path).
+#
+# The CLI sends OTLP to the gateway (endpoint = listen.public_url), and the
+# gateway relays it verbatim to the collector configured in `forward_to`.
+# Configuring `telemetry.forward_to` together with `listen.public_url` turns
+# telemetry ON and makes the gateway AUTOMATICALLY push these five env vars to
+# every client via /managed/settings — so clients need NO OTEL config, NO
+# /etc/hosts entry, and NO bearer token:
+#   CLAUDE_CODE_ENABLE_TELEMETRY=1
+#   OTEL_METRICS_EXPORTER=otlp
+#   OTEL_LOGS_EXPORTER=otlp
+#   OTEL_TRACES_EXPORTER=otlp
+#   OTEL_EXPORTER_OTLP_ENDPOINT=<public_url>
+# The CLI still stamps user.id / user.email / user.groups from its gateway JWT,
+# so per-user attribution is preserved. Delivering the pushed OTLP endpoint
+# triggers the CLI's one-time managed-settings approval dialog on each
+# INTERACTIVE client (non-interactive `-p` runs skip the dialog).
+#
+# GOTCHA 1 — url MUST be https://. The gateway schema rejects http:// except for
+# loopback ("forward_to.url must be https:// (http:// allowed for loopback
+# only)"). You therefore CANNOT relay to the plain-HTTP in-cluster Service
+# (http://otel-collector...svc:4318). Relay to the collector's internal ALB,
+# which terminates TLS. The gateway pod must resolve that hostname to the ALB's
+# private IP — add a `hostAliases` entry to the gateway Deployment (see
+# k8s/deployment.yaml). Connecting by hostname (not IP) is required so TLS
+# validates against the ALB's *.<domain> cert.
+#
+# GOTCHA 2 — ${file:...} is NOT expanded inside forward_to.headers. The gateway
+# expands ${file:...} for its own top-level fields (client_secret, jwt_secret)
+# and expands ${ENV_VAR} in headers, but a ${file:...} in a header is sent as a
+# literal string → the collector returns 401. So INLINE the bearer token literal
+# here. This header stays server-side in the gateway (never pushed to clients),
+# so inlining is safe. It must match the collector's mounted token
+# (Secrets Manager claude-gateway/otel-bearer-token). To rotate: update the
+# secret AND this literal, then roll both the gateway and the collector.
+telemetry:
+  forward_to:
+    - url: https://<YOUR_OTEL_COLLECTOR_HOST>   # e.g. otel.example.com (internal ALB, must match its ACM cert SAN)
+      headers:
+        Authorization: "Bearer <YOUR_OTEL_BEARER_TOKEN>"   # inline literal; matches the collector's mounted token
+      # Per-signal opt-in. Default is metrics only. Logs/traces can carry bash
+      # commands, tool inputs, and file paths — enable only on destinations with
+      # appropriate access controls and retention.
+      metrics: true
+      logs: false
+      traces: false
+
+upstreams:
+  - provider: bedrock
+    region: <YOUR_AWS_REGION>
+    auth: {}
+
+# Model mappings: client-facing `id` -> Bedrock inference-profile `upstream_model`.
+# The `bedrock:` value MUST be a valid inference profile ID for your region.
+# Verify with:
+#   aws bedrock list-inference-profiles --region <YOUR_AWS_REGION> \
+#     | jq -r '.inferenceProfileSummaries[] | select(.inferenceProfileId | test("anthropic")) | .inferenceProfileId'
+# NOTE: profile suffixes are NOT uniform (e.g. opus-4-6 has -v1, opus-4-7/4-8 do not,
+# sonnet-4-5/haiku-4-5 use dated -20250929-v1:0 style). Do not assume a pattern.
+# The examples below use `au.*` (Australia / ap-southeast-2). Swap the prefix
+# (us.* / apac.* / global.*) to match your region's available profiles.
+auto_include_builtin_models: true
+models:
+  - id: claude-opus-4-6
+    label: Claude Opus 4.6
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-6-v1
+  - id: global.anthropic.claude-opus-4-6-v1
+    label: Claude Opus 4.6 (global)
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-6-v1
+  - id: claude-opus-4-7
+    label: Claude Opus 4.7
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-7
+  - id: global.anthropic.claude-opus-4-7
+    label: Claude Opus 4.7 (global)
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-7
+  - id: claude-opus-4-8
+    label: Claude Opus 4.8
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-8
+  - id: global.anthropic.claude-opus-4-8
+    label: Claude Opus 4.8 (global)
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-8
+  - id: claude-sonnet-4-5
+    label: Claude Sonnet 4.5
+    upstream_model:
+      bedrock: au.anthropic.claude-sonnet-4-5-20250929-v1:0
+  - id: claude-sonnet-4-6
+    label: Claude Sonnet 4.6
+    upstream_model:
+      bedrock: au.anthropic.claude-sonnet-4-6
+  - id: global.anthropic.claude-sonnet-4-6
+    label: Claude Sonnet 4.6 (global)
+    upstream_model:
+      bedrock: au.anthropic.claude-sonnet-4-6
+  # Sonnet 5 is only offered via the global CRIS (no au.* profile exists), so
+  # both aliases map to the global inference profile.
+  - id: claude-sonnet-5
+    label: Claude Sonnet 5
+    upstream_model:
+      bedrock: global.anthropic.claude-sonnet-5
+  - id: global.anthropic.claude-sonnet-5
+    label: Claude Sonnet 5 (global)
+    upstream_model:
+      bedrock: global.anthropic.claude-sonnet-5
+  - id: claude-haiku-4-5
+    label: Claude Haiku 4.5
+    upstream_model:
+      bedrock: au.anthropic.claude-haiku-4-5-20251001-v1:0
+  - id: global.anthropic.claude-haiku-4-5-20251001-v1:0
+    label: Claude Haiku 4.5 (global)
+    upstream_model:
+      bedrock: au.anthropic.claude-haiku-4-5-20251001-v1:0
+  # Bare bedrock-profile-id aliases: a client may send the raw profile id via
+  # `/model` or ANTHROPIC_MODEL. Without these, the gateway rejects it with
+  # "model X is not in the operator's model allowlist". Keep one alias per profile.
+  - id: au.anthropic.claude-opus-4-6-v1
+    label: Claude Opus 4.6 (au)
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-6-v1
+  - id: au.anthropic.claude-opus-4-7
+    label: Claude Opus 4.7 (au)
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-7
+  - id: au.anthropic.claude-opus-4-8
+    label: Claude Opus 4.8 (au)
+    upstream_model:
+      bedrock: au.anthropic.claude-opus-4-8
+  - id: au.anthropic.claude-sonnet-4-5-20250929-v1:0
+    label: Claude Sonnet 4.5 (au)
+    upstream_model:
+      bedrock: au.anthropic.claude-sonnet-4-5-20250929-v1:0
+  - id: au.anthropic.claude-sonnet-4-6
+    label: Claude Sonnet 4.6 (au)
+    upstream_model:
+      bedrock: au.anthropic.claude-sonnet-4-6
+  - id: au.anthropic.claude-haiku-4-5-20251001-v1:0
+    label: Claude Haiku 4.5 (au)
+    upstream_model:
+      bedrock: au.anthropic.claude-haiku-4-5-20251001-v1:0

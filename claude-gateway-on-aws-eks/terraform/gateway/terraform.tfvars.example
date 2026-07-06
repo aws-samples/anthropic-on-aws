@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and set your VPC + private subnets.
+# The VPC is managed OUTSIDE Terraform (referenced read-only, never destroyed).
+
+region = "ap-southeast-2"
+
+# Your existing VPC.
+vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
+
+# At least two PRIVATE subnets in different AZs, each with NAT egress.
+private_subnet_ids = [
+  "subnet-xxxxxxxxxxxxxxxxx",
+  "subnet-yyyyyyyyyyyyyyyyy",
+]
+
+# Optional overrides:
+# name_prefix        = "claude-gateway-tf"   # change to run multiple isolated stacks
+# kubernetes_version = "1.32"
+# db_instance_class  = "db.t4g.small"
+# db_engine_version  = "16.13"

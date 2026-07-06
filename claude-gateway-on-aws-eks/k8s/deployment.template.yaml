@@ -1,0 +1,89 @@
+# TEMPLATE — render with your values, do not deploy directly:
+#   set -a && . ./deploy.env && set +a
+#   envsubst < k8s/deployment.template.yaml | kubectl apply -f -
+# See deploy.env.example for the variables.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-gateway
+  namespace: claude-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claude-gateway
+  template:
+    metadata:
+      labels:
+        app: claude-gateway
+    spec:
+      serviceAccountName: gateway
+      # Resolve the collector's ALB hostname to an ALB private IP so the gateway's
+      # telemetry.forward_to relay (https://${OTEL_HOST}) reaches the internal
+      # ALB. The ALB terminates TLS with your ACM cert, so we must connect by
+      # hostname (not IP) for TLS to validate. Mirrors the /etc/hosts pattern.
+      # NOTE: internal ALB IPs can change if the ALB is recreated — update this entry
+      # (or move to a private Route53 alias) if the collector ingress is rebuilt.
+      hostAliases:
+        - ip: "${ALB_PRIVATE_IP}"
+          hostnames:
+            - ${OTEL_HOST}
+      containers:
+        - name: gateway
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/claude-gateway:${GATEWAY_IMAGE_TAG}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: config
+              mountPath: /etc/claude
+              readOnly: true
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: claude-gateway-secrets
+        - name: config
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: claude-gateway-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claude-gateway
+  namespace: claude-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: claude-gateway
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP

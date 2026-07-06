@@ -1,0 +1,31 @@
+# TEMPLATE — render with your values, do not deploy directly:
+#   set -a && . ./deploy.env && set +a
+#   envsubst < k8s/ingress.template.yaml | kubectl apply -f -
+# See deploy.env.example for the variables.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: claude-gateway
+  namespace: claude-gateway
+  annotations:
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/subnets: ${ALB_SUBNETS}
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: claude-gateway
+                port:
+                  number: 8080
