@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 18.x
       - name: Install dependencies
-        run: yarn install --check-files --ignore-engines
+        run: yarn install --check-files
       - name: build
         run: npx projen build
       - name: Find mutations
