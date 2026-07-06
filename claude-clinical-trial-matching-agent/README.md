@@ -91,7 +91,8 @@ The main notebook works with **just Bedrock model access** — no DynamoDB, no S
 
 ```bash
 # Clone the repo
-git clone https://github.com/aws-samples/clinical-trial-matching-agent.git
+git clone https://github.com/aws-samples/anthropic-on-aws.git
+cd anthropic-on-aws/claude-clinical-trial-matching-agent
 cd clinical-trial-matching-agent
 
 # Install dependencies
