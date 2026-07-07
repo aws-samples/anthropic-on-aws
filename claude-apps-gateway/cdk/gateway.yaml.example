@@ -1,0 +1,155 @@
+# gateway.yaml.template — Claude apps gateway config for the AWS / Bedrock worked example.
+#
+# This file is COMMITTED. `stamp-config.sh` substitutes the build-time
+# double-at placeholders below with real literal values (from deploy inputs) to
+# produce `gateway.yaml`, which the Dockerfile COPYs into the image. See ADR 0001
+# for why config is baked into the image on ECS rather than mounted as a secret file.
+#
+# Two kinds of placeholder appear here, and they are resolved at DIFFERENT times:
+#
+#   double-at  (PUBLIC_URL, AWS_REGION, ...) — BUILD time. Replaced by
+#               stamp-config.sh before `docker build`. These are non-secret values
+#               known at deploy and rarely changed (public_url, region, issuer,
+#               client_id, email domains). Baking them means the image is
+#               per-environment; see ADR 0001.
+#
+#   dollar-brace  ${NAME} — BOOT time. Expanded by the gateway itself when it reads
+#               the file. Used for exactly two categories: secrets (never committed)
+#               and values that don't exist until the deploy creates them (the RDS
+#               endpoint + generated DB credentials). stamp-config.sh leaves these
+#               untouched.
+#
+# Run the gateway with:  claude gateway --config /etc/claude/gateway.yaml
+# Operational log verbosity is the CLAUDE_GATEWAY_LOG_LEVEL env var
+# (info | warn | error; default info). It never affects audit events.
+
+listen:
+  host: 0.0.0.0
+  port: 8080
+  # The externally visible HTTPS origin. The gateway builds its OIDC redirect_uri
+  # and discovery doc ONLY from this — never from X-Forwarded-* (those are
+  # client-spoofable). Must resolve to PRIVATE IPs only on developer machines, or
+  # `/login` rejects it. Here it is the internal ALB's hostname.
+  public_url: https://claude-gateway.example.com
+  # The ALB terminates TLS (bring-your-own ACM cert), so the gateway speaks plain
+  # HTTP behind it — no `tls:` block. Trust X-Forwarded-For only from the ALB so
+  # real client IPs surface for per-IP rate limits and audit. Set to the ALB
+  # subnet CIDRs (the private-subnet ranges the ALB ENIs live in).
+  # trusted_proxies:
+  #   - 10.0.0.0/8
+
+oidc:
+  # All three below are non-secret, known at deploy, and rarely change → baked.
+  issuer: https://example.okta.com
+  client_id: 0oa1example2
+  client_secret: ${OIDC_CLIENT_SECRET}   # the one secret in this block (env-injected)
+  allowed_email_domains: [example.com]
+  # Per-IdP notes — uncomment what your provider needs:
+  #   Okta (org server https://example.okta.com): id_token omits email/groups →
+  #     userinfo_fallback: true
+  #   Okta (custom server .../oauth2/default): emits claims directly, no fallback.
+  #   Microsoft Entra: issuer https://login.microsoftonline.com/<tenant>/v2.0 ;
+  #     groups arrive as Object IDs (GUIDs) — match on those, or use App Roles
+  #     with `groups_claim: roles`.
+  #   Keycloak / Dex behind corporate PKI: set `ca_cert_pem:`; lightweight access
+  #     tokens need `userinfo_fallback: true`.
+  # userinfo_fallback: true
+
+session:
+  jwt_secret: ${GATEWAY_JWT_SECRET}   # >= 32 bytes, e.g. `openssl rand -base64 32`
+  # Bearer token lifetime. Default 1h is the secure choice: it assumes the IdP
+  # issues refresh tokens (offline_access, in the default scopes), so the CLI
+  # renews silently AND a disabled user loses access within <= 1h on the next
+  # failed refresh.
+  ttl_hours: 1
+  # Refresh-token recipes by IdP:
+  #   Okta / Entra: default `offline_access` scope suffices.
+  #   Google: ignores offline_access — set, in the oidc block:
+  #     scopes: [openid, profile, email]
+  #     extra_auth_params: { access_type: offline, prompt: consent }
+  # Opt-out: ONLY if your IdP can't issue refresh tokens, raise ttl_hours to 8-12
+  # (no silent renewal otherwise) — deprovisioning then lags by that TTL.
+
+store:
+  # Credentials are split OUT of the URL (store.username/password take precedence
+  # over any creds in the URL) so they stay in the RDS-generated secret. The host
+  # is a deploy-created fact, so it's an env var, not baked; the db-name is baked.
+  postgres_url: postgres://${DB_HOST}:5432/claude_gateway?sslmode=require
+  username: ${DB_USER}
+  password: ${DB_PASSWORD}
+  # max_connections: 5   # keep replicas x this below RDS max_connections
+
+upstreams:
+  - provider: bedrock
+    region: us-east-1
+    auth: {}                 # AWS default credential chain → the ECS task role
+    # FIPS / VPC-endpoint override:
+    # base_url: https://bedrock-runtime-fips.us-east-1.amazonaws.com
+  # Multi-upstream failover (provisioned-throughput → on-demand → second region).
+  # Give each a distinct `name:`; 5xx/429/timeout fail over, other 4xx does not:
+  # - name: bedrock-pt
+  #   provider: bedrock
+  #   region: us-east-1
+  #   auth: {}
+  # - name: bedrock-od
+  #   provider: bedrock
+  #   region: us-west-2
+  #   auth: {}
+  # (with a matching `models:` block mapping the PT ARN to bedrock-pt)
+
+telemetry:
+  # The ADOT collector is reached over the gateway ALB's HTTPS :4318 listener.
+  # The gateway REQUIRES https:// for any non-loopback forward_to target and
+  # offers no custom-CA/skip-verify option for it, so the collector sits behind
+  # the ALB's publicly-trusted ACM cert (TLS terminates at the ALB; the collector
+  # speaks plain OTLP/HTTP behind it). Telemetry turns on only when forward_to AND
+  # listen.public_url are both set; the gateway then pushes OTEL_* env to clients
+  # (one-time client approval dialog).
+  forward_to:
+    - url: https://claude-gateway.example.com:4318
+      # Default is metrics-only. Metrics are aggregate counters (tokens, requests,
+      # latency). logs/traces can carry full bash commands, tool inputs, and file
+      # paths — enable them ONLY on a destination with the access controls and
+      # retention that data warrants.
+      metrics: true
+      # logs: false
+      # traces: false
+
+# Constrain the model picker to a curated allowlist. This turns the silent
+# Bedrock AccessDenied trap into an explicit allowlist: align this with the
+# Claude models you have ACTUALLY enabled access for, per region. Also enforced
+# server-side at /v1/messages, so a patched client can't bypass it.
+auto_include_builtin_models: true
+managed:
+  policies:
+    # Example group-scoped policy (uncomment + adapt). Specific matches first;
+    # they inherit any key they don't set from the match:{} base below.
+    # - match: { groups: [eng-contractors] }
+    #   cli:
+    #     availableModels: [claude-haiku-4-5]
+    #     enforceAvailableModels: true
+    #     permissions: { allow: [Read, Grep] }
+    # Catch-all base: matches every authenticated user.
+    - match: {}
+      cli:
+        availableModels:
+          - claude-opus-4-8
+          - claude-sonnet-5
+          - claude-haiku-4-5
+          - claude-fable-5
+        enforceAvailableModels: true
+
+# Optional blocks, left commented:
+#
+# admin:        # enables /v1/organizations/spend_limits + per-developer spend caps
+#   write_keys:
+#     - { id: terraform, key: "${GATEWAY_ADMIN_WRITE_KEY_TF}" }
+#   admin_groups: [platform-finops]
+#   # NOTE: enabling admin makes Postgres hold durable spend + audit + PII. Harden
+#   # RDS (backups, deletion protection, multi-AZ) — see the README "Productionising".
+#
+# models:       # required only for non-US Bedrock regions or provisioned-throughput ARNs
+#   - id: claude-opus-4-8
+#     label: Claude Opus 4.8
+#     upstream_model:
+#       bedrock: us.anthropic.claude-opus-4-8
