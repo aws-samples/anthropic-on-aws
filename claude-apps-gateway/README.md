@@ -6,7 +6,7 @@ Claude apps gateway is how enterprises run Claude Code (and Claude Desktop) on A
 
 ---
 
-## The 30-second pitch for customers
+## The 30-second pitch
 
 > "You deploy one container in your VPC. It connects to your IdP and to Amazon Bedrock or Claude Platform on AWS. Your developers sign in with corporate SSO — no AWS credentials, no API keys on their machines. You get per-user cost attribution, model access policies by team, and usage telemetry to your own collector. Offboarding is just removing someone from the IdP."
 
