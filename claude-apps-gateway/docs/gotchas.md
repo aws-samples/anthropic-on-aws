@@ -52,16 +52,38 @@ target. A natural AWS design points it at a collector over a private Cloud Map n
 claude gateway: EACCES: permission denied, open '/etc/claude/gateway.yaml'
 ```
 
-**Why:** the distroless image runs as the `nonroot` uid (65532). If your build
-stamps `gateway.yaml` via `mktemp` (which creates files at mode `0600`, owner-only)
-and then `COPY`s it, the file lands root-owned and unreadable by `nonroot`.
+**Why:** the distroless image runs as the `nonroot` uid (65532). Two ways to
+land here: the file itself isn't readable, *or* its parent dir isn't traversable.
 
-**Fix:** `COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml` in the Dockerfile.
-Don't rely on the host file's mode.
+- If your build stamps `gateway.yaml` via `mktemp` (mode `0600`, owner-only) and
+  then `COPY`s it, the file lands root-owned and unreadable by `nonroot`.
+- The obvious one-liner fix — `COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml`
+  — is **not enough on Docker/BuildKit**: the `--chmod` also stamps the
+  *auto-created* `/etc/claude` parent at `0644`, dropping its traverse (execute)
+  bit, so `nonroot` can't enter the directory → same `EACCES`. (podman's builder
+  doesn't propagate the mode to the parent, so the one-liner *appears* to work
+  there — an easy way to ship this bug if you only test on podman.)
+
+**Fix:** assemble `/etc/claude` in a small builder stage with explicit modes
+(dir `0755`, file `0644`), then copy the finished tree into the shell-less
+distroless image — `COPY --from` preserves the modes verbatim on every builder:
+
+```dockerfile
+FROM debian:12-slim AS config
+COPY gateway.yaml /tmp/gateway.yaml
+RUN mkdir -p /out/etc/claude \
+ && cp /tmp/gateway.yaml /out/etc/claude/gateway.yaml \
+ && chmod 0755 /out/etc/claude \
+ && chmod 0644 /out/etc/claude/gateway.yaml
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY --from=config /out/etc/claude /etc/claude
+```
 
 > Takeaway: any file you bake into a non-root distroless image needs an
-> explicit readable mode. This bites silently — the build succeeds, the container
-> only fails at runtime.
+> explicit readable mode **and** a traversable parent dir. This bites silently —
+> the build succeeds, the container only fails at runtime — and it's
+> builder-dependent, so a green build on one engine doesn't clear the other.
 
 ---
 
