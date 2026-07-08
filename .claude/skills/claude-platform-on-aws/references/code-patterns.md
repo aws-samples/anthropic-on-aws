@@ -19,17 +19,11 @@ response = client.messages.create(
 ### After (CPOA — API Key Mode)
 
 ```python
-from anthropic import Anthropic
+from anthropic import AnthropicAWS  # pip install -U "anthropic[aws]"
 
-REGION = "us-west-2"
-WORKSPACE_ID = "wrkspc_XXXXX"
-API_KEY = "aws-external-anthropic-api-key-..."
-
-client = Anthropic(
-    auth_token=API_KEY,
-    base_url=f"https://aws-external-anthropic.{REGION}.api.aws",
-    default_headers={"anthropic-workspace-id": WORKSPACE_ID},
-)
+# API key generated in AWS Console under Claude Platform on AWS → API keys
+# Region + workspace from AWS_REGION / ANTHROPIC_AWS_WORKSPACE_ID env vars
+client = AnthropicAWS(api_key="<your-cpoa-api-key>")
 
 response = client.messages.create(
     model="claude-sonnet-4-6",
@@ -41,16 +35,29 @@ response = client.messages.create(
 ### After (CPOA — SigV4 IAM Mode)
 
 ```python
-from anthropic import Anthropic
+from anthropic import AnthropicAWS  # pip install -U "anthropic[aws]"
 
-REGION = "us-west-2"
-WORKSPACE_ID = "wrkspc_XXXXX"
+# No API key → SigV4 via default AWS credential chain
+# (env → ~/.aws → IRSA → ECS → IMDS)
+client = AnthropicAWS(aws_region="us-west-2")
 
-client = Anthropic(
-    credentials={"type": "aws_iam", "region": REGION},
-    base_url=f"https://aws-external-anthropic.{REGION}.api.aws",
-    default_headers={"anthropic-workspace-id": WORKSPACE_ID},
+response = client.messages.create(
+    model="claude-sonnet-4-6",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello"}],
 )
+```
+
+### After (CPOA — Short-Term Token)
+
+```python
+from token_generator_for_aws_external_anthropic import TokenGenerator
+from anthropic import AnthropicAWS
+
+# Token defaults to 12h, capped at min(requested, AWS creds expiry, 12h)
+token = TokenGenerator(region="us-west-2").get_token()
+
+client = AnthropicAWS(api_key=token, aws_region="us-west-2")
 
 response = client.messages.create(
     model="claude-sonnet-4-6",
@@ -63,7 +70,7 @@ response = client.messages.create(
 
 ### Before (Anthropic 1P)
 
-```javascript
+```typescript
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: "sk-ant-api03-..." });
@@ -77,17 +84,13 @@ const response = await client.messages.create({
 
 ### After (CPOA — API Key Mode)
 
-```javascript
-import Anthropic from "@anthropic-ai/sdk";
+```typescript
+import AnthropicAws from "@anthropic-ai/aws-sdk";  // npm install @anthropic-ai/aws-sdk
 
-const region = "us-west-2";
-const workspaceId = "wrkspc_XXXXX";
-const apiKey = "aws-external-anthropic-api-key-...";
-
-const client = new Anthropic({
-  authToken: apiKey,
-  baseURL: `https://aws-external-anthropic.${region}.api.aws`,
-  defaultHeaders: { "anthropic-workspace-id": workspaceId },
+// API key generated in AWS Console under Claude Platform on AWS → API keys
+const client = new AnthropicAws({
+  apiKey: "<your-cpoa-api-key>",
+  awsRegion: "us-west-2",
 });
 
 const response = await client.messages.create({
@@ -99,17 +102,11 @@ const response = await client.messages.create({
 
 ### After (CPOA — SigV4 IAM Mode)
 
-```javascript
-import Anthropic from "@anthropic-ai/sdk";
+```typescript
+import AnthropicAws from "@anthropic-ai/aws-sdk";
 
-const region = "us-west-2";
-const workspaceId = "wrkspc_XXXXX";
-
-const client = new Anthropic({
-  credentials: { type: "aws_iam", region },
-  baseURL: `https://aws-external-anthropic.${region}.api.aws`,
-  defaultHeaders: { "anthropic-workspace-id": workspaceId },
-});
+// No API key → SigV4 via default AWS credential chain
+const client = new AnthropicAws({ awsRegion: "us-west-2" });
 
 const response = await client.messages.create({
   model: "claude-sonnet-4-6",
@@ -118,7 +115,23 @@ const response = await client.messages.create({
 });
 ```
 
-**Note:** `AnthropicAWS` class is Python-only. In Node.js, always use the standard `Anthropic` class with `authToken` or `credentials`.
+### After (CPOA — Short-Term Token)
+
+```typescript
+import { getTokenProvider } from "@aws/token-generator-for-aws-external-anthropic";
+import AnthropicAws from "@anthropic-ai/aws-sdk";
+
+const tokenProvider = getTokenProvider({ region: "us-west-2" });
+const token = await tokenProvider();
+
+const client = new AnthropicAws({ apiKey: token, awsRegion: "us-west-2" });
+
+const response = await client.messages.create({
+  model: "claude-sonnet-4-6",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Hello" }],
+});
+```
 
 ## curl
 
@@ -136,60 +149,78 @@ curl -X POST https://api.anthropic.com/v1/messages \
 
 ```bash
 curl -X POST https://aws-external-anthropic.us-west-2.api.aws/v1/messages \
-  -H "Authorization: Bearer aws-external-anthropic-api-key-..." \
+  -H "x-api-key: <your-cpoa-api-key>" \
   -H "anthropic-workspace-id: wrkspc_XXXXX" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
   -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-## Managed Agents (Self-Hosted Environments)
+### After (CPOA — SigV4 Mode)
+
+```bash
+# Uses curl's --aws-sigv4 flag (requires curl 7.75+)
+curl -X POST "https://aws-external-anthropic.us-west-2.api.aws/v1/messages" \
+  --aws-sigv4 "aws:amz:us-west-2:aws-external-anthropic" \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "x-amz-security-token: $AWS_SESSION_TOKEN" \
+  -H "anthropic-workspace-id: $ANTHROPIC_AWS_WORKSPACE_ID" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+## Self-Hosted Sandbox Workers
 
 ### Before (1P — Environment Key)
 
 ```python
 from anthropic import Anthropic
-from anthropic.helpers.beta.environments import WorkPoller
 
 client = Anthropic(api_key="sk-ant-api03-...")
-poller = WorkPoller(client, environment_key="sk-ant-env01-...")
 
-for work in poller:
-    # process work items
-    pass
+# Start worker with environment key from Claude Console
+worker = client.beta.environments.worker.run(
+    environment_key="sk-ant-env01-...",
+)
 ```
 
-### After (CPOA — Direct Polling)
+### After (CPOA — Worker with IAM Auth)
 
 ```python
-from anthropic import Anthropic
+from anthropic import AnthropicAWS
 
-REGION = "us-west-2"
-WORKSPACE_ID = "wrkspc_XXXXX"
-API_KEY = "aws-external-anthropic-api-key-..."
-ENVIRONMENT_ID = "env_XXXXX"
+# Worker authenticates via IAM (AnthropicSelfHostedEnvironmentAccess policy)
+# Environment keys from Claude Console do NOT work on CPOA
+client = AnthropicAWS(aws_region="us-west-2")
 
-client = Anthropic(
-    auth_token=API_KEY,
-    base_url=f"https://aws-external-anthropic.{REGION}.api.aws",
-    default_headers={"anthropic-workspace-id": WORKSPACE_ID},
+# Use EnvironmentWorker SDK helper
+worker = client.beta.environments.worker.run(
+    environment_id="env_XXXXX",
 )
+```
 
-# Direct polling (bypasses WorkPoller's environmentKey requirement)
-while True:
-    work = client.beta.environments.work.poll(
-        environment_id=ENVIRONMENT_ID,
-        timeout=30,
-    )
-    if work:
-        # process work items
-        pass
+### After (CPOA — Worker with API Key)
+
+```python
+from anthropic import AnthropicAWS
+
+# Worker authenticates via CPOA API key
+client = AnthropicAWS(api_key="<your-cpoa-api-key>", aws_region="us-west-2")
+
+worker = client.beta.environments.worker.run(
+    environment_id="env_XXXXX",
+)
 ```
 
 ### Session Creation (CPOA)
 
 ```python
-# Create session targeting an agent
+from anthropic import AnthropicAWS
+
+client = AnthropicAWS(aws_region="us-west-2")
+
+# Create session targeting an agent in a self-hosted environment
 session = client.beta.sessions.create(
     agent="agent_XXXXX",
     environment_id="env_XXXXX",
@@ -204,27 +235,27 @@ client.beta.sessions.events.send(
     }],
 )
 
-# Session transitions: idle → running (work queued for MicroVM pickup)
+# Session transitions: idle → running (work queued for worker pickup)
 ```
 
 ## Environment Variables Mapping
 
 | 1P Variable | CPOA Variable | Notes |
 |-------------|---------------|-------|
-| `ANTHROPIC_API_KEY` | `ANTHROPIC_AWS_API_KEY` | Prefix: `aws-external-anthropic-api-key-` |
-| (none) | `ANTHROPIC_AWS_WORKSPACE_ID` | Required for all CPOA calls |
-| (none) | `AWS_REGION` | Region for endpoint URL |
-| `ANTHROPIC_BASE_URL` | (derived) | `https://aws-external-anthropic.{region}.api.aws` |
-| `ENVIRONMENT_KEY` | (not used) | CPOA doesn't use environment keys |
+| `ANTHROPIC_API_KEY` | (constructor `api_key`) | CPOA keys generated in AWS Console |
+| (none) | `ANTHROPIC_AWS_WORKSPACE_ID` | Required — SDK reads automatically |
+| (none) | `AWS_REGION` | Required — no fallback default |
+| `ANTHROPIC_BASE_URL` | (handled by SDK) | `AnthropicAWS`/`AnthropicAws` sets it from region |
+| `ENVIRONMENT_KEY` | (not used on CPOA) | Workers use IAM or API key instead |
 
 ## Validation Checklist
 
 After conversion, verify:
 
-1. [ ] Base URL uses `aws-external-anthropic.{region}.api.aws`
-2. [ ] `anthropic-workspace-id` header present on all requests
-3. [ ] API key has `aws-external-anthropic-api-key-` prefix (if using key mode)
-4. [ ] No references to `sk-ant-api03-` or `sk-ant-env01-` keys
-5. [ ] No `AnthropicAWS` imports in Node.js code
-6. [ ] IAM role has `AnthropicSelfHostedEnvironmentAccess` policy (if SigV4 mode)
-7. [ ] `/v1/models` endpoint returns 200 (basic connectivity test)
+1. [ ] Using platform SDK client (`AnthropicAWS` / `AnthropicAws`), not base `Anthropic` with manual URL
+2. [ ] `AWS_REGION` and `ANTHROPIC_AWS_WORKSPACE_ID` environment variables set
+3. [ ] No references to `sk-ant-api03-` or `sk-ant-env01-` keys
+4. [ ] Outbound web identity federation enabled (`aws iam enable-outbound-web-identity-federation`)
+5. [ ] Correct IAM policy: `AnthropicInferenceAccess` for `/v1/messages`, `AnthropicSelfHostedEnvironmentAccess` for workers
+6. [ ] `/v1/models` endpoint returns 200 (basic connectivity test)
+7. [ ] Short-term token refresh logic in place if using generated tokens (no auto-refresh)

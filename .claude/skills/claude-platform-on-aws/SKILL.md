@@ -1,6 +1,6 @@
 ---
 name: claude-platform-on-aws
-description: Convert Anthropic 1P (direct API) code samples to Claude Platform on AWS (CPOA). Use when migrating from api.anthropic.com to aws-external-anthropic.{region}.api.aws, converting environment key auth to IAM SigV4 or CPOA API key auth, adding workspace headers, adapting MicroVM workers for CPOA, or when someone asks about differences between Anthropic 1P and CPOA authentication/endpoints. Triggers on phrases like "convert to CPOA", "migrate to Claude Platform on AWS", "CPOA auth", "workspace header", "aws-external-anthropic", "SigV4 anthropic".
+description: Convert Anthropic 1P (direct API) code samples to Claude Platform on AWS (CPOA). Use when migrating from api.anthropic.com to aws-external-anthropic.{region}.api.aws, converting auth to IAM SigV4 or CPOA API key, adding workspace headers, adapting self-hosted sandbox workers for CPOA, or when someone asks about differences between Anthropic 1P and CPOA authentication/endpoints. Triggers on phrases like "convert to CPOA", "migrate to Claude Platform on AWS", "CPOA auth", "workspace header", "aws-external-anthropic", "SigV4 anthropic".
 ---
 
 # Claude Platform on AWS — Migration Skill
@@ -12,11 +12,12 @@ Convert Anthropic 1P API code to Claude Platform on AWS (CPOA).
 | Aspect | Anthropic 1P | CPOA |
 |--------|-------------|------|
 | Base URL | `https://api.anthropic.com` | `https://aws-external-anthropic.{region}.api.aws` |
-| Auth | API key (`sk-ant-api03-...`) in `x-api-key` header | IAM SigV4 OR CPOA API key (`aws-external-anthropic-api-key-...`) |
-| Required headers | `x-api-key`, `anthropic-version` | `anthropic-workspace-id` (on all requests) |
+| Auth | API key (`sk-ant-api03-...`) in `x-api-key` header | IAM SigV4 OR CPOA API key (generated in AWS Console) |
+| Required headers | `x-api-key`, `anthropic-version` | `anthropic-workspace-id` (handled by platform SDK clients) |
+| SDK client | `Anthropic` | `AnthropicAWS` (Python) / `AnthropicAws` (TypeScript) |
 | Billing | Anthropic billing | AWS Marketplace |
 | Inference | Anthropic infra | Anthropic infra (same — CPOA only changes auth/billing layer) |
-| Env keys (agents) | `sk-ant-env01-...` | NOT used — use IAM role or CPOA API key |
+| Env keys (self-hosted workers) | `sk-ant-env01-...` (from Claude Console) | NOT used — workers authenticate via IAM or CPOA API key |
 | VPC access | Direct HTTPS to api.anthropic.com | PrivateLink available (VPC→AWS hop only; inference still on Anthropic) |
 | Credential rotation | Manual API key management | Automatic via STS (IAM mode) |
 
@@ -26,49 +27,49 @@ Convert Anthropic 1P API code to Claude Platform on AWS (CPOA).
 
 CPOA supports two auth modes:
 
-- **IAM SigV4** (preferred for production): Uses execution role credentials. No secrets to manage.
-- **API key** (dev/quick-start): CPOA-issued key with `aws-external-anthropic-api-key-` prefix. Short-lived (~15 min from Quick Start, longer for production keys).
+- **IAM SigV4** (preferred for production): Uses execution role credentials via standard AWS provider chain. No secrets to manage.
+- **API key** (dev/quick-start): Generated in AWS Console under Claude Platform on AWS → API keys. Short-term tokens generated from AWS credentials default to 12 hours (capped at the lesser of requested duration, AWS credentials' expiry, and 12 hours).
 
-### 2. Update Base URL
+### 2. Install the Platform SDK
 
-```
-# Before (1P)
-https://api.anthropic.com
+The platform-specific SDK client handles SigV4 signing, base URL construction, and the `anthropic-workspace-id` header automatically.
 
-# After (CPOA)
-https://aws-external-anthropic.{region}.api.aws
-```
+```bash
+# Python
+pip install -U "anthropic[aws]"
 
-Replace `{region}` with the AWS region (e.g., `us-west-2`).
-
-### 3. Add Workspace Header
-
-**Critical**: ALL CPOA API calls require `anthropic-workspace-id` header.
-
-```
-anthropic-workspace-id: wrkspc_XXXXX
+# TypeScript
+npm install @anthropic-ai/aws-sdk
 ```
 
-### 4. Convert Client Initialization
+### 3. Convert Client Initialization
 
 See `references/code-patterns.md` for language-specific conversion patterns (Python, Node.js, curl).
 
-### 5. Update Agent/Environment Workflows
+The platform client reads `AWS_REGION` and `ANTHROPIC_AWS_WORKSPACE_ID` from environment variables. Set them:
 
-For managed agents (self-hosted environments):
-- Remove `environmentKey` usage — not available on CPOA
-- Use `client.beta.environments.work.poll()` directly (bypasses WorkPoller sub-client limitation)
-- Session creation: `client.beta.sessions.create(agent=agent_id, environment_id=env_id)`
-- Event sending: `client.beta.sessions.events.send(session_id=..., events=[{type: 'user.message', content: [...]}])`
+```bash
+export AWS_REGION='us-west-2'
+export ANTHROPIC_AWS_WORKSPACE_ID='wrkspc_XXXXX'
+```
 
-### 6. IAM Permissions (SigV4 mode)
+### 4. Update Self-Hosted Sandbox Workers
 
-Attach `AnthropicSelfHostedEnvironmentAccess` managed policy to execution role, which includes:
-- `aws-external-anthropic:ProcessEnvironmentWork`
-- `aws-external-anthropic:GetEnvironment`
-- Work polling actions
+For self-hosted environments on CPOA:
+- Environment keys from the Claude Console **do not work** on the CPOA endpoint
+- Workers authenticate via IAM (attach `AnthropicSelfHostedEnvironmentAccess` policy) or CPOA API key
+- Use the `EnvironmentWorker` SDK helper (`.run()` / `.run_one()`) or call `GET /v1/environments/{id}/work/poll` directly
 
-### 7. Security Comparison
+### 5. IAM Permissions
+
+Different policies for different use cases:
+
+- **Inference** (`/v1/messages`): Attach `AnthropicInferenceAccess` managed policy (includes `CreateInference`)
+- **Self-hosted workers**: Attach `AnthropicSelfHostedEnvironmentAccess` managed policy (includes `ProcessEnvironmentWork`, `GetEnvironment`, `GetSession`, `UpdateSession`, `GetSkill`, `CallWithBearerToken` — but NOT `CreateInference`)
+
+A role with only `AnthropicSelfHostedEnvironmentAccess` will 403 on `/v1/messages`. Combine both policies if the worker also needs to make inference calls.
+
+### 6. Security Comparison
 
 CPOA advantages for sandboxed/multi-tenant environments:
 - No long-lived secrets — IAM creds rotate hourly via STS
@@ -77,13 +78,13 @@ CPOA advantages for sandboxed/multi-tenant environments:
 - CloudTrail audit — native AWS logging
 - SCP enforcement at org level
 
-Tradeoff: more operational complexity (IAM setup, workspace subscription, headers).
+Tradeoff: more operational complexity (IAM setup, workspace subscription, outbound web identity federation enablement).
 
 ## Common Pitfalls
 
-1. **Missing workspace header** → 400 "Missing header" error on environments endpoints
-2. **Using `AnthropicAWS` class** → Not available in Node.js SDK (Python-only); use standard `Anthropic` with `authToken`
-3. **Using environment keys** → Not supported on CPOA; use IAM or API key directly
-4. **Quick Start keys expire fast** → ~15 min (embedded STS session); use long-lived IAM for production
-5. **WorkPoller requires `environmentKey`** → Bypass by calling `client.beta.environments.work.poll()` directly
-6. **Account not CPOA-subscribed** → SigV4 will fail; need API key from a subscribed account/workspace
+1. **Missing workspace header** → 400 error. Use the platform SDK client (`AnthropicAWS`/`AnthropicAws`) which adds it automatically, or set `ANTHROPIC_AWS_WORKSPACE_ID` env var.
+2. **Outbound web identity federation disabled** → Every request fails with "Outbound web identity federation is disabled for your account". Run `aws iam enable-outbound-web-identity-federation` once per AWS account.
+3. **Using Claude Console environment keys on CPOA** → Won't work. Workers on CPOA authenticate via IAM or CPOA API key instead.
+4. **Confusing IAM policies** → `AnthropicSelfHostedEnvironmentAccess` does NOT grant inference. Need `AnthropicInferenceAccess` for `/v1/messages`.
+5. **Region not set** → Unlike `AnthropicBedrock` (which falls back to `us-east-1`), the platform client raises an error if no region is set.
+6. **Account not CPOA-subscribed** → SigV4 will fail; ensure the AWS account has completed Claude Platform on AWS sign-up.
