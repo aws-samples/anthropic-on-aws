@@ -57,8 +57,11 @@ function summarize(r) {
     period: r.period,
     spend_usd: spendUsd,
     cap_usd: capUsd,
+    // One-decimal precision: integer rounding turns 0.33% into a misleading 0%, and —
+    // worse — 99.5% into 100%, which get_blocked_users would report as blocked before
+    // the gateway actually blocks.
     cap_utilization_pct:
-      capUsd != null && capUsd > 0 ? Math.round((spendUsd / capUsd) * 100) : null,
+      capUsd != null && capUsd > 0 ? Math.round((spendUsd / capUsd) * 1000) / 10 : null,
   };
 }
 

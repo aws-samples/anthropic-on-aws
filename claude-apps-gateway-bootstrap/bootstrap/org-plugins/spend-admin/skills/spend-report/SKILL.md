@@ -30,8 +30,12 @@ Title: **"Claude Usage & Spend Report"** with today's date and a subtitle
      resets or the cap is raised", listing user + period + cap.
    - warning-band users (80–99%): amber banner, "approaching cap".
    - nobody in either: a single green line "All users within quota."
-2. **Top spenders (daily)** — horizontal bar chart, highest first, spend in USD, the user's
-   daily cap drawn as a reference line on each bar where one exists.
+2. **Top spenders (daily)** — horizontal bar chart, highest first, spend in USD, bars scaled
+   to the **largest spender** (never to a cap). Axis title: "spend (USD) — magnitude, not cap
+   utilization". Do NOT draw caps on this chart and do NOT scale the track so a bar looks
+   nearly full — a full-looking bar reads as "quota exhausted" at a glance regardless of any
+   caption. State each user's cap only as text beside the amount ("$0.33 · cap $100.00").
+   Cap comparison belongs exclusively to the Cap utilization section below.
 3. **Cap utilization** — one horizontal progress bar per user/period that has a cap:
    green &lt;60%, amber 60–90%, red &gt;90%, with a tick mark at 80% labelled "alarm threshold".
 4. **Detail table** — every user × period: spend, cap ("—" if unlimited), utilization %.
