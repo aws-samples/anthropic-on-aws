@@ -1,4 +1,4 @@
-# Claude Apps Gateway — SA Field Guide
+# Claude Apps Gateway
 
 ## TL;DR
 
