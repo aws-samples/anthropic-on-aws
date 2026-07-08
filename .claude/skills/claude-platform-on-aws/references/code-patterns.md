@@ -10,7 +10,7 @@ from anthropic import Anthropic
 client = Anthropic(api_key="sk-ant-api03-...")
 
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )
@@ -26,7 +26,7 @@ from anthropic import AnthropicAWS  # pip install -U "anthropic[aws]"
 client = AnthropicAWS(api_key="<your-cpoa-api-key>")
 
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )
@@ -42,7 +42,7 @@ from anthropic import AnthropicAWS  # pip install -U "anthropic[aws]"
 client = AnthropicAWS(aws_region="us-west-2")
 
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )
@@ -60,7 +60,7 @@ token = TokenGenerator(region="us-west-2").get_token()
 client = AnthropicAWS(api_key=token, aws_region="us-west-2")
 
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )
@@ -76,7 +76,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic({ apiKey: "sk-ant-api03-..." });
 
 const response = await client.messages.create({
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   max_tokens: 1024,
   messages: [{ role: "user", content: "Hello" }],
 });
@@ -94,7 +94,7 @@ const client = new AnthropicAws({
 });
 
 const response = await client.messages.create({
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   max_tokens: 1024,
   messages: [{ role: "user", content: "Hello" }],
 });
@@ -109,7 +109,7 @@ import AnthropicAws from "@anthropic-ai/aws-sdk";
 const client = new AnthropicAws({ awsRegion: "us-west-2" });
 
 const response = await client.messages.create({
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   max_tokens: 1024,
   messages: [{ role: "user", content: "Hello" }],
 });
@@ -127,7 +127,7 @@ const token = await tokenProvider();
 const client = new AnthropicAws({ apiKey: token, awsRegion: "us-west-2" });
 
 const response = await client.messages.create({
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   max_tokens: 1024,
   messages: [{ role: "user", content: "Hello" }],
 });
@@ -142,7 +142,7 @@ curl -X POST https://api.anthropic.com/v1/messages \
   -H "x-api-key: sk-ant-api03-..." \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
-  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"claude-sonnet-5","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ### After (CPOA — API Key Mode)
@@ -153,7 +153,7 @@ curl -X POST https://aws-external-anthropic.us-west-2.api.aws/v1/messages \
   -H "anthropic-workspace-id: wrkspc_XXXXX" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
-  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"claude-sonnet-5","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ### After (CPOA — SigV4 Mode)
@@ -167,7 +167,7 @@ curl -X POST "https://aws-external-anthropic.us-west-2.api.aws/v1/messages" \
   -H "anthropic-workspace-id: $ANTHROPIC_AWS_WORKSPACE_ID" \
   -H "anthropic-version: 2023-06-01" \
   -H "content-type: application/json" \
-  -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"claude-sonnet-5","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ## Self-Hosted Sandbox Workers
