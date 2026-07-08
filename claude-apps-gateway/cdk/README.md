@@ -79,6 +79,29 @@ tar -xzf claude-gateway-*-all.tar.gz linux-x64/claude
 
 Or download it via the standard installer on a Linux machine.
 
+## TLS: managed public cert vs. imported cert
+
+The gateway needs a TLS cert on the internal ALB. The mode is chosen by **whether
+you supply a cert** — there is no separate mode flag:
+
+| You set | Mode | What happens | First `/login` |
+|---|---|---|---|
+| `certArn` | **imported** | The ALB uses your cert as-is. | CLI shows a SHA-256 **fingerprint prompt** (the example prints the fingerprint to publish). |
+| *nothing* | **managed public** (recommended) | The stack **requests a DNS-validated public ACM cert** for the gateway host. | **No prompt** — the cert is browser-trusted. No `NODE_EXTRA_CA_CERTS`, no keychain import. |
+
+**Managed mode uses split-horizon DNS** (see
+[`../docs/adr/0003-managed-public-acm-cert-tls-mode.md`](../docs/adr/0003-managed-public-acm-cert-tls-mode.md)):
+
+- The **private** zone (`zoneId`/`zoneName`) holds the gateway's **A-record →
+  internal ALB** — the only record `/login` resolves, and it answers a private IP.
+- The **public** zone (`publicZoneId` + `publicZoneName`, both explicit) is used
+  **only** for the ACM validation CNAME. No gateway A-record is written there, so the
+  hostname is **never publicly resolvable** — no topology leak.
+
+The public zone must be the **publicly authoritative, delegated** zone for the
+hostname's parent domain. Pointing it at a private or non-delegated zone leaves ACM in
+`PENDING_VALIDATION` and stalls the deploy ~30–90 min — see [`../docs/gotchas.md`](../docs/gotchas.md).
+
 ## How to deploy
 
 ### Step 1: Configure
@@ -186,6 +209,34 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
 | `BEDROCK_REGION` | Region for Bedrock API calls |
+
+### CDK context variables
+
+The stack itself is parameterized by CDK context (`-c key=value`, or set them in
+`cdk.json` / `cdk.context.json`). The two-pass deploy exists because the ECS service
+needs the image to exist: pass 1 (`-c imageReady=false`) creates just the ECR repo,
+pass 2 (default) deploys the full stack.
+
+| Context | Pass | Required | Meaning |
+|---|---|---|---|
+| `region` | both | no | AWS region (default `CDK_DEFAULT_REGION` or `us-east-1`) |
+| `imageReady` | both | no | `false` = pass 1 (repo only); omit/`true` = pass 2 |
+| `publicUrl` | 2 | **yes** | Internal ALB https origin, e.g. `https://claude-gateway.example.com` |
+| `imageTag` | 2 | no | ECR tag (default = pinned claude version) |
+| `certArn` | 2 | no† | ACM cert ARN for `publicUrl`'s hostname (imported cert mode; omit for managed public-cert mode) |
+| `zoneName` | 2 | **yes** | Route 53 hosted-zone name, e.g. `example.com` |
+| `zoneId` | 2 | no | Hosted-zone id (looked up from `zoneName` if omitted) |
+| `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
+| `vpcId` | 2 | no | Import an existing VPC instead of creating one |
+| `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch/S3 endpoints — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy |
+| `publicZoneId` | 2 | no* | PUBLIC hosted-zone id — managed cert mode only (ACM DNS validation) |
+| `publicZoneName` | 2 | no* | PUBLIC hosted-zone name — managed cert mode only (explicit) |
+| `enableDashboard` | 2 | no | `"true"` to deploy the CloudWatch dashboard + alarms (default off) |
+| `dailyCostThresholdUsd` | 2 | no | Daily cost-alarm threshold in USD (dashboard mode) |
+| `alarmEmail` | 2 | no | Optional email for an SNS alarm subscription (dashboard mode) |
+
+\* Required when `certArn` is omitted (managed public-cert mode).
+† Supply `certArn` for imported cert mode; omit it (and set `publicZoneId` + `publicZoneName`) for managed public-cert mode.
 
 ## Before going to production
 

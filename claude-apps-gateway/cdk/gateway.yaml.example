@@ -86,7 +86,10 @@ upstreams:
     # FIPS / VPC-endpoint override:
     # base_url: https://bedrock-runtime-fips.us-east-1.amazonaws.com
   # Multi-upstream failover (provisioned-throughput → on-demand → second region).
-  # Give each a distinct `name:`; 5xx/429/timeout fail over, other 4xx does not:
+  # Give each a distinct `name:`. On 2.1.198+ the gateway fails over on 5xx, 429,
+  # 401, 403, 404, and timeout — so an upstream that hasn't enabled a model (404)
+  # falls through to one that has; other 4xx (a bad request) does not. (Pre-2.1.198
+  # returned the first 404 to the client instead of trying later upstreams.)
   # - name: bedrock-pt
   #   provider: bedrock
   #   region: us-east-1
@@ -96,6 +99,23 @@ upstreams:
   #   region: us-west-2
   #   auth: {}
   # (with a matching `models:` block mapping the PT ARN to bedrock-pt)
+  #
+  # Claude Platform on AWS (anthropicAws) — an alternative AWS-native upstream,
+  # distinct from Bedrock: it serves the first-party Anthropic API on AWS at
+  # aws-external-anthropic.<region>.api.aws, uses first-party model IDs, honors
+  # anthropic-beta headers, and serves count_tokens — none of Bedrock's translation
+  # applies. Requires CLAUDE_VERSION >= 2.1.198 (earlier gateways reject the provider
+  # at boot). It runs in a SEPARATE AWS account and signs SigV4 for its own service
+  # name (aws-external-anthropic), so the Bedrock-scoped task role does NOT authorize
+  # it — use an API key, or grant the task role access to that service:
+  # - provider: anthropicAws
+  #   region: us-east-1
+  #   workspace_id: wrkspc_...        # required; sent as a header on every request
+  #   auth:
+  #     api_key: ${ANTHROPIC_AWS_API_KEY}   # sent as x-api-key
+  #   # OR SigV4 via the AWS default credential chain: auth: {}
+  # (the built-in catalog routes here with no `models:` block, since it resolves
+  #  first-party model IDs; if you curate `models:`, key the entry `anthropicAws:`)
 
 telemetry:
   # The ADOT collector is reached over the gateway ALB's HTTPS :4318 listener.

@@ -11,18 +11,32 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 
 export interface GatewayStackProps extends cdk.StackProps {
   /** Internal ALB https origin, e.g. https://claude-gateway.example.com */
   readonly publicUrl?: string;
   /** ECR image tag (defaults to the pinned claude version). */
   readonly imageTag: string;
-  /** ACM cert ARN for publicUrl's hostname — IMPORTED, not issued in-stack. */
+  /** ACM cert ARN for publicUrl's hostname — IMPORTED. Omit to use managed-public mode. */
   readonly certArn?: string;
-  /** Route 53 hosted-zone name, e.g. example.com */
+  /** Route 53 PRIVATE hosted-zone name, e.g. example.com (holds the A-record). */
   readonly zoneName?: string;
-  /** Route 53 hosted-zone id (optional; looked up from zoneName if omitted). */
+  /** Route 53 private hosted-zone id (optional; looked up from zoneName if omitted). */
   readonly zoneId?: string;
+  /** PUBLIC hosted-zone id — managed mode only; used solely for ACM DNS validation. */
+  readonly publicZoneId?: string;
+  /** PUBLIC hosted-zone name — managed mode only; explicit, not derived from zoneName. */
+  readonly publicZoneName?: string;
+  /** Deploy the CloudWatch dashboard + alarms (default false). */
+  readonly enableDashboard?: boolean;
+  /** Daily cost-alarm threshold in USD (dashboard mode; enables the cost alarm when > 0). */
+  readonly dailyCostThresholdUsd?: number;
+  /** Optional email for an SNS alarm subscription (dashboard mode). */
+  readonly alarmEmail?: string;
   /** VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR. */
   readonly ingressCidr?: string;
   /** Import an existing VPC instead of creating one. */
@@ -67,8 +81,10 @@ export class GatewayStack extends cdk.Stack {
     if (!props.imageReady) {
       new cdk.CfnOutput(this, 'NextStep', {
         value:
-          'Pass 1 complete. Build + push the image to the repo above, then ' +
-          're-run: cdk deploy -c imageReady=true (with certArn/zoneName/ingressCidr/publicUrl).',
+          'Pass 1 complete. Build + push the image to the repo above, then re-run: ' +
+          'cdk deploy -c imageReady=true -c publicUrl=... -c zoneName=... -c ingressCidr=... ' +
+          'and EITHER -c certArn=... (imported cert) OR -c publicZoneId=... -c publicZoneName=... ' +
+          '(managed public cert).',
       });
       return;
     }
@@ -76,11 +92,41 @@ export class GatewayStack extends cdk.Stack {
     // Pass-2 required inputs. We fail fast with a clear message rather than let
     // CDK synth a half-configured stack.
     const publicUrl = req(props.publicUrl, 'publicUrl');
-    const certArn = req(props.certArn, 'certArn');
     const zoneName = req(props.zoneName, 'zoneName');
     const ingressCidr = req(props.ingressCidr, 'ingressCidr');
     // publicUrl is https://<host>; the record name is the host part.
     const recordHost = publicUrl.replace(/^https?:\/\//, '');
+
+    // TLS mode selector: certArn present → IMPORTED (fingerprint-pinned, unchanged);
+    // absent → MANAGED-PUBLIC via split-horizon DNS. See ADR 0003.
+    const managedCert = !props.certArn;
+
+    // Private zone: holds the gateway A-record → internal ALB (both modes).
+    const privateZone = props.zoneId
+      ? route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
+          hostedZoneId: props.zoneId,
+          zoneName,
+        })
+      : route53.HostedZone.fromLookup(this, 'Zone', { domainName: zoneName, privateZone: true });
+
+    // The one certificate both listeners share.
+    let certificate: acm.ICertificate;
+    if (managedCert) {
+      // Managed mode: request a DNS-validated public cert. The validation CNAME
+      // lives ONLY in the explicit public zone; no A-record is written there.
+      const publicZoneId = req(props.publicZoneId, 'publicZoneId');
+      const publicZoneName = req(props.publicZoneName, 'publicZoneName');
+      const publicZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicZone', {
+        hostedZoneId: publicZoneId,
+        zoneName: publicZoneName,
+      });
+      certificate = new acm.Certificate(this, 'Cert', {
+        domainName: recordHost,
+        validation: acm.CertificateValidation.fromDns(publicZone),
+      });
+    } else {
+      certificate = acm.Certificate.fromCertificateArn(this, 'Cert', props.certArn!);
+    }
 
     // ── VPC (2 AZs, public + private-with-egress) ─────────────────────────────
     // NAT is retained for the IdP leg only (public OIDC issuer); all AWS-service
@@ -310,17 +356,12 @@ export class GatewayStack extends cdk.Stack {
       taskSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [taskSg],
       protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificate: acm.Certificate.fromCertificateArn(this, 'Cert', certArn),
+      certificate,
       sslPolicy: elbv2.SslPolicy.TLS13_RES,
       idleTimeout: cdk.Duration.seconds(3600), // long streaming responses
       // Route 53 private record: claude-gateway.<zoneName> → the internal ALB.
       domainName: recordHost,
-      domainZone: props.zoneId
-        ? route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
-            hostedZoneId: props.zoneId,
-            zoneName,
-          })
-        : route53.HostedZone.fromLookup(this, 'Zone', { domainName: zoneName, privateZone: true }),
+      domainZone: privateZone,
       healthCheckGracePeriod: cdk.Duration.seconds(120),
       taskImageOptions: {
         image,
@@ -368,7 +409,7 @@ export class GatewayStack extends cdk.Stack {
     const otelListener = fargate.loadBalancer.addListener('OtelListener', {
       port: 4318,
       protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [acm.Certificate.fromCertificateArn(this, 'OtelCert', certArn)],
+      certificates: [certificate],
       sslPolicy: elbv2.SslPolicy.TLS13_RES,
     });
     otelListener.addTargets('OtelTargets', {
@@ -398,10 +439,79 @@ export class GatewayStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'TaskRoleArn', { value: taskRole.roleArn });
     new cdk.CfnOutput(this, 'RdsEndpoint', { value: db.dbInstanceEndpointAddress });
-    new cdk.CfnOutput(this, 'CertFingerprintHint', {
-      value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,
-      description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
-    });
+    if (!managedCert) {
+      new cdk.CfnOutput(this, 'CertFingerprintHint', {
+        value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,
+        description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
+      });
+    } else {
+      new cdk.CfnOutput(this, 'CertMode', {
+        value: 'managed-public (browser-trusted ACM cert; no fingerprint comparison needed)',
+      });
+    }
+
+    // ── CloudWatch dashboard + alarms (opt-in; default off) ───────────────────
+    // Off by default so existing deploys are unchanged. Dashboard covers ALB +
+    // ECS health; alarms fire on ALB 5xx and (if a threshold is set) daily cost.
+    if (props.enableDashboard) {
+      const alb = fargate.loadBalancer;
+      const alb5xx = alb.metrics.httpCodeElb(elbv2.HttpCodeElb.ELB_5XX_COUNT, {
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5),
+      });
+      const targetResp = alb.metrics.targetResponseTime({ period: cdk.Duration.minutes(5) });
+      const reqCount = alb.metrics.requestCount({ period: cdk.Duration.minutes(5) });
+      const cpu = fargate.service.metricCpuUtilization({ period: cdk.Duration.minutes(5) });
+
+      // Optional SNS notification target (only if an email is supplied).
+      let alarmAction: cloudwatchActions.SnsAction | undefined;
+      if (props.alarmEmail) {
+        const topic = new sns.Topic(this, 'AlarmTopic', { displayName: 'claude-gateway-alarms' });
+        topic.addSubscription(new snsSubscriptions.EmailSubscription(props.alarmEmail));
+        alarmAction = new cloudwatchActions.SnsAction(topic);
+      }
+
+      const errorAlarm = new cloudwatch.Alarm(this, 'Alb5xxAlarm', {
+        alarmName: 'claude-gateway-alb-5xx',
+        metric: alb5xx,
+        threshold: 5,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      if (alarmAction) errorAlarm.addAlarmAction(alarmAction);
+
+      // Cost metric is emitted by the ADOT collector into the ClaudeGateway
+      // namespace. The alarm is only meaningful once a threshold is set.
+      const costMetric = new cloudwatch.Metric({
+        namespace: 'ClaudeGateway',
+        metricName: 'cost.usage',
+        statistic: 'Sum',
+        period: cdk.Duration.hours(24),
+      });
+      if (props.dailyCostThresholdUsd && props.dailyCostThresholdUsd > 0) {
+        const costAlarm = new cloudwatch.Alarm(this, 'DailyCostAlarm', {
+          alarmName: 'claude-gateway-daily-cost',
+          metric: costMetric,
+          threshold: props.dailyCostThresholdUsd,
+          evaluationPeriods: 1,
+          comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        });
+        if (alarmAction) costAlarm.addAlarmAction(alarmAction);
+      }
+
+      const dashboard = new cloudwatch.Dashboard(this, 'Dashboard', {
+        dashboardName: 'claude-gateway',
+      });
+      dashboard.addWidgets(
+        new cloudwatch.GraphWidget({ title: 'ALB requests', left: [reqCount], width: 12 }),
+        new cloudwatch.GraphWidget({ title: 'ALB 5xx', left: [alb5xx], width: 12 }),
+        new cloudwatch.GraphWidget({ title: 'Target response time', left: [targetResp], width: 12 }),
+        new cloudwatch.GraphWidget({ title: 'Gateway CPU', left: [cpu], width: 12 }),
+        new cloudwatch.GraphWidget({ title: 'Daily cost (ClaudeGateway)', left: [costMetric], width: 12 }),
+      );
+    }
   }
 }
 
@@ -410,8 +520,9 @@ function req(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(
       `Missing required context "${name}". For pass 2 deploy with: ` +
-        `-c publicUrl=... -c certArn=... -c zoneName=... -c ingressCidr=... ` +
-        `(or set imageReady=false for the pass-1 ECR-repo-only deploy).`,
+        `-c publicUrl=... -c zoneName=... -c ingressCidr=... and EITHER ` +
+        `-c certArn=... (imported cert) OR -c publicZoneId=... -c publicZoneName=... ` +
+        `(managed public cert). Or set imageReady=false for the pass-1 ECR-repo-only deploy.`,
     );
   }
   return value;

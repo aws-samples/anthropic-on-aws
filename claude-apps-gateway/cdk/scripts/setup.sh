@@ -25,12 +25,15 @@
 #     profiles (us.anthropic.*), in EVERY region the profile spans. This is a
 #     console/account-level step IAM cannot grant; missing it yields
 #     AccessDeniedException on invoke even when IAM is correct. (#1 Bedrock failure.)
-#   * An ACM cert for PUBLIC_URL's hostname → CERT_ARN (issuance + DNS validation
-#     is org-specific, so it is NOT created here).
-#   * A Route 53 hosted zone (ZONE_ID/ZONE_NAME) and a network path + private-DNS
-#     resolution from developer laptops to the internal ALB (VPN/DX/TGW). See
-#     docs/connectivity.md — this is the #1 "internal ALB doesn't work from my
-#     laptop" failure.
+#   * TLS: EITHER an imported ACM cert for PUBLIC_URL's hostname (set CERT_ARN),
+#     OR managed public-cert mode (leave CERT_ARN unset) - then this script
+#     requests a DNS-validated public cert and needs PUBLIC_ZONE_ID +
+#     PUBLIC_ZONE_NAME (the public, delegated zone used ONLY for ACM validation;
+#     the gateway A-record still lives in the private ZONE_ID). See ADR 0003.
+#   * A private Route 53 hosted zone (ZONE_ID/ZONE_NAME) for the gateway A-record,
+#     plus a network path + private-DNS resolution from developer laptops to the
+#     internal ALB (VPN/DX/TGW). See docs/connectivity.md - the #1 "internal ALB
+#     doesn't work from my laptop" failure.
 #   * The OIDC client's redirect URI <PUBLIC_URL>/oauth/callback registered.
 
 set -euo pipefail
@@ -44,8 +47,11 @@ PROJECT="${PROJECT:-claude-gateway}"
 # Pin the Claude Code version. Drives BOTH the download URL and the image tag, so
 # the artifact is self-describing. The gateway subcommand floor is 2.1.195; the
 # version must also be >= the newest managed-settings key you use (we ship a live
-# managed.policies block). See the README "Version coupling" note.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.197}"
+# managed.policies block). 2.1.198 added 404-failover across upstreams and the
+# anthropicAws (Claude Platform on AWS) provider, both referenced in
+# gateway.yaml.template; keep this >= 2.1.198 if you rely on either. See the README
+# "Version coupling" note.
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.199}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).
@@ -68,6 +74,10 @@ DESIRED_COUNT="${DESIRED_COUNT:-2}"
 LOG_GROUP="${LOG_GROUP:-/claude-gateway/gateway}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-90}"
 GATEWAY_LOG_LEVEL="${GATEWAY_LOG_LEVEL:-info}"
+# CloudWatch dashboard + alarms — opt-in (default off), mirrors the CDK track.
+ENABLE_DASHBOARD="${ENABLE_DASHBOARD:-false}"
+DAILY_COST_THRESHOLD_USD="${DAILY_COST_THRESHOLD_USD:-0}"
+ALARM_EMAIL="${ALARM_EMAIL:-}"
 
 # Telemetry collector (ADOT) — its own small Fargate service, reached over the
 # gateway ALB's HTTPS :4318 listener (the gateway requires https:// for a
@@ -80,9 +90,15 @@ PUBLIC_URL="${PUBLIC_URL:?required: the internal ALB https origin, e.g. https://
 OIDC_ISSUER="${OIDC_ISSUER:?required: OIDC discovery base, e.g. https://example.okta.com}"
 OIDC_CLIENT_ID="${OIDC_CLIENT_ID:?required: OAuth client id}"
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS:?required: comma-separated, e.g. example.com}"
-CERT_ARN="${CERT_ARN:?required: ACM cert ARN for the PUBLIC_URL hostname}"
-ZONE_ID="${ZONE_ID:?required: Route 53 hosted zone id for the gateway record}"
-ZONE_NAME="${ZONE_NAME:?required: Route 53 zone name, e.g. example.com}"
+# TLS mode selector: CERT_ARN set → IMPORTED (fingerprint-pinned). Unset → MANAGED
+# public-cert via split-horizon DNS (requires PUBLIC_ZONE_ID + PUBLIC_ZONE_NAME).
+CERT_ARN="${CERT_ARN:-}"
+ZONE_ID="${ZONE_ID:?required: Route 53 PRIVATE hosted zone id for the gateway A-record}"
+ZONE_NAME="${ZONE_NAME:?required: Route 53 private zone name, e.g. example.com}"
+# Managed mode only — the PUBLIC, delegated zone used solely for ACM DNS validation.
+PUBLIC_ZONE_ID="${PUBLIC_ZONE_ID:-}"
+PUBLIC_ZONE_NAME="${PUBLIC_ZONE_NAME:-}"
+if [[ -n "${CERT_ARN}" ]]; then MANAGED_CERT=0; else MANAGED_CERT=1; fi
 # The VPN/corp CLIENT CIDR developer traffic arrives from — NOT the VPC CIDR.
 # A wrong guess is either wide-open or fully-closed, so we refuse to default it.
 INGRESS_CIDR="${INGRESS_CIDR:?required: the VPN/corp client CIDR developers connect from}"
@@ -112,6 +128,17 @@ done
 ACCOUNT_ID="${ACCOUNT_ID:-$(aws_q sts get-caller-identity --query Account)}"
 [[ -n "${ACCOUNT_ID}" && "${ACCOUNT_ID}" != "None" ]] || die "could not resolve AWS account id - is the aws CLI authenticated?"
 info "account ${ACCOUNT_ID}, region ${AWS_REGION}"
+if [[ "${MANAGED_CERT}" == "1" ]]; then
+  [[ -n "${PUBLIC_ZONE_ID}" ]]   || die "managed cert mode (no CERT_ARN) requires PUBLIC_ZONE_ID (the public, delegated zone for ACM validation)"
+  [[ -n "${PUBLIC_ZONE_NAME}" ]] || die "managed cert mode (no CERT_ARN) requires PUBLIC_ZONE_NAME (explicit, not derived from ZONE_NAME)"
+  # Warn (don't fail) if the public zone looks private — the classic ACM stall.
+  if [[ "$(aws_q route53 get-hosted-zone --id "${PUBLIC_ZONE_ID}" --query 'HostedZone.Config.PrivateZone')" == "True" ]]; then
+    info "WARNING: PUBLIC_ZONE_ID ${PUBLIC_ZONE_ID} is a PRIVATE zone — ACM DNS validation will stall (~30-90 min). It must be the public, delegated zone."
+  fi
+  info "TLS mode: managed public cert (validation zone ${PUBLIC_ZONE_NAME})"
+else
+  info "TLS mode: imported cert ${CERT_ARN}"
+fi
 info "caller $(aws_q sts get-caller-identity --query Arn)"
 REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 IMAGE_URI="${REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
@@ -588,6 +615,63 @@ else
   skip "target group ${PROJECT}-tg"
 fi
 
+# 6a′. Managed public cert (only when CERT_ARN was not supplied). Request a
+# DNS-validated public ACM cert for the gateway host; write the validation CNAME
+# into the PUBLIC zone (split-horizon — the A-record stays in the private zone,
+# added in 6d). Idempotent: reuse an existing ISSUED cert for this host.
+if [[ "${MANAGED_CERT}" == "1" ]]; then
+  RECORD_HOST="${PUBLIC_URL#https://}"
+  # Reuse an existing cert (ISSUED or still validating) for this exact domain.
+  CERT_ARN="$(aws_q acm list-certificates --certificate-statuses ISSUED PENDING_VALIDATION \
+    --query "CertificateSummaryList[?DomainName=='${RECORD_HOST}'].CertificateArn | [0]")"
+  if [[ -z "${CERT_ARN}" || "${CERT_ARN}" == "None" ]]; then
+    CERT_ARN="$(aws_q acm request-certificate --domain-name "${RECORD_HOST}" \
+      --validation-method DNS --query 'CertificateArn')"
+    [[ -n "${CERT_ARN}" && "${CERT_ARN}" != "None" ]] || die "failed to request ACM certificate for ${RECORD_HOST}"
+    info "requested ACM certificate ${CERT_ARN}"
+  else
+    skip "ACM certificate ${CERT_ARN} (already exists)"
+  fi
+  # Ensure the validation CNAME exists in the PUBLIC zone for any not-yet-ISSUED
+  # cert — covers both a freshly-requested cert AND a reused PENDING one from a
+  # prior run that crashed before writing the record (the UPSERT is idempotent).
+  if [[ "$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
+        --query 'Certificate.Status')" != "ISSUED" ]]; then
+    # ACM populates the validation record asynchronously; wait for it to appear.
+    for _ in $(seq 1 30); do
+      VNAME="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
+        --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Name')"
+      [[ -n "${VNAME}" && "${VNAME}" != "None" ]] && break
+      sleep 2
+    done
+    VTYPE="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
+      --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Type')"
+    VVALUE="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
+      --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Value')"
+    [[ -n "${VNAME}" && "${VNAME}" != "None" ]] || die "ACM did not return a validation record for ${RECORD_HOST}"
+    # UPSERT the validation CNAME into the PUBLIC zone.
+    VAL_BATCH=$(cat <<JSON
+{"Changes":[{"Action":"UPSERT","ResourceRecordSet":{
+  "Name":"${VNAME}","Type":"${VTYPE}","TTL":300,
+  "ResourceRecords":[{"Value":"${VVALUE}"}]}}]}
+JSON
+)
+    aws route53 change-resource-record-sets --hosted-zone-id "${PUBLIC_ZONE_ID}" \
+      --change-batch "${VAL_BATCH}" >/dev/null
+    info "wrote ACM validation CNAME into public zone ${PUBLIC_ZONE_ID}"
+  fi
+  # Poll until ISSUED (bounded ~10 min). A stall here almost always means
+  # PUBLIC_ZONE_ID is not the public, delegated zone for the domain.
+  for _ in $(seq 1 60); do
+    CERT_STATUS="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
+      --query 'Certificate.Status')"
+    [[ "${CERT_STATUS}" == "ISSUED" ]] && break
+    sleep 10
+  done
+  [[ "${CERT_STATUS}" == "ISSUED" ]] || die "ACM cert ${CERT_ARN} not ISSUED after ~10 min (status ${CERT_STATUS}). Confirm PUBLIC_ZONE_ID is the PUBLIC, delegated zone for ${RECORD_HOST#*.}."
+  info "ACM certificate ISSUED: ${CERT_ARN}"
+fi
+
 # shellcheck disable=SC2016  # backticks are JMESPath literal syntax, not shell expansion
 if [[ "$(aws_q elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" \
       --query 'Listeners[?Port==`443`].ListenerArn')" =~ arn: ]]; then
@@ -764,14 +848,79 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Phase 7 — CloudWatch dashboard + alarms (opt-in; mirrors the CDK track)
+# ──────────────────────────────────────────────────────────────────────────────
+if [[ "${ENABLE_DASHBOARD}" == "true" ]]; then
+  log "Phase 7: CloudWatch dashboard + alarms"
+  ALB_NAME_DIM="${ALB_ARN##*:loadbalancer/}"  # app/<name>/<id> — the LoadBalancer dimension
+
+  # Optional SNS topic + email subscription (only if ALARM_EMAIL is set).
+  ALARM_ACTION_ARGS=()
+  if [[ -n "${ALARM_EMAIL}" ]]; then
+    TOPIC_ARN="$(aws_q sns create-topic --name "${PROJECT}-alarms" --query 'TopicArn')"
+    ALARM_ACTION_ARGS=(--alarm-actions "${TOPIC_ARN}")
+    existing_sub="$(aws_q sns list-subscriptions-by-topic --topic-arn "${TOPIC_ARN}" \
+      --query "Subscriptions[?Endpoint=='${ALARM_EMAIL}'].SubscriptionArn | [0]")"
+    if [[ -z "${existing_sub}" || "${existing_sub}" == "None" ]]; then
+      aws sns subscribe --topic-arn "${TOPIC_ARN}" --protocol email \
+        --notification-endpoint "${ALARM_EMAIL}" --region "${AWS_REGION}" >/dev/null
+      info "SNS topic ${TOPIC_ARN} (confirm the email subscription)"
+    else
+      skip "SNS email subscription for ${ALARM_EMAIL}"
+    fi
+  fi
+
+  aws cloudwatch put-metric-alarm --alarm-name "${PROJECT}-alb-5xx" \
+    --namespace AWS/ApplicationELB --metric-name HTTPCode_ELB_5XX_Count \
+    --dimensions "Name=LoadBalancer,Value=${ALB_NAME_DIM}" \
+    --statistic Sum --period 300 --evaluation-periods 1 \
+    --threshold 5 --comparison-operator GreaterThanThreshold \
+    --treat-missing-data notBreaching \
+    ${ALARM_ACTION_ARGS[@]+"${ALARM_ACTION_ARGS[@]}"} --region "${AWS_REGION}" >/dev/null
+  info "put alarm ${PROJECT}-alb-5xx"
+
+  # Decimal-aware > 0 test (awk), so fractional thresholds like 0.5 still arm the
+  # alarm — matches the CDK track's numeric guard. Non-numeric input → 0 → skip.
+  if awk "BEGIN{exit !(${DAILY_COST_THRESHOLD_USD}+0 > 0)}"; then
+    aws cloudwatch put-metric-alarm --alarm-name "${PROJECT}-daily-cost" \
+      --namespace ClaudeGateway --metric-name cost.usage \
+      --statistic Sum --period 86400 --evaluation-periods 1 \
+      --threshold "${DAILY_COST_THRESHOLD_USD}" --comparison-operator GreaterThanThreshold \
+      --treat-missing-data notBreaching \
+      ${ALARM_ACTION_ARGS[@]+"${ALARM_ACTION_ARGS[@]}"} --region "${AWS_REGION}" >/dev/null
+    info "put alarm ${PROJECT}-daily-cost (threshold \$${DAILY_COST_THRESHOLD_USD})"
+  fi
+
+  DASH_BODY=$(cat <<JSON
+{"widgets":[
+  {"type":"metric","width":12,"height":6,"properties":{"title":"ALB requests","region":"${AWS_REGION}","stat":"Sum","metrics":[["AWS/ApplicationELB","RequestCount","LoadBalancer","${ALB_NAME_DIM}"]]}},
+  {"type":"metric","width":12,"height":6,"properties":{"title":"ALB 5xx","region":"${AWS_REGION}","stat":"Sum","metrics":[["AWS/ApplicationELB","HTTPCode_ELB_5XX_Count","LoadBalancer","${ALB_NAME_DIM}"]]}},
+  {"type":"metric","width":12,"height":6,"properties":{"title":"Target response time","region":"${AWS_REGION}","metrics":[["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${ALB_NAME_DIM}"]]}},
+  {"type":"metric","width":12,"height":6,"properties":{"title":"Gateway CPU","region":"${AWS_REGION}","metrics":[["AWS/ECS","CPUUtilization","ServiceName","${SERVICE}","ClusterName","${CLUSTER}"]]}},
+  {"type":"metric","width":12,"height":6,"properties":{"title":"Daily cost (ClaudeGateway)","region":"${AWS_REGION}","metrics":[["ClaudeGateway","cost.usage"]]}}
+]}
+JSON
+)
+  aws cloudwatch put-dashboard --dashboard-name "${PROJECT}" \
+    --dashboard-body "${DASH_BODY}" --region "${AWS_REGION}" >/dev/null
+  info "put dashboard ${PROJECT}"
+fi
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Final summary
 # ──────────────────────────────────────────────────────────────────────────────
-# Cert SHA-256 fingerprint — developers compare this on first /login (the CLI pins
-# the ALB leaf cert). Fetch from the live endpoint; falls back to a hint if the
-# host isn't resolvable from where setup.sh runs.
-FINGERPRINT="$(echo | openssl s_client -connect "${RECORD_NAME}:443" -servername "${RECORD_NAME}" 2>/dev/null \
-  | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//' || true)"
-[[ -n "${FINGERPRINT}" ]] || FINGERPRINT="(run once DNS resolves: openssl s_client -connect ${RECORD_NAME}:443 -servername ${RECORD_NAME} | openssl x509 -noout -fingerprint -sha256)"
+# Cert SHA-256 fingerprint — imported mode only. In managed mode the cert is a
+# browser-trusted public ACM cert, so the CLI shows no fingerprint prompt.
+if [[ "${MANAGED_CERT}" == "0" ]]; then
+  FINGERPRINT="$(echo | openssl s_client -connect "${RECORD_NAME}:443" -servername "${RECORD_NAME}" 2>/dev/null \
+    | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//' || true)"
+  [[ -n "${FINGERPRINT}" ]] || FINGERPRINT="(run once DNS resolves: openssl s_client -connect ${RECORD_NAME}:443 -servername ${RECORD_NAME} | openssl x509 -noout -fingerprint -sha256)"
+  TLS_STEP="4. Publish this cert SHA-256 fingerprint for developers to compare on /login:
+        ${FINGERPRINT}"
+else
+  TLS_STEP="4. TLS: managed public ACM cert (browser-trusted) — developers see NO
+     fingerprint prompt and need no NODE_EXTRA_CA_CERTS / keychain import."
+fi
 
 cat <<SUMMARY
 
@@ -792,8 +941,7 @@ $(log "Deploy complete")
      region the profile spans. Missing this → AccessDeniedException on invoke.
   3. Confirm developer laptops resolve ${RECORD_NAME} to the ALB's PRIVATE IP
      (VPN/DX/TGW + private DNS — see docs/connectivity.md).
-  4. Publish this cert SHA-256 fingerprint for developers to compare on /login:
-        ${FINGERPRINT}
+  ${TLS_STEP}
   5. Push forceLoginMethod/forceLoginGatewayUrl to developer machines
      (see docs/developer-setup.md).
 

@@ -134,6 +134,73 @@ describe('pass 2 (imageReady: true) — full stack', () => {
   });
 });
 
+describe('TLS mode selection (imported vs managed public cert, ADR 0003)', () => {
+  test('certArn present → imported mode: no in-stack cert, fingerprint hint output', () => {
+    const template = synth(PASS2);
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
+    template.hasOutput('CertFingerprintHint', {});
+  });
+
+  const MANAGED: GatewayStackProps = {
+    ...PASS2,
+    certArn: undefined,
+    publicZoneId: 'Z0PUBLICEXAMPLE',
+    publicZoneName: 'example.com',
+  };
+
+  test('certArn absent → managed mode: DNS-validated public cert for the gateway host', () => {
+    const template = synth(MANAGED);
+    template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+      DomainName: 'claude-gateway.example.com',
+      DomainValidationOptions: [
+        { DomainName: 'claude-gateway.example.com', HostedZoneId: 'Z0PUBLICEXAMPLE' },
+      ],
+      ValidationMethod: 'DNS',
+    });
+    // Managed certs are browser-trusted, so no fingerprint to publish.
+    template.hasOutput('CertMode', {});
+    expect(() => template.hasOutput('CertFingerprintHint', {})).toThrow();
+  });
+
+  test('managed mode fails fast without an explicit public zone', () => {
+    expect(() => synth({ ...MANAGED, publicZoneId: undefined })).toThrow(/publicZoneId/);
+  });
+});
+
+describe('CloudWatch dashboard + alarms (opt-in)', () => {
+  test('off by default — existing deploys are unchanged', () => {
+    const template = synth(PASS2);
+    template.resourceCountIs('AWS::CloudWatch::Dashboard', 0);
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 0);
+    template.resourceCountIs('AWS::SNS::Topic', 0);
+  });
+
+  test('enableDashboard: dashboard + ALB-5xx alarm; cost alarm only with a threshold', () => {
+    const withoutThreshold = synth({ ...PASS2, enableDashboard: true });
+    withoutThreshold.resourceCountIs('AWS::CloudWatch::Dashboard', 1);
+    withoutThreshold.resourceCountIs('AWS::CloudWatch::Alarm', 1);
+    withoutThreshold.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'claude-gateway-alb-5xx',
+    });
+
+    const withThreshold = synth({ ...PASS2, enableDashboard: true, dailyCostThresholdUsd: 50 });
+    withThreshold.resourceCountIs('AWS::CloudWatch::Alarm', 2);
+    withThreshold.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'claude-gateway-daily-cost',
+      Threshold: 50,
+    });
+  });
+
+  test('alarmEmail wires an SNS topic + email subscription to the alarms', () => {
+    const template = synth({ ...PASS2, enableDashboard: true, alarmEmail: 'ops@example.com' });
+    template.resourceCountIs('AWS::SNS::Topic', 1);
+    template.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'email',
+      Endpoint: 'ops@example.com',
+    });
+  });
+});
+
 describe('createVpcEndpoints opt-out (VPC reuse)', () => {
   test('createVpcEndpoints: false synthesizes zero VPC endpoints', () => {
     const template = synth({ ...PASS2, vpcId: 'vpc-0123456789abcdef0', createVpcEndpoints: false });
