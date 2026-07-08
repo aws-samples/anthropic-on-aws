@@ -17,7 +17,7 @@ Convert Anthropic 1P API code to Claude Platform on AWS (CPOA).
 | SDK client | `Anthropic` | `AnthropicAWS` (Python) / `AnthropicAws` (TypeScript) |
 | Billing | Anthropic billing | AWS Marketplace |
 | Inference | Anthropic infra | Anthropic infra (same — CPOA only changes auth/billing layer) |
-| Env keys (self-hosted workers) | `sk-ant-env01-...` (from Claude Console) | NOT used — workers authenticate via IAM or CPOA API key |
+| Env keys (self-hosted workers) | `sk-ant-oat01-...` (from Claude Console) | NOT used — workers authenticate via IAM or CPOA API key |
 | VPC access | Direct HTTPS to api.anthropic.com | PrivateLink available (VPC→AWS hop only; inference still on Anthropic) |
 | Credential rotation | Manual API key management | Automatic via STS (IAM mode) |
 
@@ -58,7 +58,7 @@ export ANTHROPIC_AWS_WORKSPACE_ID='wrkspc_XXXXX'
 For self-hosted environments on CPOA:
 - Environment keys from the Claude Console **do not work** on the CPOA endpoint
 - Workers authenticate via IAM (attach `AnthropicSelfHostedEnvironmentAccess` policy) or CPOA API key
-- Use the `EnvironmentWorker` SDK helper (`.run()` / `.run_one()`) or call `GET /v1/environments/{id}/work/poll` directly
+- Use the `EnvironmentWorker` SDK helper (from `anthropic.lib.environments`) or call `GET /v1/environments/{id}/work/poll` directly
 
 ### 5. IAM Permissions
 

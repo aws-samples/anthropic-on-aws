@@ -175,42 +175,67 @@ curl -X POST "https://aws-external-anthropic.us-west-2.api.aws/v1/messages" \
 ### Before (1P — Environment Key)
 
 ```python
-from anthropic import Anthropic
+import asyncio
+import os
+from anthropic import AsyncAnthropic
+from anthropic.lib.environments import EnvironmentWorker
 
-client = Anthropic(api_key="sk-ant-api03-...")
+async def main() -> None:
+    environment_key = os.environ["ANTHROPIC_ENVIRONMENT_KEY"]  # sk-ant-oat01-...
+    environment_id = os.environ["ANTHROPIC_ENVIRONMENT_ID"]
+    async with AsyncAnthropic(auth_token=environment_key) as client:
+        await EnvironmentWorker(
+            client,
+            environment_id=environment_id,
+            environment_key=environment_key,
+            workdir="/workspace",
+        ).run()
 
-# Start worker with environment key from Claude Console
-worker = client.beta.environments.worker.run(
-    environment_key="sk-ant-env01-...",
-)
+asyncio.run(main())
 ```
 
 ### After (CPOA — Worker with IAM Auth)
 
 ```python
-from anthropic import AnthropicAWS
+import asyncio
+import os
+from anthropic import AsyncAnthropic
+from anthropic.lib.environments import EnvironmentWorker
 
-# Worker authenticates via IAM (AnthropicSelfHostedEnvironmentAccess policy)
-# Environment keys from Claude Console do NOT work on CPOA
-client = AnthropicAWS(aws_region="us-west-2")
+async def main() -> None:
+    # On CPOA: no environment key needed — authenticate via IAM
+    # Requires AnthropicSelfHostedEnvironmentAccess IAM policy
+    environment_id = os.environ["ANTHROPIC_ENVIRONMENT_ID"]
+    async with AsyncAnthropic() as client:  # SigV4 via AWS credential chain
+        await EnvironmentWorker(
+            client,
+            environment_id=environment_id,
+            workdir="/workspace",
+        ).run()
 
-# Use EnvironmentWorker SDK helper
-worker = client.beta.environments.worker.run(
-    environment_id="env_XXXXX",
-)
+asyncio.run(main())
 ```
 
 ### After (CPOA — Worker with API Key)
 
 ```python
-from anthropic import AnthropicAWS
+import asyncio
+import os
+from anthropic import AsyncAnthropic
+from anthropic.lib.environments import EnvironmentWorker
 
-# Worker authenticates via CPOA API key
-client = AnthropicAWS(api_key="<your-cpoa-api-key>", aws_region="us-west-2")
+async def main() -> None:
+    # On CPOA: use API key generated in AWS Console
+    api_key = os.environ["ANTHROPIC_AWS_API_KEY"]
+    environment_id = os.environ["ANTHROPIC_ENVIRONMENT_ID"]
+    async with AsyncAnthropic(auth_token=api_key) as client:
+        await EnvironmentWorker(
+            client,
+            environment_id=environment_id,
+            workdir="/workspace",
+        ).run()
 
-worker = client.beta.environments.worker.run(
-    environment_id="env_XXXXX",
-)
+asyncio.run(main())
 ```
 
 ### Session Creation (CPOA)
@@ -246,7 +271,7 @@ client.beta.sessions.events.send(
 | (none) | `ANTHROPIC_AWS_WORKSPACE_ID` | Required — SDK reads automatically |
 | (none) | `AWS_REGION` | Required — no fallback default |
 | `ANTHROPIC_BASE_URL` | (handled by SDK) | `AnthropicAWS`/`AnthropicAws` sets it from region |
-| `ENVIRONMENT_KEY` | (not used on CPOA) | Workers use IAM or API key instead |
+| `ANTHROPIC_ENVIRONMENT_KEY` | (not used on CPOA) | 1P uses `sk-ant-oat01-...`; CPOA workers use IAM or API key instead |
 
 ## Validation Checklist
 
@@ -254,7 +279,7 @@ After conversion, verify:
 
 1. [ ] Using platform SDK client (`AnthropicAWS` / `AnthropicAws`), not base `Anthropic` with manual URL
 2. [ ] `AWS_REGION` and `ANTHROPIC_AWS_WORKSPACE_ID` environment variables set
-3. [ ] No references to `sk-ant-api03-` or `sk-ant-env01-` keys
+3. [ ] No references to `sk-ant-api03-` or `sk-ant-oat01-` keys (1P credentials)
 4. [ ] Outbound web identity federation enabled (`aws iam enable-outbound-web-identity-federation`)
 5. [ ] Correct IAM policy: `AnthropicInferenceAccess` for `/v1/messages`, `AnthropicSelfHostedEnvironmentAccess` for workers
 6. [ ] `/v1/models` endpoint returns 200 (basic connectivity test)
