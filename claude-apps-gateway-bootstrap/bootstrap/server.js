@@ -156,15 +156,10 @@ app.get('/user/bootstrap', async (req, res) => {
         .filter(k => cfg[k] !== undefined)
         .map(k => [k, cfg[k]]),
     ),
-    // Org-wide managed MCP servers — emitted under the FLAT top-level key
-    // `managedMcpServers`, which is the ONLY form in the published bootstrap-config-v2
-    // schema (verified 2026-07-03: the schema has no nested `mcp` property). The app ALSO
-    // parses a nested `mcp.managedServers` form (its config spec maps managedServers to
-    // flatKey:"managedMcpServers", and the AWS guidance Lambdas emit the nested shape),
-    // but that form is undocumented — emit the published contract. NOTE: key shape has NO
-    // effect on the built-in-entry strip; both shapes were tested and stripped identically.
-    // The bootstrap overlay's value REPLACES (never merges with) any static MDM tier value,
-    // so this response owns the whole fleet; omit `managedMcpServers` in the S3 config to
+    // Org-wide managed MCP servers, emitted under the published bootstrap-config
+    // schema's flat `managedMcpServers` key. Per the platform contract, the bootstrap
+    // overlay's value REPLACES (never merges with) any static MDM-tier value, so this
+    // response owns the whole fleet; omit `managedMcpServers` in the S3 config to
     // leave the key out entirely. Entry kinds:
     //   1. BUILT-IN (`server`): in-process connector (microsoft365, websearch) — verbatim.
     //   2. OAUTH remote (`oauth`): client runs its own OAuth code+loopback flow, connects
@@ -190,9 +185,10 @@ app.get('/user/bootstrap', async (req, res) => {
       }),
     }),
     coworkEgressAllowedHosts: cfg.coworkEgressAllowedHosts || ['*.internal.claude.local'],
-    // OTLP export (Desktop/Cowork): point the app at the gateway origin — the ALB routes
-    // /v1/{metrics,logs,traces} to the ADOT collector sidecar, which lands metrics in
-    // CloudWatch (EMF, namespace ClaudeCode) and logs in /claude/otel/app-logs.
+    // OTLP export (Desktop/Cowork): pass through whatever collector endpoint the S3
+    // config names. With claude-apps-gateway, point it at the gateway ALB's :4318 OTLP
+    // listener (the stack's OtelForwardTo output) — the same ADOT collector the gateway
+    // pushes CLI telemetry to.
     ...(cfg.otlpEndpoint === undefined ? {} : { otlpEndpoint: cfg.otlpEndpoint }),
     ...(cfg.otlpProtocol === undefined ? {} : { otlpProtocol: cfg.otlpProtocol }),
     ...(cfg.otlpHeaders === undefined ? {} : { otlpHeaders: cfg.otlpHeaders }),

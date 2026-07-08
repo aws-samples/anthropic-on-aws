@@ -1,96 +1,75 @@
-# Claude Apps Gateway + PKCE Bootstrap on AWS
+# Bootstrap add-on for the Claude apps gateway
 
-> **Sample code — not production-ready as-is.** Deploying this creates AWS resources that
-> incur costs (Fargate, RDS, NAT, Client VPN, ALB). Review the security posture and
-> adaptation guidance in [`docs/AS-BUILT.md`](docs/AS-BUILT.md) before production use.
+> **Sample code — a documented add-on to [`../claude-apps-gateway`](../claude-apps-gateway).**
+> Deploy that sample first; this directory adds ONE stack behind its existing ALB.
+> Expect parts of this capability to be superseded as the Anthropic-native product
+> evolves — see [Workarounds and expected supersession](#workarounds-and-expected-supersession).
 
-Self-hosted Claude enterprise control plane: the **Claude apps gateway** (SSO → Amazon
-Bedrock inference, model policy, per-user spend quotas) and a **PKCE bootstrap server**
-(per-user Claude Desktop/Cowork configuration + a managed MCP server fleet), on ECS Fargate
-behind an internal ALB, reachable only over a private network path.
+The [`claude-apps-gateway`](../claude-apps-gateway) sample gives your organization
+SSO-gated Claude **inference** on Amazon Bedrock. This add-on supplies the second half of
+an enterprise **Claude Desktop** rollout: **per-user configuration delivery** — models,
+surface toggles, egress allowlists, and an organization-managed **MCP server fleet**
+(including the built-in Microsoft 365 connector) — served from a single JSON object in S3
+that you can change at any time **without redeploying anything**.
 
-For the **architecture, platform rules, security posture, and tool governance**, read
-[`docs/AS-BUILT.md`](docs/AS-BUILT.md). This README is the complete install and operations
-guide — everything needed to stand the system up in your own account is on this page.
-
-![Architecture](docs/architecture.png)
-
-*(Editable source: `docs/architecture.drawio`)*
-
-## Repo layout
+It is a [bootstrap server](https://claude.com/docs/third-party/claude-desktop/bootstrap)
+in **PKCE mode**: Claude Desktop signs in to your IdP directly (authorization-code +
+PKCE), presents the access token to `GET /user/bootstrap`, and receives its configuration
+overlay. PKCE mode lifts the platform's origin-pinning, so managed MCP servers are
+delivered with their **native cross-origin URLs and native auth** — no reverse-proxying.
 
 ```
-cdk/                    CDK (TypeScript) app — all stacks wired in bin/cdk.ts
-  lib/config.ts           reads deployment.config.json (gitignored, per-environment)
-  lib/network-stack.ts    VPC, VPC endpoints (incl. AgentCore gateway PrivateLink), SGs
-  lib/vpn-stack.ts        AWS Client VPN (mutual TLS)
-  lib/data-stack.ts       RDS Postgres, ECR repos, private EC2 image builder
-  lib/gateway-stack.ts    gateway + ADOT telemetry sidecar, internal IPv4-only ALB
-  lib/bootstrap-stack.ts  bootstrap service + S3 config bucket
-  lib/monitoring-stack.ts spend-metrics / spend-admin / web-search relay Lambdas + alarm
-  lib/dashboard-stack.ts  CloudWatch dashboard (claude-observability)
-  lib/private-mcp-stack.ts optional cross-region PrivateLink path (endpoint VPC + peering)
-  lib/dns-stack.ts        split-horizon private DNS zone
-gateway/                gateway image: Dockerfile + gateway.yaml (identifiers via env)
-bootstrap/              bootstrap server (server.js), config example, org-plugins/
-lambda/                 spend-metrics, spend-admin-mcp, websearch-mcp handlers
-scripts/                numbered setup/ops scripts (referenced throughout this guide)
-docs/                   AS-BUILT.md · architecture diagram
+Claude Desktop ──(1) Entra PKCE sign-in──────────────▶ Microsoft Entra ID
+       │                                                      │
+       ├──(2) Bearer access token──▶ /user/bootstrap ─▶ BootstrapStack (this add-on)
+       │                                 │                    reads bootstrap-config.json (S3, 60s TTL)
+       ├──(3) device-code sign-in──▶ claude-apps-gateway ─▶ Amazon Bedrock   (inference, unchanged)
+       └──(4) direct connections──▶ managed MCP servers      (native URLs + native auth)
 ```
 
----
+**One gateway definition.** This add-on consumes a deployed `ClaudeGatewayStack` purely
+through its CloudFormation outputs — the gateway sample is never modified. Inference,
+sessions, and telemetry remain entirely the gateway sample's concern; sign-in for
+inference is the gateway's own device-code flow, which is independent of bootstrap mode
+(two sign-ins at launch, both against the same IdP identity).
 
-## Installation
+## What you deploy
 
-Everything deployment-specific lives in **`deployment.config.json`** at the repo root
-(gitignored). The repository itself contains no account IDs, domains, or tenant IDs.
+| Piece | What it is |
+| --- | --- |
+| `BootstrapStack` (CDK) | Fargate service (no secrets — validates tokens against the IdP's public JWKS) + S3 config bucket + one listener rule (`/user/bootstrap`) on the gateway's existing ALB |
+| `bootstrap/` | The Node resource server (~200 lines) and its Dockerfile |
+| `bootstrap-config.example.json` | The S3 configuration object: models, governance keys, managed MCP fleet |
 
-### Prerequisites
+## Prerequisites
 
-- An AWS account with Amazon Bedrock **model access enabled** for the Claude models in your
-  region (Bedrock console → Model access).
-- A **Microsoft Entra ID tenant** you can create app registrations in (or any OIDC IdP for
-  the gateway; the bootstrap PKCE steps below are written for Entra).
-- A **public Route 53 hosted zone** for a domain you control (used for ACM certificate
-  validation; the gateway hostname is never published publicly).
-- Locally: Node 20+, AWS CLI v2, `az` CLI (for Entra), an AWS profile with admin access.
-- **No local Docker needed** — images build on a private EC2 builder via SSM.
-- Client versions: `claude` CLI ≥ 2.1.195; Claude Desktop ≥ 1.10270.0.
+- A deployed [`../claude-apps-gateway`](../claude-apps-gateway) `ClaudeGatewayStack`
+  (Entra ID walkthrough below; any OIDC IdP that issues JWKS-verifiable access tokens works).
+- Note these values from that deployment:
 
-### Step 0 — Configuration file
+| Context key | Where to get it |
+| --- | --- |
+| `publicUrl` | `PublicUrl` stack output |
+| `vpcId` | The VPC the stack created (or the `vpcId` you passed it) |
+| `albSgId` | The ALB's security group (EC2 console, or `describe-load-balancers`) |
+| `listenerArn` | One lookup from the `AlbDnsName` output: |
 
 ```bash
-cp deployment.config.example.json deployment.config.json
+ALB_ARN=$(aws elbv2 describe-load-balancers \
+  --query "LoadBalancers[?DNSName=='<AlbDnsName output>'].LoadBalancerArn" --output text)
+aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" \
+  --query "Listeners[?Port==\`443\`].ListenerArn" --output text
 ```
 
-Fill in: account, region, VPC/VPN CIDRs, your public zone name, the gateway hostname
-(e.g. `claude-gw.example.com`). The Entra IDs and secret ARNs are completed in steps 1–2.
+- Client: Claude Desktop **≥ 1.19367.0** (earlier builds have a bootstrap connector-intake
+  bug; see [Workarounds](#workarounds-and-expected-supersession)).
+- Locally: Node 20+, Docker (one image build), AWS CLI v2, `az` CLI for the Entra steps.
 
-**Region note:** `gateway/gateway.yaml` maps model IDs to Bedrock **inference profiles**.
-The file ships with `au.anthropic.*` (ap-southeast-2) profiles — **edit the `models:` block
-(and `GATEWAY_MODELS` in `cdk/lib/config.ts`) to your region's profile IDs**
-(`us.anthropic.*`, `eu.anthropic.*`, …), or inference fails at runtime with
-model-not-found errors.
+## Step 1 — Entra ID app registration (desktop PKCE public client)
 
-### Step 1 — Entra ID app registrations
-
-**App A — gateway (confidential client).** Used by the Claude apps gateway for user sign-in.
-
-```bash
-az ad app create --display-name "Claude Gateway" --sign-in-audience AzureADMyOrg \
-  --web-redirect-uris "https://<your-gateway-host>/oauth/callback"
-# note the appId → deployment.config.json "entraClientId"
-az ad app credential reset --id <appId>        # note the client secret for step 2
-az ad sp create --id <appId>
-```
-
-Add optional claims `email` and `upn` to the ID token (Entra portal → Token configuration).
-For group-scoped model/settings policies, also enable the `groups` claim — Entra emits group
-**Object IDs**, so use GUIDs in `gateway.yaml` `managed.policies.match.groups`.
-
-**App B — desktop PKCE (public client).** Used by Claude Desktop to fetch its bootstrap
-configuration. This app has several **non-obvious requirements** — each omission produces a
-specific AADSTS error at sign-in, so follow exactly:
+The desktop app needs its own **public client** registration (distinct from the gateway's
+confidential client). Each omission below produces a specific `AADSTS` error at sign-in,
+so follow exactly:
 
 ```bash
 az ad app create --display-name "Claude Desktop PKCE" --sign-in-audience AzureADMyOrg \
@@ -98,7 +77,6 @@ az ad app create --display-name "Claude Desktop PKCE" --sign-in-audience AzureAD
   --public-client-redirect-uris \
     "http://localhost:8990/callback" "http://127.0.0.1:8990/callback" \
     "http://localhost:8990"          "http://127.0.0.1:8990"
-# note the appId → deployment.config.json "desktopClientId"
 APP=<appId>; OBJ=$(az ad app show --id $APP --query id -o tsv)
 
 # Expose an API + delegated scope, and require v2 access tokens (aud = bare GUID).
@@ -112,25 +90,22 @@ az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$OBJ
       \"adminConsentDisplayName\": \"Access bootstrap\", \"adminConsentDescription\": \"Fetch per-user Claude config\",
       \"userConsentDisplayName\": \"Access bootstrap\", \"userConsentDescription\": \"Fetch your Claude config\"}]}}"
 
-# Pre-authorize itself (no consent prompt):
+# Pre-authorize itself (no consent prompt), then create the service principal
+# (without it: AADSTS650052 "lacks a service principal").
 az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$OBJ" --body "{
   \"api\": {\"preAuthorizedApplications\": [{\"appId\": \"$APP\", \"delegatedPermissionIds\": [\"$SCOPE\"]}]}}"
-
-# Service principal — without it: AADSTS650052 "lacks a service principal".
 az ad sp create --id $APP
 ```
 
-Gotchas encoded above, for the record: the redirect URIs **must include the `/callback`
-path** (bare host only → AADSTS50011); the desktop import profile's scope uses the **bare
-GUID** form `<appId>/.default`, *not* `api://<appId>/.default`; and
-`requestedAccessTokenVersion: 2` is what makes the access-token audience the bare GUID the
-bootstrap server validates.
+Gotchas encoded above: redirect URIs **must include the `/callback` path** (bare host →
+AADSTS50011); the client profile's scope uses the **bare GUID** form `<appId>/.default`,
+*not* `api://<appId>/.default`; `requestedAccessTokenVersion: 2` makes the token audience
+the bare GUID this server validates.
 
-**App C — built-in Microsoft 365 connector (public client, optional).** Only needed if you
-deliver Claude Desktop's built-in M365 connector through the bootstrap config (requires
-Desktop ≥ 1.19367.0). The connector signs in via the **OS account broker** (macOS SSO
-broker / Windows WAM), and each platform uses a different redirect URI — register **both**
-so one app registration serves Mac and Windows endpoints, plus the loopback fallback:
+**Optional — built-in Microsoft 365 connector.** To deliver Desktop's built-in M365
+connector through the config, register one more public client with **both platform broker
+redirect URIs** (the connector signs in via the OS account broker; each platform uses a
+different URI, and the Windows one embeds the client id):
 
 ```bash
 az ad app create --display-name "Claude M365 Connector" --sign-in-audience AzureADMyOrg \
@@ -143,197 +118,139 @@ az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$OBJ
     \"ms-appx-web://Microsoft.AAD.BrokerPlugin/$APP\",
     \"https://login.microsoftonline.com/common/oauth2/nativeclient\"]}}"
 az ad sp create --id $APP
-# Grant delegated Microsoft Graph permissions matching the connector entry's scope
-# (e.g. Mail.Read) in the Entra portal → API permissions.
+# Grant delegated Graph permissions matching the connector's scope (e.g. Mail.Read)
+# in the Entra portal -> API permissions.
 ```
 
-Missing the platform broker URI surfaces as **AADSTS50011** in the sign-in dialog on that
-platform (the Windows one embeds the client ID, so it is registration-specific). Reference
-the app in the S3 bootstrap config as
-`{"name": "Microsoft 365", "server": "microsoft365", "tenantId": "<tenant>",
-"clientId": "<App C appId>", "scope": "Mail.Read"}`.
+A missing broker URI surfaces as **AADSTS50011** at connector sign-in on that platform.
 
-### Step 2 — Secrets, certificates, CDK bootstrap
+## Step 2 — Deploy the stack and build the image
 
 ```bash
-export AWS_PROFILE=<profile> AWS_REGION=<region>     # override any inherited AWS_REGION
-cd cdk && npx cdk bootstrap && cd ..
-
-bash scripts/01-secrets.sh          # creates Secrets Manager entries, prints their ARNs
-#   → paste the printed ARNs into deployment.config.json "secrets"
-#   → store App A's client secret:
-#     aws secretsmanager put-secret-value \
-#       --secret-id claude-gateway/entra-client-secret --secret-string '<App A secret>'
-
-bash scripts/02-certs.sh            # VPN mutual-TLS certs + ACM import; writes cert-arns.env
-source cert-arns.env
+cd cdk && npm ci
+npx cdk deploy ClaudeBootstrapStack \
+  -c region=<region> \
+  -c publicUrl=https://<your-gateway-host> \
+  -c listenerArn=<from prerequisites> \
+  -c albSgId=<from prerequisites> \
+  -c vpcId=<from prerequisites> \
+  -c entraTenantId=<tenant guid> \
+  -c desktopClientId=<App id from step 1>
 ```
 
-For the **ALB certificate**: request a public ACM certificate for your gateway hostname
-(DNS-validated in your public zone) and use its ARN as `albCertArn` in step 3. Users then
-get a browser-trusted padlock on a private-IP endpoint (split-horizon DNS — AS-BUILT §2.2).
-
-### Step 3 — Deploy
+Then build and push the image (same convention as the gateway sample — plain
+`docker build` + push; substitute the `EcrRepositoryUri` stack output):
 
 ```bash
-cd cdk
-npx cdk deploy ClaudeGw-Network ClaudeGw-Data --require-approval never
-bash ../scripts/03-postgres-url.sh                        # Postgres URL secret from RDS
-AWS_REGION=<region> bash ../scripts/04-build-images.sh    # builds BOTH images on the EC2 builder
-npx cdk deploy --all --require-approval never \
-  -c serverCertArn=$SERVER_CERT_ARN -c clientCertArn=$CLIENT_CERT_ARN \
-  -c albCertArn=<your public ACM cert ARN>
+cd ../bootstrap
+aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+docker build --platform linux/amd64 -t <EcrRepositoryUri>:latest .
+docker push <EcrRepositoryUri>:latest
+aws ecs update-service --cluster <BootstrapStack cluster> --service <service> --force-new-deployment
 ```
 
-Deploy order matters only the first time (Network/Data before the image build; the rest
-after). Subsequent code changes: rebuild images (`04`) + force a new ECS deployment.
-
-### Step 4 — Client bootstrap config (S3)
+## Step 3 — Publish the client configuration
 
 ```bash
-cp bootstrap/config/bootstrap-config.example.json bootstrap/config/bootstrap-config.json
-# edit: your models, managed MCP servers (start with none), governance keys
-aws s3 cp bootstrap/config/bootstrap-config.json \
-  s3://<ConfigBucket name from the Bootstrap stack output>/bootstrap-config.json
+cp bootstrap/config/bootstrap-config.example.json bootstrap-config.json
+# edit: your models, governance keys, managed MCP servers (start with none)
+aws s3 cp bootstrap-config.json s3://<ConfigBucketName output>/bootstrap-config.json
 ```
 
-This file is the **live client configuration** — the bootstrap server re-reads it on a 60s
-TTL, so every later change is a push + client relaunch, **no redeploy**.
+This object is the **live client configuration** — the service re-reads it on a 60-second
+TTL. Every later change (add an MCP server, flip a governance key, change the model list)
+is an S3 push + client relaunch. **No redeploys, ever.**
 
-### Step 5 — Wire up a client machine
+Three managed-MCP entry shapes are supported (see the example file):
+**no-auth remote** (plain `url`), **OAuth remote** (`oauth` block — the client runs its own
+code+loopback flow against your IdP; note some IdPs reject the RFC 8707 `resource`
+parameter the client sends — Cognito works, Entra does not), and **built-in**
+(`server: "microsoft365"` + tenant/client IDs from step 1).
 
-Both platforms need the **AWS VPN Client** first: export the Client VPN profile
-(AWS console → Client VPN endpoint → Download client configuration), embed your client
-cert/key from `./pki`, and import it into the AWS VPN Client.
+## Step 4 — Wire a client
 
-**macOS**
+**macOS** — create `~/claude-bootstrap-import.json`; **Windows** — same JSON at
+`%USERPROFILE%\claude-bootstrap-import.json` (or deliver the same keys as REG_SZ values
+under `HKLM\SOFTWARE\Policies\Claude` via Intune/GPO):
 
-```bash
-bash scripts/05-wire-mac.sh    # writes managed-settings.json (CLI) + the Desktop import file
-```
-
-**Windows**
-
-The equivalents are a registry policy (CLI) and the same JSON import file (Desktop). In an
-elevated PowerShell:
-
-```powershell
-# Claude Code CLI — managed settings live under HKLM. Values must be REG_SZ (JSON string
-# for arrays/objects) or REG_DWORD; other types are ignored by the app.
-New-Item -Path "HKLM:\SOFTWARE\Policies\Claude" -Force | Out-Null
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Claude" -Name "forceLoginMethod" -Value "gateway" -Type String
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Claude" -Name "forceLoginGatewayUrl" -Value "https://<your-gateway-host>" -Type String
-
-# Claude Desktop — same import file as macOS:
-@"
-{ "bootstrapUrl": "https://<your-gateway-host>/user/bootstrap",
-  "bootstrapOidc": { "clientId": "<App B appId>",
+```json
+{
+  "bootstrapUrl": "https://<your-gateway-host>/user/bootstrap",
+  "bootstrapOidc": {
+    "clientId": "<App id from step 1>",
     "issuer": "https://login.microsoftonline.com/<tenant-id>/v2.0",
-    "scopes": "openid offline_access <App B appId>/.default",
-    "redirectPort": 8990 } }
-"@ | Set-Content "$env:USERPROFILE\claude-bootstrap-import.json"
+    "scopes": "openid offline_access <App id>/.default",
+    "redirectPort": 8990
+  }
+}
 ```
 
-Then, identically on both platforms:
+In Claude Desktop: **Settings → Developer → Configure third-party inference → Import** the
+file. At launch the app performs the Entra PKCE sign-in (configuration + MCP), then the
+gateway's own device-code sign-in (inference).
 
-- **Claude Code**: launch → gateway device-code sign-in → your Entra → model list.
-- **Claude Desktop**: Settings → Developer → Configure third-party inference → Import the
-  generated profile → Entra PKCE sign-in (config) + gateway sign-in (inference).
-- Org plugins/skills (optional): `sudo bash scripts/06-install-org-plugins.sh` (macOS;
-  Windows path is `C:\Program Files\Claude\org-plugins\`).
+Verify: `Help → Troubleshooting → Copy Managed Configuration Report` shows the bootstrap
+source; the app log shows `bootstrap supplied config overlay { fields: [...] }`.
 
-### Step 6 — Verify
+## Telemetry
 
-```bash
-dig +short <your-gateway-host>          # over VPN: private IPs only, no public answers
-curl -s https://<your-gateway-host>/healthz
-claude                                   # sign in, run a prompt → Bedrock via the gateway
-AWS_REGION=<region> bash scripts/07-quota.sh spend   # per-user spend appears after first use
+The gateway sample already runs an ADOT collector behind its ALB (`OtelForwardTo` output,
+`https://<gateway-host>:4318`). To collect Desktop/Cowork telemetry into the same
+collector, set in the S3 config:
+
+```json
+"otlpEndpoint": "https://<your-gateway-host>:4318",
+"otlpProtocol": "http/protobuf"
 ```
-
-### Optional add-on — spend-admin & web-search MCP (AgentCore)
-
-The managed MCP examples (spend administration in chat; in-region web search) use **Amazon
-Bedrock AgentCore gateways**, which are **not yet in the CDK app** (created via CLI; a
-`ClaudeGw-AdminMcp` stack is planned). Per gateway, the pattern is:
-
-1. A Cognito user pool with `AllowAdminCreateUserOnly` — **pool membership is the access
-   gate** — plus a public app client (code+PKCE, callbacks `http://localhost:8080/callback`
-   and the `127.0.0.1` variant).
-2. `aws bedrock-agentcore-control create-gateway` with a `CUSTOM_JWT` authorizer pointing at
-   the pool's OIDC discovery URL and app client.
-3. `create-gateway-target` wrapping a Lambda from the Monitoring stack (`SpendAdminMcpFn` /
-   `WebSearchMcpFn` — ARNs in stack outputs), with an inline tool schema.
-4. Add the gateway URL to the S3 bootstrap config with
-   `oauth: {mode: "byo", clientId: <pool client>, authorizationServer: [<pool issuer>],
-   scope: " openid email profile", callbackPort: 8080}`.
-
-> **IdP note:** use Cognito (or another IdP that tolerates the RFC 8707 `resource`
-> parameter) for MCP OAuth — the desktop client sends it on every authorize request and
-> **Microsoft Entra rejects the combination** (AADSTS9010010). Details: AS-BUILT §7.1b.
-
-In-region AgentCore gateways are reachable **privately** through the VPC's
-`bedrock-agentcore.gateway` PrivateLink endpoint (deployed by the Network stack). The
-optional `ClaudeGw-PrivateMcpUsEast1` stack extends the private path to us-east-1 gateways
-(endpoint VPC + inter-region peering).
-
----
 
 ## Day-2 operations
 
 | Task | How |
 | --- | --- |
-| Client config (models, MCP fleet, egress allowlist, governance keys) | Edit the S3 `bootstrap-config.json` → `aws s3 cp` → relaunch client. **60s TTL, no redeploy.** |
-| Server code change (gateway.yaml, server.js) | `scripts/04-build-images.sh` → force-new-deployment on the ECS service |
-| Org plugins / skills | `sudo bash scripts/06-install-org-plugins.sh` (filesystem delivery; fleet: MDM) |
-| Spend quotas (view / set / block per user) | `scripts/07-quota.sh spend\|set\|block\|audit` — or the **spend-admin** connector in chat ("run the spend report"). The gateway API returns **USD cents**; the script and Lambdas convert to dollars. |
-| Observability | CloudWatch dashboard `claude-observability`; alarm `claude-gateway-spend-cap-80pct` |
-| User offboarding | Disable in Entra (inference stops within the 1h session TTL); for immediate block: `scripts/07-quota.sh block <sub>` |
+| Change models / MCP fleet / governance keys | Edit S3 object → `aws s3 cp` → relaunch client (60s TTL) |
+| Bootstrap server code change | `docker build` + push → `ecs update-service --force-new-deployment` |
+| User offboarding | Disable in the IdP — both the PKCE token and the gateway session expire |
+| Roll back a bad config push | The bucket is versioned: `aws s3api get-object --version-id ...` |
 
-## Troubleshooting quick hits
+## Troubleshooting
 
-- **AADSTS650057 / 650052 / 50011 at Desktop sign-in** → Step 1 App B incomplete (expose
-  API + v2 tokens / missing service principal / redirect URI without `/callback`).
-- **AADSTS50011 at Microsoft 365 connector sign-in** → App C is missing the platform's
-  broker redirect URI (`msauth.com.anthropic.claudefordesktop://auth` on macOS,
-  `ms-appx-web://Microsoft.AAD.BrokerPlugin/<clientId>` on Windows). See Step 1 App C.
-- **Model errors through the gateway (404/400)** → `gateway.yaml` `models:` block doesn't
-  match your region's Bedrock inference-profile IDs.
-- **`/login` refuses to connect** → the gateway hostname resolved to a public IP on the
-  client; check VPN + split-horizon DNS (AS-BUILT §2).
-- **Bootstrap 401 `invalid_token`** → App B token-audience mismatch; confirm
-  `requestedAccessTokenVersion: 2` and the bare-GUID `.default` scope in the import profile.
-- **MCP OAuth fails with AADSTS9010010** → an MCP server's BYO OAuth points at Entra; use
-  Cognito (see the IdP note above).
+- **AADSTS650057 / 650052 / 50011 at Desktop sign-in** → Step 1 incomplete (expose API +
+  v2 tokens / missing service principal / redirect URI without `/callback`).
+- **AADSTS50011 at Microsoft 365 connector sign-in** → missing platform broker redirect
+  URI (see step 1's optional block).
+- **Bootstrap 401 `invalid_token`** → token-audience mismatch: confirm
+  `requestedAccessTokenVersion: 2` and the bare-GUID `.default` scope.
+- **Config change not appearing** → wait for the 60s TTL and fully relaunch the client;
+  confirm with `Copy Managed Configuration Report`.
+- **VPN connects but the bootstrap fetch times out** (small responses work, large ones
+  hang) → MTU blackhole on the tunnel: the AWS VPN Client sets MTU 1500 on connect; if
+  the underlying path passes less, TLS responses are silently dropped. Interim fix
+  `sudo ifconfig <utun-if> mtu 1300` (macOS) /
+  `netsh interface ipv4 set subinterface "<VPN adapter>" mtu=1300 store=persistent`
+  (Windows); a persistent macOS clamp ships in [`scripts/macos/`](scripts/macos/).
 
-### AWS Client VPN: connects but requests hang / "Configuration sync issue: timeout"
+## Workarounds and expected supersession
 
-If the VPN connects and DNS resolves, but the Desktop bootstrap fetch (or any large HTTPS
-response through the tunnel) times out while **small** responses work, suspect an **MTU
-blackhole**: the AWS VPN Client sets the tunnel MTU to 1500 on every connect, and if any
-hop between the endpoint and AWS passes smaller packets (common on hotel/home/office
-links), large TLS records are silently dropped — TCP connects, the TLS handshake hangs.
+Parts of this add-on compensate for *current* product behavior and should be re-evaluated
+on each Claude Desktop release:
 
-Diagnose (macOS):
+| Item | Why it exists | Superseded when |
+| --- | --- | --- |
+| Desktop **≥ 1.19367.0** pin | Earlier builds had a bootstrap connector-intake bug (managed/built-in MCP entries delivered but not instantiated) | Already fixed in 1.19367.0; pin exists so fleets don't roll out older builds |
+| `disabledBuiltinTools: ["WebSearch"]` + `coworkWebSearchEnabled: false` in the example config | Amazon Bedrock rejects the server-side `web_search_*` tool type (HTTP 400); disabling avoids burned retries. **Not needed on providers that support server-side search** | Server-side web search becomes available on your inference provider |
+| PKCE mode itself (vs. device-code single-origin bootstrap) | Device-code mode origin-pins the response, which forces reverse-proxying of cross-origin MCP URLs | Native cross-origin MCP delivery in device-code mode, if the platform adds it |
+| Org plugins/skills not delivered here | Network plugin delivery (`organizationPluginsUrl`) is unavailable in PKCE mode; plugins ship via the filesystem org-plugins directory through MDM | PKCE-mode network plugin delivery, if the platform adds it |
 
-```bash
-# TCP works... (instant small response from the ALB)
-printf 'GET / HTTP/1.0\r\n\r\n' | nc -w 5 <alb-private-ip> 443   # → HTTP 400 instantly
-# ...but a full TLS exchange hangs:
-curl -sS --max-time 10 https://<your-gateway-host>/healthz        # → timeout
-# Confirm the underlying path is smaller than 1500 (payload 1472 = 1500-byte packet):
-ping -c 2 -D -s 1472 8.8.8.8    # dropped ⇒ path < 1500
-ping -c 2 -D -s 1372 8.8.8.8    # passes  ⇒ path ≥ 1400
-```
+## Security notes
 
-Fix: clamp the tunnel MTU below the path limit — `sudo ifconfig <utun-if> mtu 1300`
-(find the interface with `route -n get <vpc-ip>`). The VPN client resets the MTU to 1500
-on every reconnect, so for a permanent fix install the LaunchDaemon in
-[`scripts/macos/`](scripts/macos/) (`clamp-vpn-mtu.sh` + `vpn-mtu-clamp.plist`), which
-re-applies the clamp within 15 s of any reconnect. On Windows:
-`netsh interface ipv4 set subinterface "<VPN adapter name>" mtu=1300 store=persistent`.
-
----
+- The bootstrap task holds **no secrets**: PKCE-mode token validation uses the IdP's
+  public JWKS + audience/issuer/expiry checks only.
+- The service is reachable only through the gateway's internal ALB (same private-network
+  posture as the gateway sample); its SG admits only the ALB.
+- cdk-nag (AwsSolutions) runs on every synth; error-level findings fail the build unless
+  acknowledged with a written justification at the construct.
+- The S3 config is data, not code — review pushes to it like configuration change
+  control, since it steers every client's tool surface and egress allowlist.
 
 ## Security
 

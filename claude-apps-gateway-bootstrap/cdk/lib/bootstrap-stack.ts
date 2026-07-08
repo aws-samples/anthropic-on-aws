@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration, CfnOutput } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, CfnOutput, RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
@@ -7,63 +7,103 @@ import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
-import { RemovalPolicy } from 'aws-cdk-lib';
 import * as path from 'path';
-import { DeployConfig } from './config';
 import { ackNag } from './nag';
 
-interface BootstrapStackProps extends StackProps {
-  readonly config: DeployConfig;
-  readonly vpc: ec2.Vpc;
-  readonly serviceSg: ec2.SecurityGroup;
-  readonly bootstrapRepo: ecr.Repository;
-  readonly cluster: ecs.ICluster;
-  /** The shared ALB + HTTPS listener created by GatewayStack. */
-  readonly httpsListener: elbv2.ApplicationListener;
+export interface BootstrapStackProps extends StackProps {
+  /**
+   * The gateway origin from the claude-apps-gateway deployment — the
+   * ClaudeGatewayStack `PublicUrl` output, e.g. https://claude-gateway.example.com.
+   * Used both to attach this service to the same hostname's listener rule and as
+   * the inference origin in the served client configuration.
+   */
+  readonly publicUrl: string;
+  /**
+   * HTTPS listener ARN of the gateway ALB. ClaudeGatewayStack does not export
+   * this directly; look it up once from the `AlbDnsName` output:
+   *   aws elbv2 describe-listeners --load-balancer-arn $(aws elbv2 describe-load-balancers \
+   *     --query "LoadBalancers[?DNSName=='<AlbDnsName>'].LoadBalancerArn" --output text) \
+   *     --query "Listeners[?Port==\`443\`].ListenerArn" --output text
+   */
+  readonly listenerArn: string;
+  /** Security group id of the gateway ALB (source for our service ingress). */
+  readonly albSgId: string;
+  /** VPC id the gateway stack deployed into (its created VPC or your imported one). */
+  readonly vpcId: string;
+  /** Entra tenant ID — issuer of the desktop app's PKCE access token. */
+  readonly entraTenantId: string;
+  /** Entra app (client) ID of the Claude Desktop PKCE public client (token audience). */
+  readonly desktopClientId: string;
+  /** ECR image tag for the bootstrap image (default 'latest'). */
   readonly imageTag?: string;
 }
 
 /**
- * The device-code bootstrap server (Cowork-3p config + org plugins/skills), on the same
- * Fargate cluster and behind the same internal ALB as the gateway, matched by host header.
+ * Bootstrap add-on for the claude-apps-gateway sample: a PKCE-mode OAuth
+ * RESOURCE SERVER that serves per-user Claude Desktop configuration from S3.
+ *
+ * Deploys BEHIND the gateway's existing internal ALB via one listener rule
+ * (path /user/bootstrap on the same hostname) — the ClaudeGatewayStack itself
+ * is consumed unmodified, coupled only through its deployed outputs.
+ *
+ * Claude Desktop authenticates to Entra directly (authorization-code + PKCE),
+ * presents the access token here, and receives its configuration overlay:
+ * models, surface toggles, egress allowlist, and the managed MCP server fleet
+ * with native cross-origin URLs. The configuration itself is a JSON object in
+ * S3, re-read on a 60s TTL — day-2 changes are an S3 push, never a redeploy.
  */
 export class BootstrapStack extends Stack {
   constructor(scope: Construct, id: string, props: BootstrapStackProps) {
     super(scope, id, props);
-    const { config, vpc, serviceSg, bootstrapRepo, cluster, httpsListener } = props;
     const imageTag = props.imageTag ?? 'latest';
+    const gatewayHost = props.publicUrl.replace(/^https?:\/\//, '');
 
-    // Externalized bootstrap config lives in S3, so it can be edited (models, MCP servers,
-    // egress) WITHOUT rebuilding/redeploying the container — the service re-reads it on a TTL.
-    // Seeded from bootstrap/config/bootstrap-config.json; edit the S3 object thereafter.
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: props.vpcId });
+    const albSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'AlbSg', props.albSgId);
+    const listener = elbv2.ApplicationListener.fromApplicationListenerAttributes(
+      this, 'HttpsListener', { listenerArn: props.listenerArn, securityGroup: albSg });
+
+    // ── ECR repository for the bootstrap image (built/pushed like the gateway's:
+    // `docker build` + push, see README — no standing build infrastructure) ──
+    const repo = new ecr.Repository(this, 'Repo', {
+      repositoryName: 'claude-bootstrap',
+      imageScanOnPush: true,
+      // Example posture: clean teardown (mirrors claude-apps-gateway).
+      removalPolicy: RemovalPolicy.DESTROY,
+      emptyOnDelete: true,
+    });
+    new CfnOutput(this, 'EcrRepositoryUri', { value: repo.repositoryUri });
+
+    // ── S3-backed client configuration: DATA, not code ──
     const configBucket = new s3.Bucket(this, 'ConfigBucket', {
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true, // deny non-TLS requests via aws:SecureTransport bucket policy
-      versioned: true, // keep history of config edits
+      enforceSSL: true,
+      versioned: true, // history of config edits
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
-    ackNag(configBucket,{
+    ackNag(configBucket, {
       id: 'AwsSolutions-S1',
       reason:
         'Server access logging adds little for a single-object private config bucket: '
-        + 'no public access, versioning records every config change, and reads come only '
-        + 'from the bootstrap task role via the S3 VPC endpoint.',
+        + 'no public access, versioning records every change, reads come only from the '
+        + 'bootstrap task role.',
     });
     const CONFIG_KEY = 'bootstrap-config.json';
     new s3deploy.BucketDeployment(this, 'SeedConfig', {
       destinationBucket: configBucket,
       sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'bootstrap', 'config'))],
-      // Seed once; later edits to the S3 object are NOT overwritten by redeploys because we
-      // prune:false and the deployment only writes if the asset hash changes.
+      // Seed once; later S3 edits are never overwritten (prune:false, hash-gated).
       prune: false,
     });
-    // The BucketDeployment handler is a stack-scoped SINGLETON Lambda (shared by all
-    // BucketDeployments in the stack), so these acks must live at stack scope — the
-    // `seed` construct is not its ancestor. Its role policy (asset-bucket read +
-    // config-bucket write wildcards) and runtime are owned by aws-cdk-lib and not
-    // overridable here. Wildcards are scoped to exactly those two buckets.
+    new CfnOutput(this, 'ConfigBucketName', { value: configBucket.bucketName });
+    new CfnOutput(this, 'ConfigObject', {
+      value: `s3://${configBucket.bucketName}/${CONFIG_KEY}`,
+    });
+
+    // The BucketDeployment handler is a stack-scoped singleton Lambda owned by
+    // aws-cdk-lib; its role wildcards and runtime are not overridable here.
     const cdkOwnedS3Wildcards =
       'CDK-generated by the aws-cdk-lib BucketDeployment construct (grantRead/grantWrite '
       + 'object wildcards), scoped to the CDK asset bucket and the config bucket only.';
@@ -90,49 +130,52 @@ export class BootstrapStack extends Stack {
       {
         id: 'AwsSolutions-L1',
         reason:
-          'The BucketDeployment handler runtime is pinned inside aws-cdk-lib; it tracks '
-          + 'the newest runtime the framework supports and is not overridable here.',
+          'The BucketDeployment handler runtime is pinned inside aws-cdk-lib and is not '
+          + 'overridable here.',
       },
     );
+
+    // ── Fargate service (own small cluster; the gateway cluster's name is a fixed
+    // physical name inside ClaudeGatewayStack and is not exported) ──
+    const cluster = new ecs.Cluster(this, 'Cluster', {
+      vpc,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
+    });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'BootstrapTask', {
       cpu: 256,
       memoryLimitMiB: 512,
-      runtimePlatform: {
-        cpuArchitecture: ecs.CpuArchitecture.ARM64,
-        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-      },
     });
 
-    // PKCE mode: the resource server validates the desktop app's Entra ACCESS TOKEN
-    // (signature via Entra JWKS + iss + aud + exp). No shared gateway secret, no Entra client
-    // secret — token validation uses only the PUBLIC JWKS + the expected audience (the desktop
-    // public-client app id). So this task needs NO Secrets Manager entries at all.
+    // PKCE mode: the resource server validates the desktop app's Entra ACCESS
+    // TOKEN (signature via the tenant JWKS + iss + aud + exp). Token validation
+    // uses only the PUBLIC JWKS and the expected audience, so this task needs no
+    // Secrets Manager entries at all.
     taskDef.addContainer('bootstrap', {
-      image: ecs.ContainerImage.fromEcrRepository(bootstrapRepo, imageTag),
+      image: ecs.ContainerImage.fromEcrRepository(repo, imageTag),
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'bootstrap',
-        logRetention: logs.RetentionDays.ONE_MONTH,
+        logGroup: new logs.LogGroup(this, 'ServiceLogs', {
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: RemovalPolicy.DESTROY,
+        }),
       }),
       portMappings: [{ containerPort: 8081 }],
       environment: {
         PORT: '8081',
-        // Claude apps gateway origin (unchanged). Used for inferenceGatewayBaseUrl; the app
-        // authenticates to it via the gateway's own device-code login (independent of bootstrap).
-        PUBLIC_ORIGIN: `https://${config.gatewayHost}`,
-        // Entra token validation (resource-server). aud = the desktop PKCE public-client app id.
-        ENTRA_TENANT_ID: config.entraTenantId,
-        ENTRA_AUDIENCE: config.desktopClientId,
-        // S3-backed config (edit without redeploy). config.js reads this on a 60s TTL.
+        // The claude-apps-gateway origin: served as inferenceGatewayBaseUrl; the
+        // app signs in to it with the gateway's own device-code flow, which is
+        // independent of bootstrap mode.
+        PUBLIC_ORIGIN: props.publicUrl,
+        ENTRA_TENANT_ID: props.entraTenantId,
+        ENTRA_AUDIENCE: props.desktopClientId,
         CONFIG_S3_URI: `s3://${configBucket.bucketName}/${CONFIG_KEY}`,
       },
     });
-    // Bootstrap task reads its config object from S3. No Secrets Manager access needed in PKCE
-    // mode — token validation uses the public Entra JWKS only.
     configBucket.grantRead(taskDef.taskRole);
     const grantReadReason =
-      'grantRead object wildcard on the config bucket only; the task reads a single JSON '
-      + 'object whose key is fixed but whose versions rotate.';
+      'grantRead object wildcard on the config bucket only; the task reads a single '
+      + 'JSON object whose key is fixed but whose versions rotate.';
     ackNag(taskDef,
       { id: 'AwsSolutions-IAM5[Action::s3:GetBucket*]', reason: grantReadReason },
       { id: 'AwsSolutions-IAM5[Action::s3:GetObject*]', reason: grantReadReason },
@@ -152,9 +195,16 @@ export class BootstrapStack extends Stack {
         reason:
           'All environment values are non-sensitive by design (PKCE mode): public origin, '
           + 'Entra tenant/audience IDs (public identifiers), S3 config URI. The task holds '
-          + 'no secrets at all — token validation uses the public Entra JWKS.',
+          + 'no secrets — token validation uses the public Entra JWKS.',
       },
     );
+
+    const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
+      vpc,
+      description: 'Bootstrap service - ingress 8081 from the gateway ALB only',
+      allowAllOutbound: true, // S3 config reads + Entra JWKS fetch
+    });
+    serviceSg.addIngressRule(albSg, ec2.Port.tcp(8081), 'bootstrap from gateway ALB');
 
     const service = new ecs.FargateService(this, 'BootstrapService', {
       cluster,
@@ -164,21 +214,13 @@ export class BootstrapStack extends Stack {
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       assignPublicIp: false,
       minHealthyPercent: 0,
-      // Fail deployments fast instead of retrying a crashing task for hours.
       circuitBreaker: { rollback: true },
     });
 
-    // PKCE mode: the bootstrap resource server serves ONLY /user/bootstrap on the gateway host.
-    // No /mcp/* proxy (managed MCP servers are delivered with native cross-origin URLs and the
-    // app connects to them directly) and no /org-plugins/* (network plugin delivery is not
-    // available in PKCE mode — plugins ship via the filesystem). This rule must out-prioritize
-    // the gateway's host rule (priority 10 in GatewayStack), so use priority 5.
-    httpsListener.addTargets('BootstrapTg', {
-      priority: 5,
-      conditions: [
-        elbv2.ListenerCondition.hostHeaders([config.gatewayHost]),
-        elbv2.ListenerCondition.pathPatterns(['/user/bootstrap']),
-      ],
+    // ── Attach to the gateway's existing HTTPS listener: one path rule ahead of
+    // the listener's default forward to the gateway target group. ──
+    const tg = new elbv2.ApplicationTargetGroup(this, 'BootstrapTg', {
+      vpc,
       port: 8081,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targets: [service],
@@ -189,8 +231,16 @@ export class BootstrapStack extends Stack {
       },
       deregistrationDelay: Duration.seconds(10),
     });
-    // No separate DNS record needed — the gateway host already resolves to this ALB.
+    new elbv2.ApplicationListenerRule(this, 'BootstrapRule', {
+      listener,
+      priority: 5,
+      conditions: [
+        elbv2.ListenerCondition.hostHeaders([gatewayHost]),
+        elbv2.ListenerCondition.pathPatterns(['/user/bootstrap']),
+      ],
+      action: elbv2.ListenerAction.forward([tg]),
+    });
 
-    new CfnOutput(this, 'BootstrapUrl', { value: `https://${config.gatewayHost}/user/bootstrap` });
+    new CfnOutput(this, 'BootstrapUrl', { value: `${props.publicUrl}/user/bootstrap` });
   }
 }

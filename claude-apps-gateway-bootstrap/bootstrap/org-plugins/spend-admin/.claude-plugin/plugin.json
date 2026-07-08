@@ -1,5 +1,0 @@
-{
-  "name": "spend-admin",
-  "version": "1.0.0",
-  "description": "Admin reporting over per-user Claude spend and quota caps (uses the spend-admin MCP server)"
-}

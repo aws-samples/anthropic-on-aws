@@ -1,48 +1,16 @@
-# ---- Secrets & key material — never commit ----
-pki/
-*.ovpn
-*.key
-*.pem
-*.p12
-*.pfx
-*.crt
-*.csr
-*.srl
-cert-arns.env
-.env
-.env.*
-!.env.example
-.backup-configLibrary-*/
-
-# ---- Deployment-specific (per-environment) — copy the .example files ----
-deployment.config.json
-cdk/cdk.context.json
+# Deployment-specific — copy the .example file
 bootstrap/config/bootstrap-config.json
-vpn/staged/
-# Internal notes / drafts not part of the sample
-docs/pfr-*.md
-# Third-party plugin catalog stays local; only the spend-admin example ships
-bootstrap/org-plugins/*
-!bootstrap/org-plugins/README.md
-!bootstrap/org-plugins/spend-admin/
-!bootstrap/org-plugins/spend-admin/**
+cdk/cdk.context.json
 
-# ---- Build artifacts & dependencies ----
+# Build artifacts & dependencies
 node_modules/
 cdk/cdk.out/
 cdk/*.js
 cdk/*.d.ts
 !cdk/jest.config.js
-*.tgz
-*.tar.gz
-*.zip
 
-# ---- OS / editor ----
+# OS / editor
 *.log
 .DS_Store
-._*
 .vscode/
 .idea/
-docs/.$*.bkp
-docs/.$*.dtmp
-bootstrap/managed-settings/

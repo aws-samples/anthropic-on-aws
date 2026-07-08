@@ -10,7 +10,7 @@
     "enabled": true,
     "text": "Example Corp - Pilot Phase"
   },
-  "otlpEndpoint": "https://claude-gw.example.com",
+  "otlpEndpoint": "https://claude-gateway.example.com:4318",
   "otlpProtocol": "http/protobuf",
   "otlpResourceAttributes": {
     "service.name": "claude-desktop",
