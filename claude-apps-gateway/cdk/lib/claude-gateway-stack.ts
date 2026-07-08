@@ -11,10 +11,6 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
-import * as cloudwatchActions from 'aws-cdk-lib/aws-cloudwatch-actions';
-import * as sns from 'aws-cdk-lib/aws-sns';
-import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 
 export interface GatewayStackProps extends cdk.StackProps {
   /** Internal ALB https origin, e.g. https://claude-gateway.example.com */
@@ -31,12 +27,6 @@ export interface GatewayStackProps extends cdk.StackProps {
   readonly publicZoneId?: string;
   /** PUBLIC hosted-zone name — managed mode only; explicit, not derived from zoneName. */
   readonly publicZoneName?: string;
-  /** Deploy the CloudWatch dashboard + alarms (default false). */
-  readonly enableDashboard?: boolean;
-  /** Daily cost-alarm threshold in USD (dashboard mode; enables the cost alarm when > 0). */
-  readonly dailyCostThresholdUsd?: number;
-  /** Optional email for an SNS alarm subscription (dashboard mode). */
-  readonly alarmEmail?: string;
   /** VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR. */
   readonly ingressCidr?: string;
   /** Import an existing VPC instead of creating one. */
@@ -448,69 +438,6 @@ export class GatewayStack extends cdk.Stack {
       new cdk.CfnOutput(this, 'CertMode', {
         value: 'managed-public (browser-trusted ACM cert; no fingerprint comparison needed)',
       });
-    }
-
-    // ── CloudWatch dashboard + alarms (opt-in; default off) ───────────────────
-    // Off by default so existing deploys are unchanged. Dashboard covers ALB +
-    // ECS health; alarms fire on ALB 5xx and (if a threshold is set) daily cost.
-    if (props.enableDashboard) {
-      const alb = fargate.loadBalancer;
-      const alb5xx = alb.metrics.httpCodeElb(elbv2.HttpCodeElb.ELB_5XX_COUNT, {
-        statistic: 'Sum',
-        period: cdk.Duration.minutes(5),
-      });
-      const targetResp = alb.metrics.targetResponseTime({ period: cdk.Duration.minutes(5) });
-      const reqCount = alb.metrics.requestCount({ period: cdk.Duration.minutes(5) });
-      const cpu = fargate.service.metricCpuUtilization({ period: cdk.Duration.minutes(5) });
-
-      // Optional SNS notification target (only if an email is supplied).
-      let alarmAction: cloudwatchActions.SnsAction | undefined;
-      if (props.alarmEmail) {
-        const topic = new sns.Topic(this, 'AlarmTopic', { displayName: 'claude-gateway-alarms' });
-        topic.addSubscription(new snsSubscriptions.EmailSubscription(props.alarmEmail));
-        alarmAction = new cloudwatchActions.SnsAction(topic);
-      }
-
-      const errorAlarm = new cloudwatch.Alarm(this, 'Alb5xxAlarm', {
-        alarmName: 'claude-gateway-alb-5xx',
-        metric: alb5xx,
-        threshold: 5,
-        evaluationPeriods: 1,
-        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      });
-      if (alarmAction) errorAlarm.addAlarmAction(alarmAction);
-
-      // Cost metric is emitted by the ADOT collector into the ClaudeGateway
-      // namespace. The alarm is only meaningful once a threshold is set.
-      const costMetric = new cloudwatch.Metric({
-        namespace: 'ClaudeGateway',
-        metricName: 'cost.usage',
-        statistic: 'Sum',
-        period: cdk.Duration.hours(24),
-      });
-      if (props.dailyCostThresholdUsd && props.dailyCostThresholdUsd > 0) {
-        const costAlarm = new cloudwatch.Alarm(this, 'DailyCostAlarm', {
-          alarmName: 'claude-gateway-daily-cost',
-          metric: costMetric,
-          threshold: props.dailyCostThresholdUsd,
-          evaluationPeriods: 1,
-          comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        });
-        if (alarmAction) costAlarm.addAlarmAction(alarmAction);
-      }
-
-      const dashboard = new cloudwatch.Dashboard(this, 'Dashboard', {
-        dashboardName: 'claude-gateway',
-      });
-      dashboard.addWidgets(
-        new cloudwatch.GraphWidget({ title: 'ALB requests', left: [reqCount], width: 12 }),
-        new cloudwatch.GraphWidget({ title: 'ALB 5xx', left: [alb5xx], width: 12 }),
-        new cloudwatch.GraphWidget({ title: 'Target response time', left: [targetResp], width: 12 }),
-        new cloudwatch.GraphWidget({ title: 'Gateway CPU', left: [cpu], width: 12 }),
-        new cloudwatch.GraphWidget({ title: 'Daily cost (ClaudeGateway)', left: [costMetric], width: 12 }),
-      );
     }
   }
 }

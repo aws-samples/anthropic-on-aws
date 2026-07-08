@@ -240,9 +240,6 @@ pass 2 (default) deploys the full stack.
 | `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch/S3 endpoints — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy |
 | `publicZoneId` | 2 | no* | PUBLIC hosted-zone id — managed cert mode only (ACM DNS validation) |
 | `publicZoneName` | 2 | no* | PUBLIC hosted-zone name — managed cert mode only (explicit) |
-| `enableDashboard` | 2 | no | `"true"` to deploy the CloudWatch dashboard + alarms (default off) |
-| `dailyCostThresholdUsd` | 2 | no | Daily cost-alarm threshold in USD (dashboard mode) |
-| `alarmEmail` | 2 | no | Optional email for an SNS alarm subscription (dashboard mode) |
 
 \* Required when `certArn` is omitted (managed public-cert mode).
 † Supply `certArn` for imported cert mode; omit it (and set `publicZoneId` + `publicZoneName`) for managed public-cert mode.

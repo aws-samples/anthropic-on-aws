@@ -86,8 +86,8 @@ No live AWS account is wired up here, so verification is local/static:
 - Tests (run these after changing the stack or `stamp-config.sh`, and add cases when
   fixing a deployment trap): `cd cdk && npm test` (Jest + CDK `assertions` over the
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
-  `:4318` listener, `createVpcEndpoints` opt-out, TLS-mode selection, dashboard
-  opt-in), `./test/stamp-config.test.sh`
+  `:4318` listener, `createVpcEndpoints` opt-out, TLS-mode selection),
+  `./test/stamp-config.test.sh`
   (dependency-free bash: placeholder guard + Google scope auto-injection), and
   `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool
   detection / `--provenance` gating + the OIDC-secret preflight). None

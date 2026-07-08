@@ -23,9 +23,6 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *     zoneId          private hosted-zone id (optional; looked up from zoneName if omitted)
  *     publicZoneId    PUBLIC hosted-zone id — MANAGED mode only (ACM DNS validation)
  *     publicZoneName  PUBLIC hosted-zone name — MANAGED mode only (explicit, not derived)
- *     enableDashboard "true" to deploy the CloudWatch dashboard + alarms (default off)
- *     dailyCostThresholdUsd  daily cost-alarm threshold in USD (dashboard mode)
- *     alarmEmail      optional email for an SNS alarm subscription (dashboard mode)
  *     ingressCidr     VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR   (required for pass 2)
  *     vpcId           import an existing VPC instead of creating one (optional)
  *     createVpcEndpoints  "false" to skip VPC endpoint creation when reusing a VPC
@@ -52,9 +49,6 @@ new GatewayStack(app, 'ClaudeGatewayStack', {
   zoneId: ctx('zoneId'),
   publicZoneId: ctx('publicZoneId'),
   publicZoneName: ctx('publicZoneName'),
-  enableDashboard: ctx('enableDashboard') === 'true',
-  dailyCostThresholdUsd: ctx('dailyCostThresholdUsd') ? Number(ctx('dailyCostThresholdUsd')) : undefined,
-  alarmEmail: ctx('alarmEmail'),
   ingressCidr: ctx('ingressCidr'),
   vpcId: ctx('vpcId'),
   // Default true; only 'false' opts out (for a reused VPC that already has endpoints).

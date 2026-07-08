@@ -112,9 +112,7 @@ It is **idempotent** — re-run it any time to roll a new image or reconcile dri
 It finishes by printing the ALB hostname, the OAuth redirect URI to register, and
 (imported-cert mode only) the cert SHA-256 fingerprint to publish to developers.
 
-Optional flags: `ENABLE_DASHBOARD=true` (CloudWatch dashboard + ALB-5xx alarm),
-`DAILY_COST_THRESHOLD_USD=50` (daily cost alarm), `ALARM_EMAIL=ops@example.com`
-(SNS subscription), `VPC_ID=vpc-...` (reuse an existing VPC). The full list with
+Optional flags: `VPC_ID=vpc-...` (reuse an existing VPC). The full list with
 defaults is at the top of [`setup.sh`](../cdk/scripts/setup.sh).
 
 ## Track B — CDK (two-pass)
@@ -170,9 +168,7 @@ npx cdk deploy \
 ```
 
 > Swap the `publicZone*` line for `-c certArn=arn:aws:acm:...` to use an imported
-> cert. Add `-c enableDashboard=true` (and optionally
-> `-c dailyCostThresholdUsd=50 -c alarmEmail=ops@example.com`) for the CloudWatch
-> dashboard + alarms. Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
+> cert. Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
 > service endpoints, `-c createVpcEndpoints=false`.
 
 The stack creates `claude-gateway-oidc-client-secret` as a `REPLACE_ME`

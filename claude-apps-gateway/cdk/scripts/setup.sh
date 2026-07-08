@@ -143,10 +143,6 @@ DESIRED_COUNT="${DESIRED_COUNT:-2}"
 LOG_GROUP="${LOG_GROUP:-/claude-gateway/gateway}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-90}"
 GATEWAY_LOG_LEVEL="${GATEWAY_LOG_LEVEL:-info}"
-# CloudWatch dashboard + alarms — opt-in (default off), mirrors the CDK track.
-ENABLE_DASHBOARD="${ENABLE_DASHBOARD:-false}"
-DAILY_COST_THRESHOLD_USD="${DAILY_COST_THRESHOLD_USD:-0}"
-ALARM_EMAIL="${ALARM_EMAIL:-}"
 
 # Telemetry collector (ADOT) — its own small Fargate service, reached over the
 # gateway ALB's HTTPS :4318 listener (the gateway requires https:// for a
@@ -924,65 +920,6 @@ else
     --load-balancers "targetGroupArn=${TG_ARN},containerName=gateway,containerPort=8080" \
     --region "${AWS_REGION}" >/dev/null
   info "created gateway service ${SERVICE} (desiredCount ${DESIRED_COUNT})"
-fi
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Phase 7 — CloudWatch dashboard + alarms (opt-in; mirrors the CDK track)
-# ──────────────────────────────────────────────────────────────────────────────
-if [[ "${ENABLE_DASHBOARD}" == "true" ]]; then
-  log "Phase 7: CloudWatch dashboard + alarms"
-  ALB_NAME_DIM="${ALB_ARN##*:loadbalancer/}"  # app/<name>/<id> — the LoadBalancer dimension
-
-  # Optional SNS topic + email subscription (only if ALARM_EMAIL is set).
-  ALARM_ACTION_ARGS=()
-  if [[ -n "${ALARM_EMAIL}" ]]; then
-    TOPIC_ARN="$(aws_q sns create-topic --name "${PROJECT}-alarms" --query 'TopicArn')"
-    ALARM_ACTION_ARGS=(--alarm-actions "${TOPIC_ARN}")
-    existing_sub="$(aws_q sns list-subscriptions-by-topic --topic-arn "${TOPIC_ARN}" \
-      --query "Subscriptions[?Endpoint=='${ALARM_EMAIL}'].SubscriptionArn | [0]")"
-    if [[ -z "${existing_sub}" || "${existing_sub}" == "None" ]]; then
-      aws sns subscribe --topic-arn "${TOPIC_ARN}" --protocol email \
-        --notification-endpoint "${ALARM_EMAIL}" --region "${AWS_REGION}" >/dev/null
-      info "SNS topic ${TOPIC_ARN} (confirm the email subscription)"
-    else
-      skip "SNS email subscription for ${ALARM_EMAIL}"
-    fi
-  fi
-
-  aws cloudwatch put-metric-alarm --alarm-name "${PROJECT}-alb-5xx" \
-    --namespace AWS/ApplicationELB --metric-name HTTPCode_ELB_5XX_Count \
-    --dimensions "Name=LoadBalancer,Value=${ALB_NAME_DIM}" \
-    --statistic Sum --period 300 --evaluation-periods 1 \
-    --threshold 5 --comparison-operator GreaterThanThreshold \
-    --treat-missing-data notBreaching \
-    ${ALARM_ACTION_ARGS[@]+"${ALARM_ACTION_ARGS[@]}"} --region "${AWS_REGION}" >/dev/null
-  info "put alarm ${PROJECT}-alb-5xx"
-
-  # Decimal-aware > 0 test (awk), so fractional thresholds like 0.5 still arm the
-  # alarm — matches the CDK track's numeric guard. Non-numeric input → 0 → skip.
-  if awk "BEGIN{exit !(${DAILY_COST_THRESHOLD_USD}+0 > 0)}"; then
-    aws cloudwatch put-metric-alarm --alarm-name "${PROJECT}-daily-cost" \
-      --namespace ClaudeGateway --metric-name cost.usage \
-      --statistic Sum --period 86400 --evaluation-periods 1 \
-      --threshold "${DAILY_COST_THRESHOLD_USD}" --comparison-operator GreaterThanThreshold \
-      --treat-missing-data notBreaching \
-      ${ALARM_ACTION_ARGS[@]+"${ALARM_ACTION_ARGS[@]}"} --region "${AWS_REGION}" >/dev/null
-    info "put alarm ${PROJECT}-daily-cost (threshold \$${DAILY_COST_THRESHOLD_USD})"
-  fi
-
-  DASH_BODY=$(cat <<JSON
-{"widgets":[
-  {"type":"metric","width":12,"height":6,"properties":{"title":"ALB requests","region":"${AWS_REGION}","stat":"Sum","metrics":[["AWS/ApplicationELB","RequestCount","LoadBalancer","${ALB_NAME_DIM}"]]}},
-  {"type":"metric","width":12,"height":6,"properties":{"title":"ALB 5xx","region":"${AWS_REGION}","stat":"Sum","metrics":[["AWS/ApplicationELB","HTTPCode_ELB_5XX_Count","LoadBalancer","${ALB_NAME_DIM}"]]}},
-  {"type":"metric","width":12,"height":6,"properties":{"title":"Target response time","region":"${AWS_REGION}","metrics":[["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${ALB_NAME_DIM}"]]}},
-  {"type":"metric","width":12,"height":6,"properties":{"title":"Gateway CPU","region":"${AWS_REGION}","metrics":[["AWS/ECS","CPUUtilization","ServiceName","${SERVICE}","ClusterName","${CLUSTER}"]]}},
-  {"type":"metric","width":12,"height":6,"properties":{"title":"Daily cost (ClaudeGateway)","region":"${AWS_REGION}","metrics":[["ClaudeGateway","cost.usage"]]}}
-]}
-JSON
-)
-  aws cloudwatch put-dashboard --dashboard-name "${PROJECT}" \
-    --dashboard-body "${DASH_BODY}" --region "${AWS_REGION}" >/dev/null
-  info "put dashboard ${PROJECT}"
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
