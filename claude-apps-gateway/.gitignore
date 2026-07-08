@@ -2,3 +2,7 @@
 # repo so operators run it locally / in their own CI rather than shipping it here.
 # (Anchored: does not affect the tracked cdk/scripts/.)
 /scripts/
+
+# Architecture decision records are kept local to the maintainers' repo, not
+# shipped with the example. Rationale lives inline in the docs and comments.
+/docs/adr/

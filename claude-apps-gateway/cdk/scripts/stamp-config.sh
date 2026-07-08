@@ -3,7 +3,8 @@
 # the build-time @@TOKEN@@ placeholders with real literal deploy values.
 #
 # Shared by both deploy tracks: setup.sh and the CDK build step call this before
-# `docker build` so the stamped gateway.yaml is COPYed into the image (see ADR 0001).
+# `docker build` so the stamped gateway.yaml is COPYed into the image (baked
+# config: one image per environment, secrets stay as ${VAR} for boot-time env expansion).
 #
 # It substitutes ONLY the @@TOKEN@@ placeholders. The gateway's own ${VAR} runtime
 # expansions (secrets + deploy-created DB facts) are left untouched on purpose.

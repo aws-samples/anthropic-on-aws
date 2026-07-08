@@ -12,7 +12,7 @@
 #
 # ── Two-pass deploy ───────────────────────────────────────────────────────────
 # `public_url` drives the gateway's OIDC redirect_uri and discovery doc, and the
-# config is baked into the image (ADR 0001). Because we bring our own Route 53
+# config is baked into the image (see gateway.yaml.template's header). Because we bring our own Route 53
 # zone and pick the record name, PUBLIC_URL is KNOWN before anything is created
 # (it's claude-gateway.<ZONE_NAME>), so there is no "deploy to learn the URL" pass.
 # The only ordering constraint is image-before-service. A single run handles it:
@@ -29,7 +29,8 @@
 #     OR managed public-cert mode (leave CERT_ARN unset) - then this script
 #     requests a DNS-validated public cert and needs PUBLIC_ZONE_ID +
 #     PUBLIC_ZONE_NAME (the public, delegated zone used ONLY for ACM validation;
-#     the gateway A-record still lives in the private ZONE_ID). See ADR 0003.
+#     the gateway A-record still lives in the private ZONE_ID). Rationale: the
+#     "TLS: managed public cert vs. imported cert" section of cdk/README.md.
 #   * A private Route 53 hosted zone (ZONE_ID/ZONE_NAME) for the gateway A-record,
 #     plus a network path + private-DNS resolution from developer laptops to the
 #     internal ALB (VPN/DX/TGW). See docs/connectivity.md - the #1 "internal ALB

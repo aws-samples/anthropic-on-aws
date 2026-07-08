@@ -32,7 +32,7 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *                     (`vpcId`) that already has them; default true (optional)
  *     imageReady      "false" for pass 1 (repo only), "true"/unset for pass 2
  *   BUILD-TIME (stamped into the image by stamp-config.sh; shown here for parity,
- *   not passed to the running task — changing them means a new image, ADR 0001):
+ *   not passed to the running task — changing them means a new image, by design):
  *     claudeVersion   default 2.1.199
  *     oidcIssuer, oidcClientId, allowedEmailDomains
  */

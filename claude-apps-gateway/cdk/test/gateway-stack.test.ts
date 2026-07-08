@@ -134,7 +134,7 @@ describe('pass 2 (imageReady: true) — full stack', () => {
   });
 });
 
-describe('TLS mode selection (imported vs managed public cert, ADR 0003)', () => {
+describe('TLS mode selection (imported vs managed public cert)', () => {
   test('certArn present → imported mode: no in-stack cert, fingerprint hint output', () => {
     const template = synth(PASS2);
     template.resourceCountIs('AWS::CertificateManager::Certificate', 0);

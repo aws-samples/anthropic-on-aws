@@ -60,7 +60,8 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways �
   public cert** via split-horizon DNS: the stack requests a DNS-validated public ACM cert
   whose validation CNAME lives in an explicit public zone (`PUBLIC_ZONE_ID` +
   `PUBLIC_ZONE_NAME` / `publicZoneId` + `publicZoneName`), while the A-record stays in the
-  private zone → internal ALB. Keep `setup.sh` and CDK in sync. See ADR 0003.
+  private zone → internal ALB. Keep `setup.sh` and CDK in sync. Full rationale in
+  the "TLS: managed public cert vs. imported cert" section of `cdk/README.md`.
 
 ## Conventions
 

@@ -98,7 +98,7 @@ export class GatewayStack extends cdk.Stack {
     const recordHost = publicUrl.replace(/^https?:\/\//, '');
 
     // TLS mode selector: certArn present → IMPORTED (fingerprint-pinned, unchanged);
-    // absent → MANAGED-PUBLIC via split-horizon DNS. See ADR 0003.
+    // absent → MANAGED-PUBLIC via split-horizon DNS (see the TLS section in ../README.md).
     const managedCert = !props.certArn;
 
     // Private zone: holds the gateway A-record → internal ALB (both modes).
@@ -367,7 +367,7 @@ export class GatewayStack extends cdk.Stack {
         image,
         containerPort: 8080,
         taskRole,
-        // NO non-secret app config here — it's baked into the image (ADR 0001).
+        // NO non-secret app config here — it's baked into the image by design.
         // DB_HOST is the non-secret RDS endpoint (the RDS-managed secret holds
         // only username/password, not host).
         environment: {

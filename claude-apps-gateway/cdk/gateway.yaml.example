@@ -2,7 +2,7 @@
 #
 # This file is COMMITTED. `stamp-config.sh` substitutes the build-time
 # double-at placeholders below with real literal values (from deploy inputs) to
-# produce `gateway.yaml`, which the Dockerfile COPYs into the image. See ADR 0001
+# produce `gateway.yaml`, which the Dockerfile COPYs into the image. Baking (vs. mounting)
 # for why config is baked into the image on ECS rather than mounted as a secret file.
 #
 # Two kinds of placeholder appear here, and they are resolved at DIFFERENT times:
@@ -11,7 +11,7 @@
 #               stamp-config.sh before `docker build`. These are non-secret values
 #               known at deploy and rarely changed (public_url, region, issuer,
 #               client_id, email domains). Baking them means the image is
-#               per-environment; see ADR 0001.
+#               per-environment by design (baked config = one image per environment).
 #
 #   dollar-brace  ${NAME} — BOOT time. Expanded by the gateway itself when it reads
 #               the file. Used for exactly two categories: secrets (never committed)

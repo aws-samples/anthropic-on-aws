@@ -89,8 +89,7 @@ you supply a cert** — there is no separate mode flag:
 | `certArn` | **imported** | The ALB uses your cert as-is. | CLI shows a SHA-256 **fingerprint prompt** (the example prints the fingerprint to publish). |
 | *nothing* | **managed public** (recommended) | The stack **requests a DNS-validated public ACM cert** for the gateway host. | **No prompt** — the cert is browser-trusted. No `NODE_EXTRA_CA_CERTS`, no keychain import. |
 
-**Managed mode uses split-horizon DNS** (see
-[`../docs/adr/0003-managed-public-acm-cert-tls-mode.md`](../docs/adr/0003-managed-public-acm-cert-tls-mode.md)):
+**Managed mode uses split-horizon DNS:**
 
 - The **private** zone (`zoneId`/`zoneName`) holds the gateway's **A-record →
   internal ALB** — the only record `/login` resolves, and it answers a private IP.
