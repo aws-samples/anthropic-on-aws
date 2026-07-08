@@ -4,7 +4,7 @@
 
 The gateway can set daily, weekly, or monthly spend limits per user, group, or organization. When a developer exceeds their cap, the gateway returns 429 and blocks further inference requests until the period resets or an admin raises the limit. Spend is estimated from token counts at USD list price.
 
-## What the customer gets
+## Benefits
 
 - Circuit breaker: prevent one runaway agent from spending the entire commitment
 - Per-user visibility: see who is spending how much, per day/week/month

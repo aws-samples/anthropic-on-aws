@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-Claude apps gateway is how enterprises run Claude Code (and Claude Desktop) on AWS without putting AWS credentials on every developer machine. It's a proxy that sits in the customer's AWS account, authenticates developers via corporate SSO, and routes all inference to Amazon Bedrock or Claude Platform on AWS using a single IAM role. No per-seat fee. Developers just run `claude /login` and they're in.
+Claude apps gateway is how enterprises run Claude Code (and Claude Desktop) on AWS without putting AWS credentials on every developer machine. It's a proxy that sits in your AWS account, authenticates developers via corporate SSO, and routes all inference to Amazon Bedrock or Claude Platform on AWS using a single IAM role. No per-seat fee. Developers just run `claude /login` and they're in.
 
 ---
 
@@ -18,7 +18,7 @@ Claude apps gateway is how enterprises run Claude Code (and Claude Desktop) on A
 
 ![Claude Apps Gateway Architecture](images/architecture.png)
 
-1. **The customer deploys a container** running `claude gateway --config gateway.yaml` on ECS, EKS, or EC2, behind an internal ALB in their VPC. The gateway is a single Linux binary run as a container, configured by one YAML file with five required sections:
+1. **You deploy a container** running `claude gateway --config gateway.yaml` on ECS, EKS, or EC2, behind an internal ALB in their VPC. The gateway is a single Linux binary run as a container, configured by one YAML file with five required sections:
 
 ```yaml
 listen:       # Where the gateway listens (host, port, public_url)
@@ -39,7 +39,7 @@ upstreams:    # Where inference goes (provider: bedrock or anthropicAws)
 
 ---
 
-## What the customer gets
+## What you get
 
 | Capability | How it works |
 |-----------|--------------|
@@ -48,13 +48,13 @@ upstreams:    # Where inference goes (provider: bedrock or anthropicAws)
 | **Per-user cost tracking** | OTLP telemetry stamped with user identity → Datadog, Splunk, CloudWatch, or any OTLP backend. |
 | **Spend limits** | Daily/weekly/monthly caps per user, group, or org. Gateway blocks requests when over cap. |
 | **Instant offboarding** | Remove from IdP → session expires within 1 hour (configurable). No credential rotation. |
-| **No data to Anthropic** | When using Amazon Bedrock, nothing leaves the customer's AWS account boundary. When using Claude Platform on AWS, requests are processed by Anthropic with AWS IAM authentication and billing. |
+| **No data to Anthropic** | When using Amazon Bedrock, nothing leaves your AWS account boundary. When using Claude Platform on AWS, requests are processed by Anthropic with AWS IAM authentication and billing. |
 
 ---
 
-## What the customer needs to provide
+## Prerequisites
 
-These are the prerequisites. Walk through them with the customer before starting deployment.
+These are the prerequisites before starting deployment.
 
 ### 1. A private hostname for the gateway
 
@@ -69,17 +69,17 @@ Example: `claude-gateway.internal.company.com` resolving to `10.0.1.50`
 
 ### 2. An OIDC identity provider
 
-The gateway authenticates developers using the OpenID Connect (OIDC) protocol. The customer registers one OAuth application in their IdP with the redirect URI set to `https://<gateway-hostname>/oauth/callback`.
+The gateway authenticates developers using the OpenID Connect (OIDC) protocol. Register one OAuth application in their IdP with the redirect URI set to `https://<gateway-hostname>/oauth/callback`.
 
 **Supported providers:** Okta, Microsoft Entra ID, Google Workspace, Keycloak, Dex, Amazon Cognito, PingFederate, or any OIDC-compliant provider.
 
 **Not supported:** AWS IAM Identity Center (does not support authorization_code grant for custom applications), SAML-only providers, LDAP without an OIDC bridge.
 
-The customer will need to provide: the OIDC issuer URL, a client ID, and a client secret.
+You will need to provide: the OIDC issuer URL, a client ID, and a client secret.
 
 ### 3. An AWS account with Amazon Bedrock access
 
-The customer needs an AWS account where they can create the following resources:
+You need an AWS account where they can create the following resources:
 - **Compute**: ECS cluster (Fargate), EKS cluster, or EC2 instances
 - **Database**: An RDS PostgreSQL instance (db.t4g.micro is sufficient; the gateway stores only a few KB of sign-in state)
 - **Networking**: A VPC with private subnets, an internal ALB, and a TLS certificate from ACM
@@ -110,7 +110,7 @@ Developers can update with `claude update`. The gateway server uses the same bin
 
 ### 5. Device management (for pushing settings to developers)
 
-The customer needs a way to deploy a JSON file to developer machines. This file tells Claude Code where the gateway is. Common options:
+You need a way to deploy a JSON file to developer machines. This file tells Claude Code where the gateway is. Common options:
 - Jamf (macOS)
 - Microsoft Intune (macOS/Windows)
 - Ansible/Chef/Puppet (Linux)
@@ -377,7 +377,7 @@ curl -X POST https://<gateway>/oauth/device_authorization
 
 ---
 
-## Common customer questions
+## FAQ
 
 **Q: How much does it cost?**
 No license fee. Approximately $37/month for minimal AWS infrastructure (ECS $9 + RDS $12 + ALB $16). Plus Amazon Bedrock inference (same as without the gateway).

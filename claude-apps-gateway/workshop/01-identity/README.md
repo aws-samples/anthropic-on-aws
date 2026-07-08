@@ -4,7 +4,7 @@
 
 The gateway authenticates developers using OpenID Connect (OIDC). Instead of holding AWS credentials or API keys, developers sign in once with their corporate identity provider (Okta, Entra, Google Workspace, etc.) via a browser. The gateway issues a short-lived bearer token that Claude Code uses for all subsequent requests.
 
-## What the customer gets
+## Benefits
 
 - Developers never touch AWS credentials or API keys
 - Onboarding: add a user to the IdP group, they can `claude /login` immediately

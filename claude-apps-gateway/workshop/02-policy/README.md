@@ -4,7 +4,7 @@
 
 The gateway enforces policies per IdP group that control which models developers can use, which tools are allowed or denied, and what permissions apply. Policies are defined in `gateway.yaml` and delivered to the CLI at sign-in. Model access is enforced both client-side (model picker) and server-side (400 on unauthorized model).
 
-## What the customer gets
+## Benefits
 
 - Different teams get different models: engineering gets Opus, contractors get Haiku only
 - Tool restrictions: block web access for some groups, limit file reads

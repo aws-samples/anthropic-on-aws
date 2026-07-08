@@ -23,7 +23,7 @@ Hands-on modules covering each of the gateway's five core capabilities. Each mod
 Each module follows the same format:
 
 1. **What it is** — plain English explanation
-2. **What the customer gets** — the business value
+2. **Benefits** — what this capability delivers
 3. **How to configure it** — the `gateway.yaml` section with comments
 4. **How to verify it** — curl commands with expected output
 5. **Key takeaways** — what to remember about this capability

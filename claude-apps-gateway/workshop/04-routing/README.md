@@ -4,7 +4,7 @@
 
 The gateway holds the upstream credential and routes inference to Amazon Bedrock or Claude Platform on AWS on behalf of developers. It translates between the Anthropic Messages API (what Claude Code speaks) and the provider's API. Developers never call the provider directly. You can configure multiple upstreams for failover across regions or accounts.
 
-## What the customer gets
+## Benefits
 
 - Single credential: one IAM role (or API key) on the gateway, not one per developer
 - Protocol translation: Claude Code speaks Anthropic format, gateway handles provider differences
