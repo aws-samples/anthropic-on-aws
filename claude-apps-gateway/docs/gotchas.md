@@ -270,12 +270,15 @@ cert, developers need the CA in their OS trust store or `NODE_EXTRA_CA_CERTS` se
 - **EC2 security-group rule *descriptions* reject `>`.** Allowed charset is
   `a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*`. Using `->` arrows in a rule description fails
   with `Invalid rule description`. Use `to`.
-- **`docker` isn't required — `podman` works, but drop `--provenance=false`.** On an
-  arm64 Mac, podman built the `linux/amd64` image via its VM's emulation and pushed
-  to ECR fine. But `--provenance=false` is a **buildx-only** flag — `podman build`
-  rejects it with `unknown flag: --provenance`. Podman emits a plain (non-OCI-index)
-  image by default, so just omit the flag when building with podman. (The flag
-  exists to stop buildx emitting an OCI image index that some runtimes reject.)
+- **`docker` isn't required — `podman`/`finch` work, and `setup.sh` handles the
+  flag difference.** On an arm64 Mac, podman built the `linux/amd64` image via its
+  VM's emulation and pushed to ECR fine. The trap: `--provenance=false` is a
+  **buildx-only** flag — `podman build` rejects it with `unknown flag: --provenance`.
+  (The flag exists to stop buildx emitting an OCI image index that some runtimes
+  reject; podman emits a plain image by default, so it simply doesn't need it.)
+  `setup.sh` auto-detects `docker`/`podman`/`finch` (override with
+  `CONTAINER_TOOL=…`) and only passes `--provenance=false` to docker — if you
+  build by hand with podman, omit the flag yourself.
 - **`setup.sh` needs bash 4+, but macOS ships bash 3.2.** The script uses no
   bash-4-isms now (an earlier `mapfile` was replaced with a `while read` loop), but
   if you extend it, avoid `mapfile`/`readarray`, `declare -A`, and `${var,,}`/`${var^^}`

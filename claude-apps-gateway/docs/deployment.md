@@ -24,7 +24,14 @@ a common failure:
 1. **Bedrock model access** enabled in the console, **per region**, for each Claude
    model in `gateway.yaml`'s `availableModels`. For cross-region inference profiles
    (`us.anthropic.*`), enable it in **every region the profile spans**. Missing this
-   yields `AccessDeniedException` on invoke even when IAM is correct.
+   yields `AccessDeniedException` on invoke even when IAM is correct. Verify it up
+   front with a 5-token invoke per model (success = access is enabled):
+
+   ```bash
+   aws bedrock-runtime converse --model-id us.anthropic.claude-sonnet-5 \
+     --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
+     --inference-config '{"maxTokens":5}' >/dev/null && echo model access OK
+   ```
 2. **TLS — pick one.** Either **import** an ACM cert for your gateway hostname
    (`CERT_ARN` / `-c certArn`) — developers then confirm its SHA-256 fingerprint on
    first `/login` — or leave it unset for **managed public-cert mode**, which
@@ -33,17 +40,30 @@ a common failure:
    parent domain (`PUBLIC_ZONE_ID` + `PUBLIC_ZONE_NAME` / `-c publicZoneId
    -c publicZoneName`), used only for the ACM validation CNAME. See the TLS section
    in [`../cdk/README.md`](../cdk/README.md).
-3. **A private Route 53 hosted zone** (`ZONE_ID`/`ZONE_NAME` / `-c zoneId
-   -c zoneName`) for the gateway A-record. The hostname must resolve to a
-   **private** IP — the CLI rejects public gateway addresses.
+3. **A Route 53 hosted zone** (`ZONE_ID`/`ZONE_NAME` / `-c zoneId -c zoneName`)
+   for the gateway A-record. The real requirement is that the hostname resolves
+   to a **private** IP on developer laptops — the CLI rejects public gateway
+   addresses. Two topologies satisfy it:
+   - **Public zone, private answer** (simplest, verified live): put the A-record
+     in the public delegated zone; it answers the internal ALB's private IPs, so
+     laptops need no special DNS — only a network route into the VPC. In managed
+     cert mode `ZONE_ID` may simply equal `PUBLIC_ZONE_ID`.
+   - **Private hosted zone**: keeps the record out of the public DNS tree, but
+     note the example does **not** associate the zone with the VPC it creates
+     (associate it yourself for in-VPC resolution), and off-VPC laptops then need
+     a Route 53 Resolver inbound endpoint or corp-DNS forwarding — see
+     [`connectivity.md`](connectivity.md).
 4. **Connectivity + private DNS from developer laptops to the internal ALB** — a
    VPN / Direct Connect / Transit Gateway path. This is the #1 "internal ALB doesn't
    work from my laptop" failure — see [`connectivity.md`](connectivity.md).
 5. **An OIDC client** registered in your IdP with redirect URI
    `<public_url>/oauth/callback`. Note the issuer URL, client ID, and client secret.
-6. **Tooling**: `aws` CLI with credentials, `docker` (or `podman`), `jq`, `openssl`,
-   `gpg`, `curl`. Track A needs bash 4+ (macOS ships 3.2 — `brew install bash`).
-   Track B additionally needs Node.js 18+ (`npm install -g aws-cdk`).
+6. **Tooling**: `aws` CLI with credentials, a container tool (`setup.sh`
+   auto-detects `docker`/`podman`/`finch`; override with `CONTAINER_TOOL=…`),
+   `jq`, `openssl`, `gpg`, `curl`. Track A runs on stock macOS bash 3.2 — it
+   deliberately avoids bash-4-isms (see [`gotchas.md`](gotchas.md) §13 before
+   extending it). Track B additionally needs Node.js 18+
+   (`npm install -g aws-cdk`).
 
 `public_url` is chosen **up front** — it's `https://claude-gateway.<your-zone>`,
 known before anything is created — so neither track has a "deploy to learn the URL"
@@ -59,6 +79,7 @@ PUBLIC_URL=https://claude-gateway.example.com \
 AWS_REGION=us-east-1 \
 OIDC_ISSUER=https://example.okta.com \
 OIDC_CLIENT_ID=0oa1example2 \
+OIDC_CLIENT_SECRET=your-oidc-client-secret \
 ALLOWED_EMAIL_DOMAINS=example.com \
 PUBLIC_ZONE_ID=Z0PUBLICEXAMPLE \
 PUBLIC_ZONE_NAME=example.com \
@@ -70,7 +91,15 @@ cdk/scripts/setup.sh
 
 > Swap the two `PUBLIC_ZONE_*` lines for `CERT_ARN=arn:aws:acm:...` to use an
 > imported cert instead. `INGRESS_CIDR` is the VPN/corp **client** CIDR developers
-> connect from — **not** the VPC CIDR.
+> connect from — **not** the VPC CIDR — *unless* that path is **AWS Client VPN**,
+> which source-NATs client traffic to the association subnet's IP: then use the
+> VPC CIDR (`10.20.0.0/16` for the VPC this script creates). See the Client VPN
+> gotchas in [`connectivity.md`](connectivity.md).
+>
+> `OIDC_CLIENT_SECRET` is seeded straight into Secrets Manager (never baked into
+> the image or logged). Prefer not to have it in your shell env? Omit it —
+> preflight then fails fast with the `create-secret`/`put-secret-value` command
+> to run out of band, after which a plain re-run works.
 
 What it does, in order: stamps `gateway.yaml` from the template (refusing to
 continue if any placeholder is unresolved), downloads the pinned `claude` binary and
@@ -122,7 +151,8 @@ curl -fL -o claude "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VE
 curl -fsSL "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/manifest.json" \
   | jq -r '.platforms["linux-x64"].checksum' | xargs -I{} sh -c 'echo "{}  claude" | shasum -a 256 -c'
 
-# Build (amd64, plain image — some runtimes reject buildx OCI indexes) and push
+# Build (amd64, plain image — some runtimes reject buildx OCI indexes) and push.
+# Building with podman/finch instead? Omit --provenance=false (buildx-only flag).
 ECR_URI=<EcrRepositoryUri from pass-1 outputs>
 aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_URI%%/*}"
 docker build --platform=linux/amd64 --provenance=false -t "${ECR_URI}:${CLAUDE_VERSION}" .
@@ -144,6 +174,17 @@ npx cdk deploy \
 > `-c dailyCostThresholdUsd=50 -c alarmEmail=ops@example.com`) for the CloudWatch
 > dashboard + alarms. Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
 > service endpoints, `-c createVpcEndpoints=false`.
+
+The stack creates `claude-gateway-oidc-client-secret` as a `REPLACE_ME`
+placeholder (a real secret can't ride in CDK context — it would land in
+`cdk.context.json`). After pass 2, set the real value and bounce the service so
+tasks pick it up:
+
+```bash
+aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret \
+  --secret-string '<your-oidc-client-secret>'
+aws ecs update-service --cluster claude-gateway --service claude-gateway --force-new-deployment
+```
 
 To roll a new image later: push a new tag, then re-run pass 2 with
 `-c imageTag=<tag>`.
@@ -192,6 +233,16 @@ Then push the managed-settings file to developer machines via MDM:
 In imported-cert mode, publish the cert's SHA-256 fingerprint (printed by
 `setup.sh`, or the `CertFingerprintHint` stack output) so developers can confirm the
 prompt on first `/login`. Managed-cert mode shows no prompt.
+
+## Cost expectations
+
+A live deploy of this example idles at roughly **US$6–8/day** (us-east-1,
+defaults). The two biggest line items are easy to miss: the **five interface VPC
+endpoints × two AZs (~$2.40/day)** and the **NAT gateway (~$1.15/day + data)**;
+Fargate (2× gateway + 1× collector) is ~$1.50/day, the ALB ~$0.60/day, RDS
+`db.t4g.micro` ~$0.45/day. If you build the Client VPN sketch from
+[`connectivity.md`](connectivity.md), add ~$2.40/day per subnet association plus
+$0.05/h per connected client. Tear down when idle ([`teardown.md`](teardown.md)).
 
 ## Removing a deployment
 

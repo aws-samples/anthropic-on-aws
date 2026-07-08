@@ -87,8 +87,10 @@ No live AWS account is wired up here, so verification is local/static:
   fixing a deployment trap): `cd cdk && npm test` (Jest + CDK `assertions` over the
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
   `:4318` listener, `createVpcEndpoints` opt-out, TLS-mode selection, dashboard
-  opt-in) and `./test/stamp-config.test.sh`
-  (dependency-free bash: placeholder guard + Google scope auto-injection). Neither
+  opt-in), `./test/stamp-config.test.sh`
+  (dependency-free bash: placeholder guard + Google scope auto-injection), and
+  `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool
+  detection / `--provenance` gating + the OIDC-secret preflight). None
   needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
 - Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).

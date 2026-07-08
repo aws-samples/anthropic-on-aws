@@ -62,18 +62,31 @@ aws route53resolver create-resolver-endpoint \
 
 # --- AWS Client VPN (mutual TLS) skeleton ---
 # 1. Generate a server + client cert (e.g. via easy-rsa) and import to ACM.
+#    (One CA signing both works: the server cert ARN then doubles as the
+#    client root chain ARN.)
 # 2. Create the endpoint; client-cidr-block must NOT overlap the VPC CIDR.
+#    --split-tunnel matters for a laptop: without it ALL laptop traffic is
+#    forced into a VPC with no internet egress path for VPN clients.
 aws ec2 create-client-vpn-endpoint \
   --client-cidr-block 10.200.0.0/22 \
   --server-certificate-arn <server-cert-arn> \
   --authentication-options Type=certificate-authentication,MutualAuthentication={ClientRootCertificateChainArn=<client-ca-arn>} \
   --connection-log-options Enabled=false \
+  --split-tunnel \
   --dns-servers <vpc-.2-resolver-or-inbound-endpoint-ip> \
   --vpc-id <vpc-id> --security-group-ids <vpn-sg>
 # 3. Associate it with the private subnets and authorize the VPC CIDR:
 aws ec2 associate-client-vpn-target-network --client-vpn-endpoint-id <id> --subnet-id <private-subnet-a>
 aws ec2 authorize-client-vpn-ingress --client-vpn-endpoint-id <id> \
   --target-network-cidr 10.20.0.0/16 --authorize-all-groups
+# 4. Build the client profile: export the config, inline the client cert/key,
+#    and clamp MSS (gotcha 3 below — TLS stalls over the tunnel without it):
+aws ec2 export-client-vpn-client-configuration --client-vpn-endpoint-id <id> \
+  --output text > client.ovpn
+{ echo "<cert>"; cat client.crt; echo "</cert>"
+  echo "<key>";  cat client.key; echo "</key>"
+  echo "tun-mtu 1300"; echo "mssfix 1200"; } >> client.ovpn
+# Import client.ovpn into the AWS VPN Client, or: sudo openvpn --config client.ovpn
 ```
 
 Here the **client CIDR** (`10.200.0.0/22` above) is what you'd pass as

@@ -46,6 +46,68 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Helpers (defined before configuration so tests can source them in isolation —
+# see the SETUP_SH_LIB_ONLY gate below).
+# ──────────────────────────────────────────────────────────────────────────────
+log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
+info() { printf '    %s\n' "$*"; }
+skip() { printf '    \033[2m(exists)\033[0m %s\n' "$*"; }
+die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+aws_q() { aws "$@" --output text --region "${AWS_REGION}" 2>/dev/null; }
+
+sha_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+
+# resolve_container_tool — honor CONTAINER_TOOL if set (and fail if it isn't on
+# PATH), else the first of docker/podman/finch found. podman/finch build the
+# linux/amd64 image via their VM's emulation fine (verified live — gotchas §13).
+resolve_container_tool() {
+  if [[ -n "${CONTAINER_TOOL:-}" ]]; then
+    command -v "${CONTAINER_TOOL}" >/dev/null 2>&1 || return 1
+    echo "${CONTAINER_TOOL}"
+    return 0
+  fi
+  local t
+  for t in docker podman finch; do
+    if command -v "$t" >/dev/null 2>&1; then echo "$t"; return 0; fi
+  done
+  return 1
+}
+
+# container_build_extra_flags — --provenance=false is buildx-only (it stops
+# buildx emitting an OCI image index that some runtimes reject). podman/finch
+# emit a plain image by default and REJECT the flag, so pass it to docker only.
+container_build_extra_flags() {
+  if [[ "$1" == "docker" ]]; then echo "--provenance=false"; fi
+}
+
+# preflight_oidc_secret — fail fast in phase 0 rather than after the ~9-minute
+# RDS wait: the deploy needs the real OIDC client secret, either exported as
+# OIDC_CLIENT_SECRET (phase 4 seeds Secrets Manager from it) or already present
+# in Secrets Manager with a non-placeholder value.
+preflight_oidc_secret() {
+  [[ -n "${OIDC_CLIENT_SECRET:-}" ]] && return 0
+  local current
+  current="$(aws_q secretsmanager get-secret-value --secret-id "${OIDC_SECRET_NAME}" --query SecretString || true)"
+  if [[ -z "${current}" || "${current}" == "None" ]]; then
+    die "OIDC client secret not provided. Either re-run with OIDC_CLIENT_SECRET='<your-oidc-client-secret>' exported
+    (seeded straight into Secrets Manager, never baked into the image), or create the secret first:
+    aws secretsmanager create-secret --name ${OIDC_SECRET_NAME} --secret-string '<your-oidc-client-secret>' --region ${AWS_REGION}"
+  elif [[ "${current}" == "REPLACE_ME" ]]; then
+    die "OIDC client secret is still the REPLACE_ME placeholder. Either re-run with OIDC_CLIENT_SECRET exported, or set it:
+    aws secretsmanager put-secret-value --secret-id ${OIDC_SECRET_NAME} --secret-string '<your-oidc-client-secret>' --region ${AWS_REGION}"
+  fi
+}
+
+# Test hook: `SETUP_SH_LIB_ONLY=1 source setup.sh` loads only the helpers above
+# (see test/setup-helpers.test.sh) — no env requirements, no AWS calls.
+# shellcheck disable=SC2317  # the exit is the executed-not-sourced fallback
+if [[ "${SETUP_SH_LIB_ONLY:-}" == "1" ]]; then return 0 2>/dev/null || exit 0; fi
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Configuration — env vars with defaults (mirrors the GCP example's convention).
 # ──────────────────────────────────────────────────────────────────────────────
 AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -96,6 +158,13 @@ ADOT_IMAGE="${ADOT_IMAGE:-public.ecr.aws/aws-observability/aws-otel-collector:la
 PUBLIC_URL="${PUBLIC_URL:?required: the internal ALB https origin, e.g. https://claude-gateway.example.com}"
 OIDC_ISSUER="${OIDC_ISSUER:?required: OIDC discovery base, e.g. https://example.okta.com}"
 OIDC_CLIENT_ID="${OIDC_CLIENT_ID:?required: OAuth client id}"
+# Optional: the OIDC client secret. If set, phase 4 seeds/updates the Secrets
+# Manager secret from it (the value goes straight to the Secrets Manager API —
+# never baked into the image, logged, or written to disk). If unset, the secret
+# must already exist with a real value; preflight fails fast otherwise.
+OIDC_CLIENT_SECRET="${OIDC_CLIENT_SECRET:-}"
+JWT_SECRET_NAME="${PROJECT}-jwt-secret"
+OIDC_SECRET_NAME="${PROJECT}-oidc-client-secret"
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS:?required: comma-separated, e.g. example.com}"
 # TLS mode selector: CERT_ARN set → IMPORTED (fingerprint-pinned). Unset → MANAGED
 # public-cert via split-horizon DNS (requires PUBLIC_ZONE_ID + PUBLIC_ZONE_NAME).
@@ -111,27 +180,15 @@ if [[ -n "${CERT_ARN}" ]]; then MANAGED_CERT=0; else MANAGED_CERT=1; fi
 INGRESS_CIDR="${INGRESS_CIDR:?required: the VPN/corp client CIDR developers connect from}"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────────────────────
-log()  { printf '\n\033[1;34m==>\033[0m %s\n' "$*"; }
-info() { printf '    %s\n' "$*"; }
-skip() { printf '    \033[2m(exists)\033[0m %s\n' "$*"; }
-die()  { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
-
-aws_q() { aws "$@" --output text --region "${AWS_REGION}" 2>/dev/null; }
-
-sha_of() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
-  else shasum -a 256 "$1" | awk '{print $1}'; fi
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Phase 0 — Preflight
 # ──────────────────────────────────────────────────────────────────────────────
 log "Phase 0: preflight"
-for bin in aws docker jq openssl gpg curl; do
+for bin in aws jq openssl gpg curl; do
   command -v "$bin" >/dev/null 2>&1 || die "required tool not found on PATH: $bin"
 done
+CTR="$(resolve_container_tool)" \
+  || die "no container tool found: need docker, podman, or finch on PATH (or set CONTAINER_TOOL to yours)"
+info "container tool: ${CTR}"
 ACCOUNT_ID="${ACCOUNT_ID:-$(aws_q sts get-caller-identity --query Account)}"
 [[ -n "${ACCOUNT_ID}" && "${ACCOUNT_ID}" != "None" ]] || die "could not resolve AWS account id - is the aws CLI authenticated?"
 info "account ${ACCOUNT_ID}, region ${AWS_REGION}"
@@ -147,6 +204,8 @@ else
   info "TLS mode: imported cert ${CERT_ARN}"
 fi
 info "caller $(aws_q sts get-caller-identity --query Arn)"
+# Fail fast on the OIDC client secret BEFORE the slow phases (RDS alone is ~9 min).
+preflight_oidc_secret
 REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 IMAGE_URI="${REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
 
@@ -162,9 +221,9 @@ else
     --region "${AWS_REGION}" >/dev/null
   info "created ecr repo ${ECR_REPO}"
 fi
-info "docker login to ${REGISTRY}"
+info "${CTR} login to ${REGISTRY}"
 aws ecr get-login-password --region "${AWS_REGION}" \
-  | docker login --username AWS --password-stdin "${REGISTRY}" >/dev/null
+  | "${CTR}" login --username AWS --password-stdin "${REGISTRY}" >/dev/null
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 2 — Image: stamp config, download + verify binary, build, push
@@ -225,11 +284,13 @@ else
   trap - EXIT INT TERM
   rm -rf "${tmpdir}"
 
-  # 2f. Build (amd64; --provenance=false so buildx emits a plain image, not an OCI
-  #     index some runtimes reject) and push.
-  info "docker build --platform=linux/amd64 --provenance=false"
-  docker build --platform=linux/amd64 --provenance=false -t "${IMAGE_URI}" .
-  docker push "${IMAGE_URI}"
+  # 2f. Build (amd64; docker additionally gets --provenance=false so buildx emits
+  #     a plain image, not an OCI index some runtimes reject) and push.
+  BUILD_FLAGS="$(container_build_extra_flags "${CTR}")"
+  info "${CTR} build --platform=linux/amd64 ${BUILD_FLAGS}"
+  # shellcheck disable=SC2086  # BUILD_FLAGS is intentionally word-split (empty for podman/finch)
+  "${CTR}" build --platform=linux/amd64 ${BUILD_FLAGS} -t "${IMAGE_URI}" .
+  "${CTR}" push "${IMAGE_URI}"
   info "pushed ${IMAGE_URI}"
 fi
 
@@ -463,8 +524,6 @@ info "RDS master secret ${DB_SECRET_ARN}"
 # Phase 4 — Secrets Manager (gateway-owned secrets; DB creds come from RDS secret)
 # ──────────────────────────────────────────────────────────────────────────────
 log "Phase 4: secrets"
-JWT_SECRET_NAME="${PROJECT}-jwt-secret"
-OIDC_SECRET_NAME="${PROJECT}-oidc-client-secret"
 
 if aws_q secretsmanager describe-secret --secret-id "${JWT_SECRET_NAME}" >/dev/null; then
   skip "secret ${JWT_SECRET_NAME}"
@@ -477,17 +536,30 @@ fi
 JWT_SECRET_ARN="$(aws_q secretsmanager describe-secret --secret-id "${JWT_SECRET_NAME}" --query ARN)"
 
 if aws_q secretsmanager describe-secret --secret-id "${OIDC_SECRET_NAME}" >/dev/null; then
-  skip "secret ${OIDC_SECRET_NAME}"
+  if [[ -n "${OIDC_CLIENT_SECRET}" ]] && [[ "$(aws_q secretsmanager get-secret-value \
+       --secret-id "${OIDC_SECRET_NAME}" --query SecretString)" != "${OIDC_CLIENT_SECRET}" ]]; then
+    aws secretsmanager put-secret-value --secret-id "${OIDC_SECRET_NAME}" \
+      --secret-string "${OIDC_CLIENT_SECRET}" --region "${AWS_REGION}" >/dev/null
+    info "updated ${OIDC_SECRET_NAME} from OIDC_CLIENT_SECRET"
+  else
+    skip "secret ${OIDC_SECRET_NAME}"
+  fi
 else
-  # Placeholder — you MUST set the real OIDC client secret before sign-in works.
+  # Seeded from OIDC_CLIENT_SECRET when exported; otherwise a placeholder (the
+  # guard below and the phase-0 preflight both refuse to deploy with it unset).
   aws secretsmanager create-secret --name "${OIDC_SECRET_NAME}" \
-    --description "Claude gateway OIDC client secret — REPLACE with the real value" \
-    --secret-string "REPLACE_ME" --region "${AWS_REGION}" >/dev/null
-  info "created ${OIDC_SECRET_NAME} (placeholder REPLACE_ME — set the real value!)"
+    --description "Claude gateway OIDC client secret" \
+    --secret-string "${OIDC_CLIENT_SECRET:-REPLACE_ME}" --region "${AWS_REGION}" >/dev/null
+  if [[ -n "${OIDC_CLIENT_SECRET}" ]]; then
+    info "created ${OIDC_SECRET_NAME} (seeded from OIDC_CLIENT_SECRET)"
+  else
+    info "created ${OIDC_SECRET_NAME} (placeholder REPLACE_ME — set the real value!)"
+  fi
 fi
 OIDC_SECRET_ARN="$(aws_q secretsmanager describe-secret --secret-id "${OIDC_SECRET_NAME}" --query ARN)"
 
-# Guard: refuse to deploy with the OIDC secret still a placeholder.
+# Guard (belt-and-braces behind the phase-0 preflight): refuse to deploy with the
+# OIDC secret still a placeholder.
 if [[ "$(aws_q secretsmanager get-secret-value --secret-id "${OIDC_SECRET_NAME}" --query SecretString)" == "REPLACE_ME" ]]; then
   die "OIDC client secret is still the REPLACE_ME placeholder. Set it, then re-run:
     aws secretsmanager put-secret-value --secret-id ${OIDC_SECRET_NAME} --secret-string '<your-oidc-client-secret>' --region ${AWS_REGION}"
@@ -950,7 +1022,7 @@ $(log "Deploy complete")
      (VPN/DX/TGW + private DNS — see docs/connectivity.md).
   ${TLS_STEP}
   5. Push forceLoginMethod/forceLoginGatewayUrl to developer machines
-     (see docs/developer-setup.md).
+     (managed-settings.json — see the Verify section of docs/deployment.md).
 
   Smoke test once DNS + a session route exist:
      curl -fsS ${PUBLIC_URL}/.well-known/oauth-authorization-server | jq .
