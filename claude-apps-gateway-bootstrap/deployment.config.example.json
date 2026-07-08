@@ -1,0 +1,27 @@
+{
+  "_comment": "Copy this file to deployment.config.json (gitignored) and fill in your environment. Every value here is deployment-specific; nothing in the repo references your identifiers directly.",
+  "account": "111111111111",
+  "region": "ap-southeast-2",
+  "bedrockRegion": "ap-southeast-2",
+  "vpcCidr": "10.60.0.0/16",
+  "vpnClientCidr": "10.60.128.0/22",
+  "privateZoneName": "example.com",
+  "gatewayHost": "claude-gw.example.com",
+  "entraTenantId": "00000000-0000-0000-0000-000000000000",
+  "entraClientId": "00000000-0000-0000-0000-000000000000",
+  "desktopClientId": "00000000-0000-0000-0000-000000000000",
+  "desktopRedirectPort": 8990,
+  "allowedEmailDomains": [],
+  "blockedMessageContact": "Contact your platform team to raise it.",
+  "secrets": {
+    "entraClientSecretArn": "arn:aws:secretsmanager:<region>:<account>:secret:claude-gateway/entra-client-secret-XXXXXX",
+    "gatewayJwtSecretArn": "arn:aws:secretsmanager:<region>:<account>:secret:claude-gateway/jwt-secret-XXXXXX",
+    "postgresUrlArn": "arn:aws:secretsmanager:<region>:<account>:secret:claude-gateway/postgres-url-XXXXXX",
+    "bootstrapSigningKeyArn": "arn:aws:secretsmanager:<region>:<account>:secret:claude-bootstrap/signing-key-XXXXXX",
+    "gatewayAdminWriteKeyArn": "arn:aws:secretsmanager:<region>:<account>:secret:claude-gateway/admin-write-key-XXXXXX",
+    "gatewayAdminReadKeyArn": "arn:aws:secretsmanager:<region>:<account>:secret:claude-gateway/admin-read-key-XXXXXX"
+  },
+  "webSearchUpstreamUrl": "https://<your-upstream-search-gw>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp",
+  "webSearchUpstreamTool": "<target>___WebSearch",
+  "devBoxSshPublicKey": "ssh-ed25519 AAAA... your-key"
+}

@@ -1,0 +1,392 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/27.0.9 Chrome/134.0.6998.205 Electron/35.4.0 Safari/537.36" version="27.0.9">
+  <diagram id="claude-gw-arch" name="Gateway + Bootstrap (deployed)">
+    <mxGraphModel dx="3575" dy="681" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2360" pageHeight="1560" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="priv" value="Private subnets (with egress) — 10.60.4.0/22 az-a · 10.60.8.0/22 az-b" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#43A047;dashed=1;verticalAlign=top;fontSize=11;fontColor=#1B5E20;" parent="1" vertex="1">
+          <mxGeometry x="390" y="400" width="1500" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="title" value="Claude Apps Gateway + PKCE Bootstrap — AWS / ap-southeast-2" style="text;html=1;fontSize=16;fontStyle=1;align=left;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="40" y="16" width="1300" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="PKCE mode: desktop app authenticates to Entra directly (loopback :8990) and presents the access token to /user/bootstrap. Inference stays on the gateway&#39;s own device-code login. Managed MCP fleet delivered with NATIVE cross-origin URLs (no proxy). Access only via AWS Client VPN." style="text;html=1;fontSize=11;align=left;fontColor=#555555;" parent="1" vertex="1">
+          <mxGeometry x="40" y="42" width="1560" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="entra" value="Microsoft Entra ID — your tenant&#xa;• App A — gateway (confidential): gateway OIDC (device-code + browser)&#xa;• App B — desktop PKCE (public client): bootstrap access token, loopback :8990/callback&#xa;• App C — M365 built-in connector (public): Graph delegated read scopes (consented)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0078D4;strokeColor=#005A9E;fontColor=#ffffff;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
+          <mxGeometry x="820" y="80" width="560" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="msgraph" value="Microsoft Graph&#xa;(Outlook mail via built-in M365&#xa;connector — per-user OAuth,&#xa;Access field: Mail.Read)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C10;strokeColor=#0B530B;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1600" y="60" width="250" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="mac" value="macOS / Windows endpoint (VPN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#607D8B;verticalAlign=top;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="-10" y="480" width="270" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="vpnclient" value="AWS VPN Client&#xa;claude-gateway.ovpn (mutual TLS)&#xa;assigned 10.60.128.0/22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#E7157B;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="10" y="510" width="230" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="cli" value="claude CLI (Claude Code)&#xa;gateway device-code login&#xa;OTEL env pushed via /managed/settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#607D8B;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="10" y="574" width="230" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="cowork" value="Claude Desktop / Cowork-3p&#xa;bootstrapOidc (PKCE) + bootstrapUrl&#xa;chat + cowork + claude-code tabs · org banner&#xa;cowork egress: * (domain allowlist trialed,&#xa;reverted) · built-in WebSearch DISABLED all&#xa;surfaces · nonessential telemetry off · M365&#xa;built-in NOT deliverable (AS-BUILT §7.1a) ·&#xa;23 org plugins via filesystem" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#607D8B;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="10" y="642" width="230" height="102" as="geometry" />
+        </mxCell>
+        <mxCell id="macnote" value="Two sign-ins, one identity:&#xa;Entra PKCE (config/MCP) + gateway device-code (inference)" style="text;html=1;fontSize=8;align=left;fontColor=#607D8B;" parent="1" vertex="1">
+          <mxGeometry x="10" y="752" width="230" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="useast" value="Region A — Amazon Bedrock AgentCore (managed service, OUTSIDE the VPC)&amp;nbsp;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(27, 94, 32), rgb(130, 188, 134));&quot;&gt;PRIVATE: reached ONLY via the in-VPC PrivateLink endpoint; never the internet&lt;/span&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#2E7D32;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=9;fontColor=#1B5E20;" parent="1" vertex="1">
+          <mxGeometry x="1970" y="510" width="380" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="wsmcp" value="web-search MCP (AgentCore GW)&#xa;Cognito OAuth (shared admin/user pool) —&#xa;1 tool: WebSearch — SNIPPET-ONLY, no fetch —&#xa;toolPolicy: allow → relay Lambda → region-B upstream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2E7D32;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="2005" y="562" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="adminmcp" value="spend-admin MCP (AgentCore GW) [OPTIONAL ADD-ON]&#xa;Cognito OAuth (admin-create-only pool = admin gate)&#xa;→ read-only Lambda IN VPC (get_spend / top_spenders /&#xa;caps / blocked) — no write tools by design&#xa;⚠ CLI-created — not part of the CDK build" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#B8860B;dashed=1;dashPattern=8 4;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="2005" y="647" width="300" height="92" as="geometry" />
+        </mxCell>
+        <mxCell id="useastnote" value="SourceVpce deny policy pending (resource-policy API not yet in CLI/SDK) — today: private path + OAuth" style="text;html=1;fontSize=8;align=left;fontColor=#1B5E20;" parent="1" vertex="1">
+          <mxGeometry x="1970" y="746" width="310" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="useast2" value="region B (e.g. us-east-1) — EXAMPLE / partner MCP (public internet, OAuth-gated)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;dashed=1;dashPattern=8 4;verticalAlign=top;fontStyle=2;fontSize=9;fontColor=#616161;" parent="1" vertex="1">
+          <mxGeometry x="1970" y="830" width="370" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="partnermcp" value="[EXAMPLE] partner MCP — different AWS account&#xa;(e.g. an SAP-integration AgentCore gateway)&#xa;inbound OAuth (partner Cognito pool)&#xa;PRIVATE PATH OPTION: region-B endpoint VPC +&#xa;inter-region peering (PrivateMcp stacks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;dashed=1;fontSize=8;align=left;spacingLeft=6;fontColor=#424242;" parent="1" vertex="1">
+          <mxGeometry x="2005" y="854" width="300" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="wsupstream" value="[UPSTREAM] web-search managed tool (us-east-1)&#xa;no client access — called SERVER-SIDE only by the&#xa;in-region relay Lambda (TLS, AWS→AWS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;dashed=1;fontSize=8;align=left;spacingLeft=6;fontColor=#424242;" parent="1" vertex="1">
+          <mxGeometry x="2005" y="940" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="vpce" value="VPC endpoint (PrivateLink)&#xa;bedrock-agentcore.gateway · Private DNS:&#xa;*.gateway…(region A) → endpoint ENIs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2E7D32;strokeWidth=2;fontColor=#1B5E20;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="930" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" value="invoke (IAM)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;fontColor=#6A1B9A;fontSize=8;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="adminmcp" target="spendfn" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2005" y="694" />
+              <mxPoint x="1900" y="694" />
+              <mxPoint x="1900" y="780" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vpc" value="VPC — 10.60.0.0/16 — no public ingress" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#232F3E;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="370" y="200" width="1560" height="1180" as="geometry" />
+        </mxCell>
+        <mxCell id="pub" value="Public subnets — NAT + Client VPN association only  (10.60.0.0/24 az-a · 10.60.1.0/24 az-b)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E3F2FD;strokeColor=#1E88E5;dashed=1;verticalAlign=top;fontSize=11;fontColor=#0D47A1;" parent="1" vertex="1">
+          <mxGeometry x="390" y="250" width="1500" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="vpn" value="Client VPN endpoint&#xa;mutual TLS, split-tunnel&#xa;route 10.60.0.0/16&#xa;(or corporate VPN / DX / SD-WAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E7157B;strokeColor=#AD1457;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="410" y="278" width="250" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="nat" value="NAT Gateway&#xa;(builder egress only)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E7157B;strokeColor=#AD1457;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1620" y="278" width="250" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="rules" value="HTTPS:443 listener (host = your gateway hostname)&#xa;• prio 5:  /user/bootstrap → Bootstrap :8081&#xa;• prio 7:  /v1/metrics · /v1/logs · /v1/traces → ADOT :4318&#xa;• prio 10: default → Gateway :8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#8C4FFF;fontColor=#4A148C;fontSize=9;align=left;spacingLeft=6;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="520" y="428" width="360" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="alb" value="Internal ALB (IPv4-only)&#xa;ingress 443 ← VPN CIDR + spend Lambda SG&#xa;TLS: browser-trusted ACM public cert&#xa;for your gateway hostname" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8C4FFF;strokeColor=#5E35B1;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="420" y="600" width="240" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="gwtask" value="Gateway ECS task (Fargate, single task)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#D97706;verticalAlign=top;fontStyle=1;fontSize=10;fontColor=#7A4F00;" parent="1" vertex="1">
+          <mxGeometry x="740" y="530" width="320" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="gw" value="claude gateway :8080&#xa;Entra OIDC RP (device-code + browser)&#xa;managed policies (deny WebSearch, model allowlist)&#xa;admin: spend limits API + enforcement (429)&#xa;telemetry.forward_to → sidecar" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9900;strokeColor=#D97706;fontColor=#000000;fontSize=8;align=left;spacingLeft=6;" parent="gwtask" vertex="1">
+          <mxGeometry x="10" y="26" width="300" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="otel" value="ADOT collector sidecar :4318 (essential:false)&#xa;otlp http → awsemf (ClaudeCode) + awscloudwatchlogs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#D97706;fontColor=#000000;fontSize=8;align=left;spacingLeft=6;" parent="gwtask" vertex="1">
+          <mxGeometry x="10" y="122" width="300" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="bs" value="Bootstrap — Fargate :8081 (PKCE resource server)&#xa;validates Entra ACCESS token (JWKS+iss+aud+exp)&#xa;serves per-user config: MCP fleet (native URLs),&#xa;surface toggles, toolPolicy, egress allowlist, OTLP&#xa;endpoint · plugins via FILESYSTEM (no network delivery)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9900;strokeColor=#D97706;fontColor=#000000;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="840" y="860" width="320" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="spendfn" value="Spend Lambdas ×2 (VPC, private subnets, read key)&#xa;• metrics: every 5 min GET /effective → CloudWatch&#xa;ns ClaudeGateway + 80%-of-cap alarm&#xa;• admin-MCP tools: invoked by AgentCore GW —&#xa;get_spend/top_spenders/caps/blocked (read-only)&#xa;(spend values: API returns CENTS; converted /100)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9900;strokeColor=#D97706;fontColor=#000000;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="1040" y="760" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="builder" value="EC2 image builder (t4g.small)&#xa;no public IP, SSM-managed&#xa;builds+pushes both images (no local Docker)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF9900;strokeColor=#D97706;fontColor=#000000;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="420" y="880" width="260" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="bedrock" value="Amazon Bedrock&#xa;au.anthropic.* profiles (opus-4-8, sonnet-4-6,&#xa;haiku-4-5) + global.anthropic.* (fable-5)&#xa;via bedrock-runtime VPC endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#01A88D;strokeColor=#00796B;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1620" y="468" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="secrets" value="Secrets Manager (VPC endpoint)&#xa;entra-client-secret · jwt-secret&#xa;postgres-url · admin-write-key&#xa;admin-read-key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DD3444;strokeColor=#B71C1C;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1620" y="568" width="250" height="76" as="geometry" />
+        </mxCell>
+        <mxCell id="ecr" value="ECR (api/dkr endpoints)&#xa;claude-gateway · claude-bootstrap&#xa;scan-on-push" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DD3444;strokeColor=#B71C1C;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1620" y="664" width="250" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="s3cfg" value="S3 config bucket (versioned)&#xa;bootstrap-config.json — edit + push,&#xa;60s TTL, NO redeploy (config root of trust)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7AA116;strokeColor=#558B2F;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="1620" y="810" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="cw" value="CloudWatch (monitoring endpoint)&#xa;metrics: ClaudeCode (OTLP/EMF) · ClaudeGateway (spend)&#xa;· AWS/Bedrock (native) — logs: audit stream, /claude/otel/*&#xa;dashboard: claude-observability · alarm: spend-cap-80pct" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B0084D;strokeColor=#7A0537;fontColor=#ffffff;fontSize=8;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="1500" y="890" width="370" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="iso" value="Isolated subnets (no egress) — 10.60.12.0/24 az-a · 10.60.13.0/24 az-b" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;dashed=1;verticalAlign=top;fontSize=11;fontColor=#E65100;" parent="1" vertex="1">
+          <mxGeometry x="390" y="1020" width="1500" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="rds" value="RDS PostgreSQL 16 — db.t4g.micro, single-AZ, KMS-encrypted&#xa;sessions/device grants + SPEND TABLES (spend, spend_limits,&#xa;principal_emails, admin_audit) — SG 5432 ← Fargate SG only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E73B8;strokeColor=#1A4E7A;fontColor=#ffffff;fontSize=9;" parent="1" vertex="1">
+          <mxGeometry x="760" y="1046" width="400" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="dns" value="Route 53 split-horizon&#xa;PRIVATE zone (same name as your public zone): gateway host → ALB (private IPs, private network only)&#xa;PUBLIC zone validates the ACM cert only (gateway host never published)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE7F6;strokeColor=#5E35B1;fontColor=#311B92;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+          <mxGeometry x="420" y="1180" width="500" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="stacks" value="CDK stacks: ClaudeGw-Network · Data · Vpn · Gateway · Bootstrap · Monitoring · Dashboard · Dns · DevBox · WindowsBox · Workspace (optional)&#xa;PrivateMcpUsEast1/Dns (context-gated) · NOT in CDK: AgentCore GWs + Cognito pool (created via CLI — see README add-on)" style="text;html=1;fontSize=9;align=left;fontColor=#555555;" parent="1" vertex="1">
+          <mxGeometry x="420" y="1268" width="700" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" value="Legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;verticalAlign=top;fontStyle=1;fontSize=11;align=left;spacingLeft=8;" parent="1" vertex="1">
+          <mxGeometry x="1300" y="1150" width="560" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1" value="VPN mutual-TLS tunnel (Mac → Client VPN)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1180" width="340" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1l" style="endArrow=none;strokeColor=#2E7D32;strokeWidth=3;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1315" y="1189" as="sourcePoint" />
+            <mxPoint x="1350" y="1189" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lg2" value="HTTPS in-VPC (client ⇄ ALB ⇄ Fargate ⇄ RDS)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1208" width="360" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg2l" style="endArrow=none;strokeColor=#1565C0;strokeWidth=2;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1315" y="1217" as="sourcePoint" />
+            <mxPoint x="1350" y="1217" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lg3" value="OIDC / OAuth (Entra, Cognito, Graph)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1236" width="360" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg3l" style="endArrow=none;strokeColor=#E65100;strokeWidth=2;dashed=1;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1315" y="1245" as="sourcePoint" />
+            <mxPoint x="1350" y="1245" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lg4" value="AWS service calls (Bedrock / Secrets / S3 / CloudWatch)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1264" width="380" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg4l" style="endArrow=none;strokeColor=#6A1B9A;strokeWidth=2;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1315" y="1273" as="sourcePoint" />
+            <mxPoint x="1350" y="1273" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lg5" value="Public TLS + OAuth (partner MCP, image-build egress)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1292" width="360" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg5l" style="endArrow=none;strokeColor=#757575;strokeWidth=2;dashed=1;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1315" y="1301" as="sourcePoint" />
+            <mxPoint x="1350" y="1301" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lg6" value="EXAMPLE component — NOT deployed by this repo (grey dashed box)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1320" width="420" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg6l" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#9E9E9E;dashed=1;dashPattern=8 4;" parent="1" vertex="1">
+          <mxGeometry x="1315" y="1322" width="35" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="lg7" value="MCP over PrivateLink (in-region AgentCore gateways)" style="text;html=1;fontSize=10;align=left;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="1348" width="420" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg7l" style="endArrow=none;strokeColor=#2E7D32;strokeWidth=2;html=1;" parent="1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1315" y="1357" as="sourcePoint" />
+            <mxPoint x="1350" y="1357" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e1" value="mutual-TLS tunnel" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2E7D32;strokeWidth=3;fontColor=#2E7D32;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="vpnclient" target="vpn" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="320" y="536" />
+              <mxPoint x="320" y="316" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" value="device-code login · inference · OTLP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="cli" target="alb" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="602" />
+              <mxPoint x="340" y="628" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" value="PKCE bearer → /user/bootstrap · inference · OTLP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="cowork" target="alb" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="693" />
+              <mxPoint x="340" y="683" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" value="prio 10 → :8080" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="alb" target="gw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="628" />
+              <mxPoint x="700" y="599" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4b" value="prio 7 OTLP → :4318" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="alb" target="otel" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="710" y="666" />
+              <mxPoint x="710" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" value="prio 5 /user/bootstrap → :8081" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="alb" target="bs" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="690" y="694" />
+              <mxPoint x="690" y="908" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" value="InvokeModel(Stream)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;fontColor=#6A1B9A;fontSize=9;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gwtask" target="bedrock" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1480" y="578" />
+              <mxPoint x="1480" y="510" />
+              <mxPoint x="1620" y="510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;exitX=1;exitY=0.55;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gwtask" target="secrets" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1470" y="635" />
+              <mxPoint x="1470" y="610" />
+              <mxPoint x="1620" y="610" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" value="config read (60s TTL)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;fontColor=#6A1B9A;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.35;entryDx=0;entryDy=0;" parent="1" source="bs" target="s3cfg" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1240" y="908" />
+              <mxPoint x="1240" y="852" />
+              <mxPoint x="1560" y="852" />
+              <mxPoint x="1560" y="835" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" value="Postgres 5432 (sessions + spend/limits)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gwtask" target="rds" edge="1">
+          <mxGeometry x="0.3661" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="990" />
+              <mxPoint x="860" y="990" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" value="push images" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#757575;strokeWidth=2;dashed=1;fontColor=#757575;fontSize=9;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.8;entryDx=0;entryDy=0;" parent="1" source="builder" target="ecr" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="550" y="1010" />
+              <mxPoint x="1470" y="1010" />
+              <mxPoint x="1470" y="715" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" value="gateway ⇄ Entra: OIDC auth-code exchange&#xa;(device-code browser leg, App A)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#E65100;strokeWidth=2;dashed=1;fontColor=#E65100;fontSize=9;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.3;entryY=1;entryDx=0;entryDy=0;" parent="1" source="gwtask" target="entra" edge="1">
+          <mxGeometry x="-0.55" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="900" y="220" />
+              <mxPoint x="988" y="220" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" value="Entra PKCE (App B, loopback :8990) + M365 sign-in (App C)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#E65100;strokeWidth=2;dashed=1;fontColor=#E65100;fontSize=9;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.1;entryY=1;entryDx=0;entryDy=0;" parent="1" source="mac" target="entra" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="125" y="190" />
+              <mxPoint x="876" y="190" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13b" value="Graph API (mail read)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#E65100;strokeWidth=2;dashed=1;fontColor=#E65100;fontSize=9;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="mac" target="msgraph" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="220" y="70" />
+              <mxPoint x="1555" y="70" />
+              <mxPoint x="1555" y="30" />
+              <mxPoint x="1725" y="30" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" value="resolves gw.* → ALB" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#5E35B1;strokeWidth=1;dashed=1;fontColor=#5E35B1;fontSize=8;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.15;entryY=1;entryDx=0;entryDy=0;" parent="1" source="dns" target="alb" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="1215" />
+              <mxPoint x="400" y="740" />
+              <mxPoint x="456" y="740" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="EMF metrics + logs" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;fontColor=#6A1B9A;fontSize=9;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" parent="1" source="gwtask" target="cw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1450" y="691" />
+              <mxPoint x="1450" y="916" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" value="GET /effective (read key, via ALB)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1565C0;strokeWidth=2;fontColor=#1565C0;fontSize=9;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="spendfn" target="alb" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1000" y="800" />
+              <mxPoint x="1000" y="740" />
+              <mxPoint x="540" y="740" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" value="PutMetricData (ClaudeGateway)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6A1B9A;strokeWidth=2;fontColor=#6A1B9A;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" parent="1" source="spendfn" target="cw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1460" y="800" />
+              <mxPoint x="1460" y="950" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e18" value="MCP over PrivateLink (VPN → in-VPC endpoint, Cognito OAuth)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2E7D32;strokeWidth=2;fontColor=#2E7D32;fontSize=9;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="mac" target="vpce" edge="1">
+          <mxGeometry x="0.6386" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="125" y="1150" />
+              <mxPoint x="1170" y="1150" />
+              <mxPoint x="1170" y="960" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e18b" value="PrivateLink" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2E7D32;strokeWidth=2;fontColor=#2E7D32;fontSize=9;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="vpce" target="useast" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1460" y="960" />
+              <mxPoint x="1460" y="990" />
+              <mxPoint x="1950" y="990" />
+              <mxPoint x="1950" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e21" value="MCP over public TLS (OAuth) — until endpoint-VPC lands" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#757575;strokeWidth=2;dashed=1;fontColor=#757575;fontSize=8;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="mac" target="useast2" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="6" y="825" />
+              <mxPoint x="-55" y="825" />
+              <mxPoint x="-55" y="1420" />
+              <mxPoint x="2155" y="1420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e22" value="relay (server-side TLS)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#757575;strokeWidth=2;dashed=1;fontColor=#757575;fontSize=8;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="wsmcp" target="wsupstream" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2305" y="600" />
+              <mxPoint x="2380" y="600" />
+              <mxPoint x="2380" y="970" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
