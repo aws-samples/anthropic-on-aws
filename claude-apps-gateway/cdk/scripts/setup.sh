@@ -39,6 +39,12 @@
 
 set -euo pipefail
 
+# The docker build context (Dockerfile, gateway.yaml.template) lives one level up
+# from this script, in cdk/. Run everything from there so the script works from
+# any CWD and its artifacts (claude binary, stamped gateway.yaml) land in one place.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration — env vars with defaults (mirrors the GCP example's convention).
 # ──────────────────────────────────────────────────────────────────────────────
@@ -175,7 +181,7 @@ else
   OIDC_ISSUER="${OIDC_ISSUER}" OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
   ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
   DB_NAME="${DB_NAME}" \
-  ./stamp-config.sh
+  "${SCRIPT_DIR}/stamp-config.sh"
 
   # 2b. Import + verify the GPG signing key.
   info "importing Claude Code release signing key"

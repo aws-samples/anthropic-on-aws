@@ -2,3 +2,10 @@ node_modules/
 dist/
 cdk.out/
 .env
+
+# setup.sh / stamp-config.sh build artifacts — the docker build context is this
+# directory, so the pinned binary and the stamped (per-environment) config land here.
+claude
+gateway.yaml
+manifest.json
+manifest.json.sig

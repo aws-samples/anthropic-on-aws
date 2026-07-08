@@ -103,6 +103,16 @@ hostname's parent domain. Pointing it at a private or non-delegated zone leaves 
 
 ## How to deploy
 
+> [!IMPORTANT]
+> The canonical, verified walkthrough (for both this CDK track and `setup.sh`) is
+> [`../docs/deployment.md`](../docs/deployment.md) — a two-pass `cdk deploy` driven
+> by the [context variables below](#cdk-context-variables), with the image built
+> from the tracked distroless `Dockerfile` and SHA-verified binary. The
+> `.env` + `deploy.sh` flow in the steps below is a convenience path: `deploy.sh`
+> builds the image via CodeBuild using its own inline Dockerfile and config, and
+> `npx cdk deploy` still needs the required context values supplied (e.g. in
+> `cdk.context.json`).
+
 ### Step 1: Configure
 
 ```bash

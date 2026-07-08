@@ -347,7 +347,7 @@ upstreams:    # Where inference goes (provider: bedrock, region, auth)
 | EKS + Internal Ingress | Customers already on Kubernetes. Use IRSA for Amazon Bedrock auth. |
 | EC2 + Internal ALB | Simple. Instance profile for Amazon Bedrock auth. |
 
-**We have a [CDK stack](cdk/)** that deploys the full setup (ECS + ALB + RDS + IAM + DNS) in one command.
+**We have a [CDK stack](cdk/)** that deploys the full setup (ECS + ALB + RDS + IAM + DNS), and an idempotent [`setup.sh`](cdk/scripts/setup.sh) that provisions the same deployment via the AWS CLI. The step-by-step walkthrough for both — prerequisites, deploy, verify — is **[`docs/deployment.md`](docs/deployment.md)**.
 
 ---
 
@@ -428,8 +428,10 @@ Existing signed-in developers keep working (tokens validate locally). New sign-i
 
 | Resource | Link |
 |----------|------|
+| **Deployment guide (this repo)** | [`docs/deployment.md`](docs/deployment.md) |
+| Field guide to deployment traps (this repo) | [`docs/gotchas.md`](docs/gotchas.md) |
 | Official docs | https://code.claude.com/docs/en/claude-apps-gateway |
 | Config reference | https://code.claude.com/docs/en/claude-apps-gateway-config |
 | Deployment & ops | https://code.claude.com/docs/en/claude-apps-gateway-deploy |
 | Spend limits | https://code.claude.com/docs/en/claude-apps-gateway-spend-limits |
-| CDK template | `../claude-gateway-cdk/` |
+| CDK stack (this repo) | [`cdk/`](cdk/) |
