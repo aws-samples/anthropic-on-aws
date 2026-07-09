@@ -309,11 +309,11 @@ The same two-layer split applies to every concern that appears in both files:
   `requestedAccessTokenVersion: 2` and the bare-GUID `.default` scope.
 - **Config change not appearing** → wait for the 60s TTL and fully relaunch the client;
   confirm with `Copy Managed Configuration Report`.
-- **400 `model X is not in your role's availableModels allowlist`** → the gateway's
-  `managed.policies` allowlist must list the exact model `id`s from its `models:` block
-  (e.g. `claude-sonnet-4-6`, not `claude-sonnet-5`). The template's example allowlist and
-  a region-customized `models:` block can silently disagree; align them and rebuild the
-  gateway image.
+- **400 `model X is not in your role's availableModels allowlist`** → an
+  `inferenceModels` id here is not in the gateway's `managed.policies.availableModels`.
+  The ids must match the gateway sample's allowlist **exactly** (e.g. `claude-sonnet-5`,
+  not `claude-sonnet-4-6`); a region-customized gateway `models:` block and this file can
+  silently disagree. Align this file to the gateway's allowlist.
 - **Requests to the gateway hostname hang over AWS Client VPN** (TCP never connects,
   despite a correct `ingressCidr`) → also admit the **Client VPN endpoint's security
   group** on the gateway ALB SG (`aws ec2 authorize-security-group-ingress --group-id
@@ -343,7 +343,9 @@ on each Claude Desktop release:
 | PKCE mode itself (vs. device-code single-origin bootstrap) | Device-code mode origin-pins the response, which forces reverse-proxying of cross-origin MCP URLs | Native cross-origin MCP delivery in device-code mode, if the platform adds it |
 | Org plugins/skills via filesystem, not this server | Network plugin delivery (`organizationPluginsUrl`) is unavailable in PKCE mode; plugins ship via the org-plugins directory through MDM (see [Org plugins and skills](#org-plugins-and-skills-optional)) | PKCE-mode network plugin delivery, if the platform adds it |
 
-## Security notes
+## Security
+
+Posture notes for this add-on:
 
 - The bootstrap task holds **no secrets**: PKCE-mode token validation uses the IdP's
   public JWKS + audience/issuer/expiry checks only.
@@ -354,9 +356,8 @@ on each Claude Desktop release:
 - The S3 config is data, not code — review pushes to it like configuration change
   control, since it steers every client's tool surface and egress allowlist.
 
-## Security
-
-See [CONTRIBUTING](../CONTRIBUTING.md#security-issue-notifications) for more information.
+To report a security issue, see
+[CONTRIBUTING](../CONTRIBUTING.md#security-issue-notifications).
 
 ## License
 
