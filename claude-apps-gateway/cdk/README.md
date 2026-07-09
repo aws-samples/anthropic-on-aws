@@ -71,10 +71,14 @@ npm install -g aws-cdk
 
 ### 5. The Claude Code linux-x64 binary
 
-The gateway container needs the Linux build of Claude Code. Extract it from the tarball:
+The gateway container needs the Linux build of Claude Code. Download it from the public releases endpoint:
 
 ```bash
-tar -xzf claude-gateway-*-all.tar.gz linux-x64/claude
+VERSION=$(curl -fsSL https://downloads.claude.ai/claude-code-releases/stable)
+mkdir -p linux-x64
+curl -fL -o linux-x64/claude \
+  "https://downloads.claude.ai/claude-code-releases/${VERSION}/linux-x64/claude"
+chmod +x linux-x64/claude
 ```
 
 Or download it via the standard installer on a Linux machine.
@@ -348,7 +352,7 @@ This works because the Claude Code CLI accepts `127.0.0.1` (loopback) as a valid
 ### What you need
 
 - PostgreSQL running locally (`brew install postgresql@16 && brew services start postgresql@16`)
-- The gateway binary for your platform (macOS: `darwin-arm64/claude` from the tarball)
+- The gateway binary for your platform (macOS: `darwin-arm64/claude`, from a Claude Code install or the releases endpoint used in step 5)
 - An OIDC provider configured (Auth0 free tier works for testing)
 - A self-signed TLS certificate
 
