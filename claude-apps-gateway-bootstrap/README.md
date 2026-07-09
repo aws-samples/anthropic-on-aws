@@ -28,11 +28,11 @@ Sign-in flow:
 (4) direct MCP connections                (native URLs + native auth from the config)
 ```
 
-**One gateway definition.** This add-on consumes a deployed `ClaudeGatewayStack` purely
-through its CloudFormation outputs — the gateway sample is never modified. Inference,
-sessions, and telemetry remain entirely the gateway sample's concern; sign-in for
-inference is the gateway's own device-code flow, which is independent of bootstrap mode
-(two sign-ins at launch, both against the same IdP identity).
+**Works against your existing gateway.** The add-on consumes a deployed
+`ClaudeGatewayStack` through its CloudFormation outputs; your gateway deployment is not
+modified. Inference, sessions, and telemetry remain the gateway's concern. Users sign in
+twice at launch — Entra PKCE for configuration and MCP, the gateway's device-code flow
+for inference — with the same identity.
 
 ## What you deploy
 
@@ -62,9 +62,9 @@ aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" \
   --query "Listeners[?Port==\`443\`].ListenerArn" --output text
 ```
 
-- Client: Claude Desktop **≥ 1.19367.0** (earlier builds have a bootstrap connector-intake
-  bug; see [Workarounds](#workarounds-and-expected-supersession)).
-- Locally: Node 20+, Docker (one image build), AWS CLI v2, `az` CLI for the Entra steps.
+- Client: Claude Desktop **1.19367.0 or later**.
+- Locally: Node 20+, AWS CLI v2, `az` CLI for the Entra steps. Docker is not required:
+  the container image builds on AWS CodeBuild.
 
 ## Step 1 — Entra ID app registration (desktop PKCE public client)
 
@@ -98,10 +98,10 @@ az rest --method PATCH --url "https://graph.microsoft.com/v1.0/applications/$OBJ
 az ad sp create --id $APP
 ```
 
-Gotchas encoded above: redirect URIs **must include the `/callback` path** (bare host →
+Three details matter: redirect URIs **must include the `/callback` path** (bare host →
 AADSTS50011); the client profile's scope uses the **bare GUID** form `<appId>/.default`,
-*not* `api://<appId>/.default`; `requestedAccessTokenVersion: 2` makes the token audience
-the bare GUID this server validates.
+*not* `api://<appId>/.default`; and `requestedAccessTokenVersion: 2` makes the token
+audience the bare GUID this server validates.
 
 **Optional — built-in Microsoft 365 connector.** To deliver Desktop's built-in M365
 connector through the config, register one more public client with **both platform broker
@@ -125,10 +125,34 @@ az ad sp create --id $APP
 
 A missing broker URI surfaces as **AADSTS50011** at connector sign-in on that platform.
 
-## Step 2 — Deploy the stack and build the image
+## Step 2 — Deploy
+
+**Recommended: the deploy script.** It deploys the stack, builds the container image on
+AWS CodeBuild (no Docker required on your machine), and starts the service:
 
 ```bash
-cd cdk && npm ci
+cd cdk && npm ci && cd ..
+cp .env.example .env    # fill in the gateway-output values from Prerequisites
+./scripts/deploy.sh
+```
+
+The script creates the ECR repository, builds and pushes the image via CodeBuild, then
+deploys the service and listener rule. On first run it also creates a CodeBuild project
+and an S3 staging bucket (`claude-bootstrap-build-<account>`); these are reused on later
+runs and are not removed by `cdk destroy` — delete them separately when tearing down.
+
+**Alternative: build the image yourself with Docker.** If you prefer to run the build
+locally, deploy the repository first, push your image, then deploy the service:
+
+```bash
+cd cdk
+npx cdk deploy ClaudeBootstrapStack -c imageReady=false -c region=<region>
+# note the EcrRepositoryUri output, then:
+cd ../bootstrap
+aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+docker build --platform linux/amd64 -t <EcrRepositoryUri>:latest .
+docker push <EcrRepositoryUri>:latest
+cd ../cdk
 npx cdk deploy ClaudeBootstrapStack \
   -c region=<region> \
   -c publicUrl=https://<your-gateway-host> \
@@ -139,16 +163,25 @@ npx cdk deploy ClaudeBootstrapStack \
   -c desktopClientId=<App id from step 1>
 ```
 
-Then build and push the image (same convention as the gateway sample — plain
-`docker build` + push; substitute the `EcrRepositoryUri` stack output):
+### Restricting who receives configuration
 
-```bash
-cd ../bootstrap
-aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-docker build --platform linux/amd64 -t <EcrRepositoryUri>:latest .
-docker push <EcrRepositoryUri>:latest
-aws ecs update-service --cluster <BootstrapStack cluster> --service <service> --force-new-deployment
-```
+Validating the sign-in token proves who the caller is; it does not prove they are
+entitled to a configuration. By default this server returns a configuration to **every
+valid token from your tenant** — appropriate only when tenant membership is itself the
+entitlement boundary (for example, a single-team pilot).
+
+To restrict delivery, set one or both variables (comma-separated) in `.env` — entitled
+callers receive their configuration; valid-but-unentitled callers receive `403`:
+
+| Variable | Matched against | Entra setup |
+| --- | --- | --- |
+| `REQUIRED_ROLES` | The token's `roles` claim | Define an app role on the Step 1 registration (for example `bootstrap-user`) and assign users or groups under **Enterprise applications → Users and groups** |
+| `REQUIRED_GROUPS` | The token's `groups` claim (group object IDs) | Enable the groups claim under **App registration → Token configuration** |
+
+Entra emits neither claim by default, so complete the corresponding setup — a
+required-roles or required-groups gate denies callers whose token lacks the claim. App
+roles are the cleaner mechanism: assignment is managed per-application, and moving a
+user in or out takes effect at their next sign-in without touching group structure.
 
 ## Step 3 — Publish the client configuration
 
@@ -160,7 +193,7 @@ aws s3 cp bootstrap-config.json s3://<ConfigBucketName output>/bootstrap-config.
 
 This object is the **live client configuration** — the service re-reads it on a 60-second
 TTL. Every later change (add an MCP server, flip a governance key, change the model list)
-is an S3 push + client relaunch. **No redeploys**
+is an S3 push + client relaunch. **No redeploys.**
 
 Three managed-MCP entry shapes are supported (see the example file):
 **no-auth remote** (plain `url`), **OAuth remote** (`oauth` block — the client runs its own
@@ -175,9 +208,15 @@ parameter the client sends — Cognito works, Entra does not), and **built-in**
 
 ## Step 4 — Wire a client
 
-**macOS** — create `~/claude-bootstrap-import.json`; **Windows** — same JSON at
-`%USERPROFILE%\claude-bootstrap-import.json` (or deliver the same keys as REG_SZ values
-under `HKLM\SOFTWARE\Policies\Claude` via Intune/GPO):
+Generate the import file:
+
+```bash
+./scripts/wire-client.sh <gateway-host> <entra-tenant-id> <desktop-client-id>
+```
+
+This writes `~/claude-bootstrap-import.json`. On Windows, create the same JSON at
+`%USERPROFILE%\claude-bootstrap-import.json`, or deliver the same keys as REG_SZ values
+under `HKLM\SOFTWARE\Policies\Claude` via Intune/GPO:
 
 ```json
 {
@@ -211,10 +250,10 @@ collector, set in the S3 config:
 
 ## Org plugins and skills (optional)
 
-Organization plugins (skills, slash commands, agents packaged for every user) are the one
-managed surface that does **not** travel through this server: network plugin delivery
-(`organizationPluginsUrl`) is unavailable in PKCE mode, so plugins ship via the
-**filesystem channel** — a directory your MDM/software-distribution tool populates:
+Organization plugins (skills, slash commands, agents packaged for every user) are
+delivered through the filesystem: your MDM or software-distribution tool places plugin
+bundles in a directory on each device. (Network plugin delivery is not available in
+PKCE mode.)
 
 | Platform | Directory |
 | --- | --- |
@@ -232,13 +271,10 @@ org-plugins/
         └── triage-report/SKILL.md
 ```
 
-The app scans the directory at launch; users see the skills immediately (a `/skill-name`
-in chat, or auto-invoked when relevant). Updating a plugin = replacing its directory via
-MDM — bump the manifest `version` so the app re-syncs. Note the deployment asymmetry with
-everything else in this add-on: **configuration changes at business speed via S3, but
-plugin content moves at MDM speed** — plan plugin rollouts like software pushes, not
-config edits. If the platform later adds PKCE-mode network plugin delivery, this section
-collapses into the S3 workflow (see [Workarounds](#workarounds-and-expected-supersession)).
+The app scans the directory at launch; users see the skills immediately (`/skill-name`
+in chat, or auto-invoked when relevant). To update a plugin, replace its directory and
+bump the manifest `version` so the app re-syncs. Plan plugin rollouts like software
+pushes: plugin content is delivered by MDM, while configuration changes flow through S3.
 
 ## Configuration model: gateway vs. bootstrap — who owns what
 
@@ -270,7 +306,7 @@ The same two-layer split applies to every concern that appears in both files:
 | Tool governance | `managed.policies.cli.permissions` deny/allow rules — enforced for **Claude Code** sessions | `disabledBuiltinTools` / `builtinToolPolicy` / `coworkEgressAllowedHosts` — shape the **Desktop/Cowork** surface | Denying a tool in one layer does not touch the other surface; audit both when asked "is X disabled?" |
 | Telemetry | `telemetry.forward_to` — the gateway **pushes** OTLP env to CLI clients | `otlpEndpoint`/`otlpProtocol`/`otlpHeaders` — point **Desktop/Cowork** at a collector | Two settings, usually the same collector URL; set only one and the other surface reports nothing |
 
-**Similar-sounding, but different things** (the ones that generate support tickets):
+**Similar-sounding, but different:**
 
 - **Three OIDC configurations, two app registrations.** The gateway's `oidc:` block is a
   *confidential client* (its own app registration + secret, for the device-code flow);
@@ -286,16 +322,16 @@ The same two-layer split applies to every concern that appears in both files:
 - **Expiry knobs that share a word**: the gateway's `session.ttl_hours` is the inference
   session lifetime (your offboarding lever, ≤1h); this server's 60-second config TTL and
   the response `expiresAt` are config-freshness only. Tuning one does not affect the other.
-- **No email-domain gate here, by design**: the gateway has `allowed_email_domains`; the
-  bootstrap server deliberately has none — single-tenant token validation (issuer +
-  audience + signature) is its boundary.
+- **Email-domain gating** lives on the gateway (`allowed_email_domains`, applied at
+  inference sign-in). This server's boundary is single-tenant token validation (issuer +
+  audience + signature) plus the optional group/role gate in Step 2.
 
 ## Day-2 operations
 
 | Task | How |
 | --- | --- |
 | Change models / MCP fleet / governance keys | Edit S3 object → `aws s3 cp` → relaunch client (60s TTL) |
-| Bootstrap server code change | `docker build` + push → `ecs update-service --force-new-deployment` |
+| Bootstrap server code change | Re-run `./scripts/deploy.sh` (rebuilds the image on CodeBuild and rolls the service) |
 | User offboarding | Disable in the IdP — both the PKCE token and the gateway session expire |
 | Roll back a bad config push | The bucket is versioned: `aws s3api get-object --version-id ...` |
 
@@ -310,10 +346,9 @@ The same two-layer split applies to every concern that appears in both files:
 - **Config change not appearing** → wait for the 60s TTL and fully relaunch the client;
   confirm with `Copy Managed Configuration Report`.
 - **400 `model X is not in your role's availableModels allowlist`** → an
-  `inferenceModels` id here is not in the gateway's `managed.policies.availableModels`.
-  The ids must match the gateway sample's allowlist **exactly** (e.g. `claude-sonnet-5`,
-  not `claude-sonnet-4-6`); a region-customized gateway `models:` block and this file can
-  silently disagree. Align this file to the gateway's allowlist.
+  `inferenceModels` id in the S3 config is not in the gateway's
+  `managed.policies.availableModels`. The ids must match exactly; align this file to the
+  gateway's allowlist.
 - **Requests to the gateway hostname hang over AWS Client VPN** (TCP never connects,
   despite a correct `ingressCidr`) → also admit the **Client VPN endpoint's security
   group** on the gateway ALB SG (`aws ec2 authorize-security-group-ingress --group-id
@@ -333,15 +368,15 @@ The same two-layer split applies to every concern that appears in both files:
 
 ## Workarounds and expected supersession
 
-Parts of this add-on compensate for *current* product behavior and should be re-evaluated
-on each Claude Desktop release:
+The items below reflect current platform behavior. Re-check them when you upgrade
+Claude Desktop:
 
 | Item | Why it exists | Superseded when |
 | --- | --- | --- |
-| Desktop **≥ 1.19367.0** pin | Earlier builds had a bootstrap connector-intake bug (managed/built-in MCP entries delivered but not instantiated) | Already fixed in 1.19367.0; pin exists so fleets don't roll out older builds |
-| `disabledBuiltinTools: ["WebSearch"]` + `coworkWebSearchEnabled: false` in the example config | Amazon Bedrock rejects the server-side `web_search_*` tool type (HTTP 400); disabling avoids burned retries. **Not needed on providers that support server-side search** | Server-side web search becomes available on your inference provider |
-| PKCE mode itself (vs. device-code single-origin bootstrap) | Device-code mode origin-pins the response, which forces reverse-proxying of cross-origin MCP URLs | Native cross-origin MCP delivery in device-code mode, if the platform adds it |
-| Org plugins/skills via filesystem, not this server | Network plugin delivery (`organizationPluginsUrl`) is unavailable in PKCE mode; plugins ship via the org-plugins directory through MDM (see [Org plugins and skills](#org-plugins-and-skills-optional)) | PKCE-mode network plugin delivery, if the platform adds it |
+| Desktop **1.19367.0 or later** required | Earlier builds do not instantiate managed/built-in MCP entries delivered through a bootstrap response | Keep fleets at or above this version |
+| `disabledBuiltinTools: ["WebSearch"]` + `coworkWebSearchEnabled: false` in the example config | Amazon Bedrock rejects the server-side `web_search_*` tool type (HTTP 400); disabling avoids failed attempts | Remove both keys when your inference provider supports server-side web search |
+| PKCE mode (vs. device-code bootstrap) | Device-code mode origin-pins the response, so cross-origin MCP URLs would require reverse-proxying; PKCE mode delivers them natively | Revisit if the platform adds cross-origin MCP delivery to device-code mode |
+| Org plugins delivered via filesystem ([Org plugins and skills](#org-plugins-and-skills-optional)) | Network plugin delivery (`organizationPluginsUrl`) is not available in PKCE mode | Revisit if the platform adds network plugin delivery to PKCE mode |
 
 ## Security
 

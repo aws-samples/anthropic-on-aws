@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Device-code bootstrap server for Claude Desktop / Cowork-3p: per-user config + org plugins/skills, federated to Microsoft Entra ID.",
+  "description": "PKCE-mode bootstrap resource server for Claude Desktop: validates Entra access tokens and serves per-user configuration from S3.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/"
   },
   "engines": {
     "node": ">=20"

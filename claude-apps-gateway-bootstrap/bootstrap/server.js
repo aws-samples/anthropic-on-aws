@@ -3,8 +3,12 @@
 // Architecture (PKCE mode — bootstrapOidc set on the client):
 //   The DESKTOP APP is a public client that runs its OWN authorization-code+PKCE flow against
 //   Microsoft Entra, obtains an ACCESS TOKEN, and presents it as `Authorization: Bearer` when
-//   fetching GET /user/bootstrap. This server is a pure OAuth RESOURCE SERVER: it validates that
-//   Entra token (signature via Entra JWKS + iss + aud + exp) and returns the per-user config.
+//   fetching GET /user/bootstrap. This server is an OAuth RESOURCE SERVER that applies two
+//   checks before returning a configuration:
+//     1. Authentication — validate the Entra token (signature via Entra JWKS + iss + aud + exp).
+//     2. Authorization  — confirm the caller is ENTITLED, via an optional group/role gate
+//        (ENTRA_REQUIRED_GROUPS / ENTRA_REQUIRED_ROLES). Authentication proves who the caller
+//        is; authorization decides whether they receive a configuration.
 //
 // Why PKCE (vs the earlier device-code single-origin design): device-code mode fences the
 // bootstrap response — managedMcpServers whose URL is not same-origin as the bootstrap URL are
@@ -28,6 +32,7 @@
 import express from 'express';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { getConfig } from './config.js';
+import { isEntitled, parseList } from './authorize.js';
 
 // ---- Config from environment ----
 const PORT = parseInt(process.env.PORT || '8081', 10);
@@ -40,6 +45,18 @@ const PUBLIC_ORIGIN = required('PUBLIC_ORIGIN'); // e.g. https://claude-gw.examp
 // audience is the desktop app's client id (obtained via the `<clientId>/.default` scope).
 const ENTRA_TENANT_ID = required('ENTRA_TENANT_ID');
 const ENTRA_AUDIENCE = required('ENTRA_AUDIENCE'); // desktop public-client app id (the token's aud)
+
+// Authorization (entitlement) gate. Authentication proves WHO the caller is; authorization
+// decides whether they are ENTITLED to a configuration. When either variable is set (comma-
+// separated), a token must carry at least one matching value in the corresponding claim or
+// the request is refused with 403. Both unset = every valid tenant token is served (suitable
+// only for a single-tenant pilot where tenant membership is itself the entitlement boundary).
+//   ENTRA_REQUIRED_GROUPS  — matched against the token's `groups` claim (Entra group object IDs)
+//   ENTRA_REQUIRED_ROLES   — matched against the token's `roles` claim (app-role values)
+// Emit the groups claim (Entra app manifest -> Token configuration) or assign app roles so the
+// claim is present; without the claim, a required-groups/roles gate denies by default.
+const REQUIRED_GROUPS = parseList(process.env.ENTRA_REQUIRED_GROUPS);
+const REQUIRED_ROLES = parseList(process.env.ENTRA_REQUIRED_ROLES);
 
 // Entra JWKS (same signing keys for v1 and v2 tokens). Cached + auto-refreshed by jose.
 const ENTRA_JWKS = createRemoteJWKSet(
@@ -97,14 +114,24 @@ async function requireEntraToken(req, res) {
   }
 }
 
+// Authorize an already-authenticated caller (entitlement logic in authorize.js).
+// Returns true when entitled; otherwise sends 403 and returns false.
+function authorize(claims, res) {
+  if (isEntitled(claims, REQUIRED_GROUPS, REQUIRED_ROLES)) return true;
+  console.log(`[bootstrap] 403 not entitled sub=${claims.sub || '?'}`);
+  res.status(403).json({ error: 'not_entitled' });
+  return false;
+}
+
 // ---- Liveness ----
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 
 // ---- Per-user bootstrap config (v2). PKCE mode: origin-pinning is disabled. ----
 app.get('/user/bootstrap', async (req, res) => {
   noStore(res);
-  const claims = await requireEntraToken(req, res);
+  const claims = await requireEntraToken(req, res); // authN — proves who
   if (!claims) return;
+  if (!authorize(claims, res)) return;              // authZ — proves entitled
 
   const cfg = await getConfig();
   res.json({

@@ -45,10 +45,17 @@ async function fetchFromFile() {
   return JSON.parse(await fs.readFile(LOCAL_FALLBACK, 'utf8'));
 }
 
+// Last-resort minimal config. Served only if S3 is unreachable AND the bundled
+// fallback file cannot be read — guarantees getConfig() resolves rather than
+// throwing to the request path. Empty model list + no MCP servers is a safe
+// inert default; the client still reaches the gateway for inference.
+const MINIMAL_CONFIG = { inferenceModels: [] };
+
 /**
- * Returns the current bootstrap config, cached for CONFIG_TTL_MS. Prefers S3; on any S3 error
- * falls back to the last good cached value, then to the bundled default file. Never throws to
- * the request path — a config read failure must not take the service down.
+ * Returns the current bootstrap config, cached for CONFIG_TTL_MS. Prefers S3; on any read
+ * failure falls back to the last good cached value, then the bundled default file, then a
+ * minimal inline default. Never throws to the request path — a config read failure must
+ * degrade to a safe default, not take the service down.
  */
 export async function getConfig() {
   const now = Date.now();
@@ -58,11 +65,17 @@ export async function getConfig() {
     cache = { at: now, value };
     return value;
   } catch (e) {
-    console.error(`[bootstrap] config load failed (${e.message}); using ${cache.value ? 'cached' : 'bundled default'}`);
+    console.error(`[bootstrap] config load failed (${e.message}); using last-good/bundled/minimal fallback`);
     if (cache.value) return cache.value;
-    const value = await fetchFromFile();
-    cache = { at: now, value };
-    return value;
+    try {
+      const value = await fetchFromFile();
+      cache = { at: now, value };
+      return value;
+    } catch (e2) {
+      console.error(`[bootstrap] bundled fallback unavailable (${e2.message}); serving minimal config`);
+      cache = { at: now, value: MINIMAL_CONFIG };
+      return MINIMAL_CONFIG;
+    }
   }
 }
 

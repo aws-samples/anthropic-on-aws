@@ -35,6 +35,16 @@ export interface BootstrapStackProps extends StackProps {
   readonly entraTenantId: string;
   /** Entra app (client) ID of the Claude Desktop PKCE public client (token audience). */
   readonly desktopClientId: string;
+  /**
+   * Authorization gate (optional but recommended beyond a single-tenant pilot).
+   * When set, a caller's token must carry a matching value or the request is
+   * refused with 403 — authentication proves who, authorization proves entitled.
+   *   requiredGroups — Entra group object IDs matched against the `groups` claim
+   *   requiredRoles  — app-role values matched against the `roles` claim
+   * Both unset serves every valid tenant token (tenant membership is the boundary).
+   */
+  readonly requiredGroups?: string;
+  readonly requiredRoles?: string;
   /** ECR image tag for the bootstrap image (default 'latest'). */
   readonly imageTag?: string;
   /**
@@ -63,12 +73,6 @@ export class BootstrapStack extends Stack {
   constructor(scope: Construct, id: string, props: BootstrapStackProps) {
     super(scope, id, props);
     const imageTag = props.imageTag ?? 'latest';
-    const gatewayHost = props.publicUrl.replace(/^https?:\/\//, '');
-
-    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: props.vpcId });
-    const albSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'AlbSg', props.albSgId);
-    const listener = elbv2.ApplicationListener.fromApplicationListenerAttributes(
-      this, 'HttpsListener', { listenerArn: props.listenerArn, securityGroup: albSg });
 
     // ── ECR repository for the bootstrap image (built/pushed like the gateway's:
     // `docker build` + push, see README — no standing build infrastructure) ──
@@ -82,16 +86,28 @@ export class BootstrapStack extends Stack {
     });
     new CfnOutput(this, 'EcrRepositoryUri', { value: repo.repositoryUri });
 
-    // Pass 1: repo only — build and push the image, then re-deploy with
-    // imageReady=true (mirrors the claude-apps-gateway two-pass flow).
+    // Pass 1: repo only. Return BEFORE any environment lookups (VPC/SG/listener)
+    // or the gateway-output context values are read, so `cdk deploy -c imageReady=false`
+    // synthesizes with an EMPTY context — nothing but the ECR repo. Build+push the
+    // image, then re-deploy with imageReady=true (the default) supplying the gateway
+    // outputs. This mirrors the claude-apps-gateway two-pass flow.
     if (!props.imageReady) {
       new CfnOutput(this, 'NextStep', {
         value:
           'Build+push the bootstrap image to the EcrRepositoryUri above, then '
-          + 're-run: cdk deploy -c imageReady=true (same remaining context).',
+          + 're-run: cdk deploy -c imageReady=true with the gateway-output context '
+          + '(publicUrl/listenerArn/albSgId/vpcId/entraTenantId/desktopClientId).',
       });
       return;
     }
+
+    // Pass 2 inputs — the deployed claude-apps-gateway outputs. Read only now, so
+    // pass 1 never requires them (or a live VPC lookup).
+    const gatewayHost = props.publicUrl.replace(/^https?:\/\//, '');
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: props.vpcId });
+    const albSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'AlbSg', props.albSgId);
+    const listener = elbv2.ApplicationListener.fromApplicationListenerAttributes(
+      this, 'HttpsListener', { listenerArn: props.listenerArn, securityGroup: albSg });
 
     // ── S3-backed client configuration: DATA, not code ──
     const configBucket = new s3.Bucket(this, 'ConfigBucket', {
@@ -202,6 +218,10 @@ export class BootstrapStack extends Stack {
         ENTRA_TENANT_ID: props.entraTenantId,
         ENTRA_AUDIENCE: props.desktopClientId,
         CONFIG_S3_URI: `s3://${configBucket.bucketName}/${CONFIG_KEY}`,
+        // Authorization gate — passed through only when configured; empty = serve
+        // every valid tenant token (single-tenant pilot boundary).
+        ...(props.requiredGroups ? { ENTRA_REQUIRED_GROUPS: props.requiredGroups } : {}),
+        ...(props.requiredRoles ? { ENTRA_REQUIRED_ROLES: props.requiredRoles } : {}),
       },
     });
     configBucket.grantRead(taskDef.taskRole);

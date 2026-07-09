@@ -1,4 +1,5 @@
-# Deployment-specific — copy the .example file
+# Deployment-specific — copy the .example files
+.env
 bootstrap/config/bootstrap-config.json
 cdk/cdk.context.json
 
