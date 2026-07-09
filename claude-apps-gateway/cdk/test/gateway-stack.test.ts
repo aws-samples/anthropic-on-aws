@@ -21,7 +21,7 @@ const REGION = 'us-east-1';
 const PASS2: GatewayStackProps = {
   env: { account: ACCOUNT, region: REGION },
   imageReady: true,
-  imageTag: '2.1.197',
+  imageTag: '2.1.199',
   publicUrl: 'https://claude-gateway.example.com',
   certArn: `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/abc-123`,
   zoneName: 'example.com',
@@ -36,7 +36,7 @@ function synth(props: GatewayStackProps): Template {
 }
 
 describe('pass 1 (imageReady: false) — ECR repo only', () => {
-  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.197' });
+  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.199' });
 
   test('creates the ECR repository', () => {
     template.resourceCountIs('AWS::ECR::Repository', 1);
