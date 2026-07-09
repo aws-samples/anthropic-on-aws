@@ -17,16 +17,12 @@ export interface GatewayStackProps extends cdk.StackProps {
   readonly publicUrl?: string;
   /** ECR image tag (defaults to the pinned claude version). */
   readonly imageTag: string;
-  /** ACM cert ARN for publicUrl's hostname — IMPORTED. Omit to use managed-public mode. */
+  /** ACM cert ARN for publicUrl's hostname — IMPORTED. Required for pass 2. */
   readonly certArn?: string;
   /** Route 53 PRIVATE hosted-zone name, e.g. example.com (holds the A-record). */
   readonly zoneName?: string;
   /** Route 53 private hosted-zone id (optional; looked up from zoneName if omitted). */
   readonly zoneId?: string;
-  /** PUBLIC hosted-zone id — managed mode only; used solely for ACM DNS validation. */
-  readonly publicZoneId?: string;
-  /** PUBLIC hosted-zone name — managed mode only; explicit, not derived from zoneName. */
-  readonly publicZoneName?: string;
   /** VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR. */
   readonly ingressCidr?: string;
   /** Import an existing VPC instead of creating one. */
@@ -73,8 +69,7 @@ export class GatewayStack extends cdk.Stack {
         value:
           'Pass 1 complete. Build + push the image to the repo above, then re-run: ' +
           'cdk deploy -c imageReady=true -c publicUrl=... -c zoneName=... -c ingressCidr=... ' +
-          'and EITHER -c certArn=... (imported cert) OR -c publicZoneId=... -c publicZoneName=... ' +
-          '(managed public cert).',
+          '-c certArn=... (imported ACM cert for the gateway hostname).',
       });
       return;
     }
@@ -84,14 +79,11 @@ export class GatewayStack extends cdk.Stack {
     const publicUrl = req(props.publicUrl, 'publicUrl');
     const zoneName = req(props.zoneName, 'zoneName');
     const ingressCidr = req(props.ingressCidr, 'ingressCidr');
+    const certArn = req(props.certArn, 'certArn');
     // publicUrl is https://<host>; the record name is the host part.
     const recordHost = publicUrl.replace(/^https?:\/\//, '');
 
-    // TLS mode selector: certArn present → IMPORTED (fingerprint-pinned, unchanged);
-    // absent → MANAGED-PUBLIC via split-horizon DNS (see the TLS section in ../README.md).
-    const managedCert = !props.certArn;
-
-    // Private zone: holds the gateway A-record → internal ALB (both modes).
+    // Private zone: holds the gateway A-record → internal ALB.
     const privateZone = props.zoneId
       ? route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
           hostedZoneId: props.zoneId,
@@ -99,24 +91,12 @@ export class GatewayStack extends cdk.Stack {
         })
       : route53.HostedZone.fromLookup(this, 'Zone', { domainName: zoneName, privateZone: true });
 
-    // The one certificate both listeners share.
-    let certificate: acm.ICertificate;
-    if (managedCert) {
-      // Managed mode: request a DNS-validated public cert. The validation CNAME
-      // lives ONLY in the explicit public zone; no A-record is written there.
-      const publicZoneId = req(props.publicZoneId, 'publicZoneId');
-      const publicZoneName = req(props.publicZoneName, 'publicZoneName');
-      const publicZone = route53.HostedZone.fromHostedZoneAttributes(this, 'PublicZone', {
-        hostedZoneId: publicZoneId,
-        zoneName: publicZoneName,
-      });
-      certificate = new acm.Certificate(this, 'Cert', {
-        domainName: recordHost,
-        validation: acm.CertificateValidation.fromDns(publicZone),
-      });
-    } else {
-      certificate = acm.Certificate.fromCertificateArn(this, 'Cert', props.certArn!);
-    }
+    // The one certificate both listeners share: an imported ACM cert for the
+    // gateway hostname. The CLI pins its SHA-256 fingerprint on first /login
+    // (the CertFingerprintHint output below prints how to read it). Want no
+    // prompt? Import a public, browser-trusted ACM cert — DNS validation needs
+    // no public endpoint, so the ALB can stay internal (see docs/deployment.md).
+    const certificate = acm.Certificate.fromCertificateArn(this, 'Cert', certArn);
 
     // ── VPC (2 AZs, public + private-with-egress) ─────────────────────────────
     // NAT is retained for the IdP leg only (public OIDC issuer); all AWS-service
@@ -429,16 +409,10 @@ export class GatewayStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'TaskRoleArn', { value: taskRole.roleArn });
     new cdk.CfnOutput(this, 'RdsEndpoint', { value: db.dbInstanceEndpointAddress });
-    if (!managedCert) {
-      new cdk.CfnOutput(this, 'CertFingerprintHint', {
-        value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,
-        description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
-      });
-    } else {
-      new cdk.CfnOutput(this, 'CertMode', {
-        value: 'managed-public (browser-trusted ACM cert; no fingerprint comparison needed)',
-      });
-    }
+    new cdk.CfnOutput(this, 'CertFingerprintHint', {
+      value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,
+      description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
+    });
   }
 }
 
@@ -447,9 +421,9 @@ function req(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(
       `Missing required context "${name}". For pass 2 deploy with: ` +
-        `-c publicUrl=... -c zoneName=... -c ingressCidr=... and EITHER ` +
-        `-c certArn=... (imported cert) OR -c publicZoneId=... -c publicZoneName=... ` +
-        `(managed public cert). Or set imageReady=false for the pass-1 ECR-repo-only deploy.`,
+        `-c publicUrl=... -c zoneName=... -c ingressCidr=... -c certArn=... ` +
+        `(imported ACM cert for the gateway hostname). ` +
+        `Or set imageReady=false for the pass-1 ECR-repo-only deploy.`,
     );
   }
   return value;

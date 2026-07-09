@@ -25,12 +25,11 @@
 #     profiles (us.anthropic.*), in EVERY region the profile spans. This is a
 #     console/account-level step IAM cannot grant; missing it yields
 #     AccessDeniedException on invoke even when IAM is correct. (#1 Bedrock failure.)
-#   * TLS: EITHER an imported ACM cert for PUBLIC_URL's hostname (set CERT_ARN),
-#     OR managed public-cert mode (leave CERT_ARN unset) - then this script
-#     requests a DNS-validated public cert and needs PUBLIC_ZONE_ID +
-#     PUBLIC_ZONE_NAME (the public, delegated zone used ONLY for ACM validation;
-#     the gateway A-record still lives in the private ZONE_ID). Rationale: the
-#     "TLS: managed public cert vs. imported cert" section of cdk/README.md.
+#   * TLS: an imported ACM cert for PUBLIC_URL's hostname (set CERT_ARN). On first
+#     /login the CLI pins its SHA-256 fingerprint and prompts to confirm it (intended
+#     behavior). To skip the prompt, use a PUBLIC ACM cert - DNS validation needs no
+#     public endpoint, so the ALB stays internal. See the "TLS: bring an ACM cert"
+#     section of cdk/README.md.
 #   * A private Route 53 hosted zone (ZONE_ID/ZONE_NAME) for the gateway A-record,
 #     plus a network path + private-DNS resolution from developer laptops to the
 #     internal ALB (VPN/DX/TGW). See docs/connectivity.md - the #1 "internal ALB
@@ -162,15 +161,11 @@ OIDC_CLIENT_SECRET="${OIDC_CLIENT_SECRET:-}"
 JWT_SECRET_NAME="${PROJECT}-jwt-secret"
 OIDC_SECRET_NAME="${PROJECT}-oidc-client-secret"
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS:?required: comma-separated, e.g. example.com}"
-# TLS mode selector: CERT_ARN set → IMPORTED (fingerprint-pinned). Unset → MANAGED
-# public-cert via split-horizon DNS (requires PUBLIC_ZONE_ID + PUBLIC_ZONE_NAME).
-CERT_ARN="${CERT_ARN:-}"
+# Imported ACM cert for PUBLIC_URL's hostname. The CLI pins its SHA-256 fingerprint
+# on first /login; use a PUBLIC ACM cert to skip the prompt (see the header).
+CERT_ARN="${CERT_ARN:?required: ACM cert ARN for the PUBLIC_URL hostname}"
 ZONE_ID="${ZONE_ID:?required: Route 53 PRIVATE hosted zone id for the gateway A-record}"
 ZONE_NAME="${ZONE_NAME:?required: Route 53 private zone name, e.g. example.com}"
-# Managed mode only — the PUBLIC, delegated zone used solely for ACM DNS validation.
-PUBLIC_ZONE_ID="${PUBLIC_ZONE_ID:-}"
-PUBLIC_ZONE_NAME="${PUBLIC_ZONE_NAME:-}"
-if [[ -n "${CERT_ARN}" ]]; then MANAGED_CERT=0; else MANAGED_CERT=1; fi
 # The VPN/corp CLIENT CIDR developer traffic arrives from — NOT the VPC CIDR.
 # A wrong guess is either wide-open or fully-closed, so we refuse to default it.
 INGRESS_CIDR="${INGRESS_CIDR:?required: the VPN/corp client CIDR developers connect from}"
@@ -188,17 +183,7 @@ info "container tool: ${CTR}"
 ACCOUNT_ID="${ACCOUNT_ID:-$(aws_q sts get-caller-identity --query Account)}"
 [[ -n "${ACCOUNT_ID}" && "${ACCOUNT_ID}" != "None" ]] || die "could not resolve AWS account id - is the aws CLI authenticated?"
 info "account ${ACCOUNT_ID}, region ${AWS_REGION}"
-if [[ "${MANAGED_CERT}" == "1" ]]; then
-  [[ -n "${PUBLIC_ZONE_ID}" ]]   || die "managed cert mode (no CERT_ARN) requires PUBLIC_ZONE_ID (the public, delegated zone for ACM validation)"
-  [[ -n "${PUBLIC_ZONE_NAME}" ]] || die "managed cert mode (no CERT_ARN) requires PUBLIC_ZONE_NAME (explicit, not derived from ZONE_NAME)"
-  # Warn (don't fail) if the public zone looks private — the classic ACM stall.
-  if [[ "$(aws_q route53 get-hosted-zone --id "${PUBLIC_ZONE_ID}" --query 'HostedZone.Config.PrivateZone')" == "True" ]]; then
-    info "WARNING: PUBLIC_ZONE_ID ${PUBLIC_ZONE_ID} is a PRIVATE zone — ACM DNS validation will stall (~30-90 min). It must be the public, delegated zone."
-  fi
-  info "TLS mode: managed public cert (validation zone ${PUBLIC_ZONE_NAME})"
-else
-  info "TLS mode: imported cert ${CERT_ARN}"
-fi
+info "TLS: imported cert ${CERT_ARN}"
 info "caller $(aws_q sts get-caller-identity --query Arn)"
 # Fail fast on the OIDC client secret BEFORE the slow phases (RDS alone is ~9 min).
 preflight_oidc_secret
@@ -690,63 +675,6 @@ else
   skip "target group ${PROJECT}-tg"
 fi
 
-# 6a′. Managed public cert (only when CERT_ARN was not supplied). Request a
-# DNS-validated public ACM cert for the gateway host; write the validation CNAME
-# into the PUBLIC zone (split-horizon — the A-record stays in the private zone,
-# added in 6d). Idempotent: reuse an existing ISSUED cert for this host.
-if [[ "${MANAGED_CERT}" == "1" ]]; then
-  RECORD_HOST="${PUBLIC_URL#https://}"
-  # Reuse an existing cert (ISSUED or still validating) for this exact domain.
-  CERT_ARN="$(aws_q acm list-certificates --certificate-statuses ISSUED PENDING_VALIDATION \
-    --query "CertificateSummaryList[?DomainName=='${RECORD_HOST}'].CertificateArn | [0]")"
-  if [[ -z "${CERT_ARN}" || "${CERT_ARN}" == "None" ]]; then
-    CERT_ARN="$(aws_q acm request-certificate --domain-name "${RECORD_HOST}" \
-      --validation-method DNS --query 'CertificateArn')"
-    [[ -n "${CERT_ARN}" && "${CERT_ARN}" != "None" ]] || die "failed to request ACM certificate for ${RECORD_HOST}"
-    info "requested ACM certificate ${CERT_ARN}"
-  else
-    skip "ACM certificate ${CERT_ARN} (already exists)"
-  fi
-  # Ensure the validation CNAME exists in the PUBLIC zone for any not-yet-ISSUED
-  # cert — covers both a freshly-requested cert AND a reused PENDING one from a
-  # prior run that crashed before writing the record (the UPSERT is idempotent).
-  if [[ "$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
-        --query 'Certificate.Status')" != "ISSUED" ]]; then
-    # ACM populates the validation record asynchronously; wait for it to appear.
-    for _ in $(seq 1 30); do
-      VNAME="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
-        --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Name')"
-      [[ -n "${VNAME}" && "${VNAME}" != "None" ]] && break
-      sleep 2
-    done
-    VTYPE="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
-      --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Type')"
-    VVALUE="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
-      --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Value')"
-    [[ -n "${VNAME}" && "${VNAME}" != "None" ]] || die "ACM did not return a validation record for ${RECORD_HOST}"
-    # UPSERT the validation CNAME into the PUBLIC zone.
-    VAL_BATCH=$(cat <<JSON
-{"Changes":[{"Action":"UPSERT","ResourceRecordSet":{
-  "Name":"${VNAME}","Type":"${VTYPE}","TTL":300,
-  "ResourceRecords":[{"Value":"${VVALUE}"}]}}]}
-JSON
-)
-    aws route53 change-resource-record-sets --hosted-zone-id "${PUBLIC_ZONE_ID}" \
-      --change-batch "${VAL_BATCH}" >/dev/null
-    info "wrote ACM validation CNAME into public zone ${PUBLIC_ZONE_ID}"
-  fi
-  # Poll until ISSUED (bounded ~10 min). A stall here almost always means
-  # PUBLIC_ZONE_ID is not the public, delegated zone for the domain.
-  for _ in $(seq 1 60); do
-    CERT_STATUS="$(aws_q acm describe-certificate --certificate-arn "${CERT_ARN}" \
-      --query 'Certificate.Status')"
-    [[ "${CERT_STATUS}" == "ISSUED" ]] && break
-    sleep 10
-  done
-  [[ "${CERT_STATUS}" == "ISSUED" ]] || die "ACM cert ${CERT_ARN} not ISSUED after ~10 min (status ${CERT_STATUS}). Confirm PUBLIC_ZONE_ID is the PUBLIC, delegated zone for ${RECORD_HOST#*.}."
-  info "ACM certificate ISSUED: ${CERT_ARN}"
-fi
-
 # shellcheck disable=SC2016  # backticks are JMESPath literal syntax, not shell expansion
 if [[ "$(aws_q elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" \
       --query 'Listeners[?Port==`443`].ListenerArn')" =~ arn: ]]; then
@@ -925,18 +853,14 @@ fi
 # ──────────────────────────────────────────────────────────────────────────────
 # Final summary
 # ──────────────────────────────────────────────────────────────────────────────
-# Cert SHA-256 fingerprint — imported mode only. In managed mode the cert is a
-# browser-trusted public ACM cert, so the CLI shows no fingerprint prompt.
-if [[ "${MANAGED_CERT}" == "0" ]]; then
-  FINGERPRINT="$(echo | openssl s_client -connect "${RECORD_NAME}:443" -servername "${RECORD_NAME}" 2>/dev/null \
-    | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//' || true)"
-  [[ -n "${FINGERPRINT}" ]] || FINGERPRINT="(run once DNS resolves: openssl s_client -connect ${RECORD_NAME}:443 -servername ${RECORD_NAME} | openssl x509 -noout -fingerprint -sha256)"
-  TLS_STEP="4. Publish this cert SHA-256 fingerprint for developers to compare on /login:
+# Cert SHA-256 fingerprint the CLI pins on first /login. Publish it so developers
+# can confirm the prompt. (A public, browser-trusted ACM cert shows no prompt.)
+FINGERPRINT="$(echo | openssl s_client -connect "${RECORD_NAME}:443" -servername "${RECORD_NAME}" 2>/dev/null \
+  | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//' || true)"
+[[ -n "${FINGERPRINT}" ]] || FINGERPRINT="(run once DNS resolves: openssl s_client -connect ${RECORD_NAME}:443 -servername ${RECORD_NAME} | openssl x509 -noout -fingerprint -sha256)"
+TLS_STEP="4. Publish this cert SHA-256 fingerprint for developers to compare on /login
+        (a public, browser-trusted ACM cert shows no prompt):
         ${FINGERPRINT}"
-else
-  TLS_STEP="4. TLS: managed public ACM cert (browser-trusted) — developers see NO
-     fingerprint prompt and need no NODE_EXTRA_CA_CERTS / keychain import."
-fi
 
 cat <<SUMMARY
 

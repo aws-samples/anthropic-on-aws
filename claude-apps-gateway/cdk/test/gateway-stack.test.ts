@@ -134,36 +134,18 @@ describe('pass 2 (imageReady: true) — full stack', () => {
   });
 });
 
-describe('TLS mode selection (imported vs managed public cert)', () => {
-  test('certArn present → imported mode: no in-stack cert, fingerprint hint output', () => {
+describe('TLS: imported ACM cert', () => {
+  test('the cert is imported (no in-stack cert resource) and the fingerprint hint is output', () => {
+    // fromCertificateArn imports an existing cert, so the stack synthesizes NO
+    // AWS::CertificateManager::Certificate. The CLI pins the leaf by SHA-256 on
+    // first /login, so the stack emits the command to read that fingerprint.
     const template = synth(PASS2);
     template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
     template.hasOutput('CertFingerprintHint', {});
   });
 
-  const MANAGED: GatewayStackProps = {
-    ...PASS2,
-    certArn: undefined,
-    publicZoneId: 'Z0PUBLICEXAMPLE',
-    publicZoneName: 'example.com',
-  };
-
-  test('certArn absent → managed mode: DNS-validated public cert for the gateway host', () => {
-    const template = synth(MANAGED);
-    template.hasResourceProperties('AWS::CertificateManager::Certificate', {
-      DomainName: 'claude-gateway.example.com',
-      DomainValidationOptions: [
-        { DomainName: 'claude-gateway.example.com', HostedZoneId: 'Z0PUBLICEXAMPLE' },
-      ],
-      ValidationMethod: 'DNS',
-    });
-    // Managed certs are browser-trusted, so no fingerprint to publish.
-    template.hasOutput('CertMode', {});
-    expect(() => template.hasOutput('CertFingerprintHint', {})).toThrow();
-  });
-
-  test('managed mode fails fast without an explicit public zone', () => {
-    expect(() => synth({ ...MANAGED, publicZoneId: undefined })).toThrow(/publicZoneId/);
+  test('pass 2 fails fast without certArn', () => {
+    expect(() => synth({ ...PASS2, certArn: undefined })).toThrow(/certArn/);
   });
 });
 

@@ -82,7 +82,7 @@ You will need to provide: the OIDC issuer URL, a client ID, and a client secret.
 You need an AWS account where they can create the following resources:
 - **Compute**: ECS cluster (Fargate), EKS cluster, or EC2 instances
 - **Database**: An RDS PostgreSQL instance (db.t4g.micro is sufficient; the gateway stores only a few KB of sign-in state)
-- **Networking**: A VPC with private subnets, an internal ALB, and a TLS certificate from ACM — either imported, or requested for you by the CDK stack's managed public-cert mode (see [`cdk/README.md`](cdk/README.md))
+- **Networking**: A VPC with private subnets, an internal ALB, and an imported ACM TLS certificate (use a public ACM cert to skip the first-login fingerprint prompt — see [`cdk/README.md`](cdk/README.md))
 - **IAM role**: The gateway's task role needs `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` permissions on inference-profile and foundation-model ARNs
 
 The IAM policy for the task role looks like:

@@ -18,11 +18,9 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *     region          AWS region (default: CDK_DEFAULT_REGION or us-east-1)
  *     publicUrl       internal ALB https origin, e.g. https://claude-gateway.example.com   (required)
  *     imageTag        ECR image tag (default: the claudeVersion below)
- *     certArn         ACM cert ARN — IMPORTED mode. Omit for MANAGED public-cert mode.
+ *     certArn         ACM cert ARN for publicUrl's hostname — IMPORTED   (required for pass 2)
  *     zoneName        Route 53 PRIVATE hosted-zone name (holds the A-record)   (required for pass 2)
  *     zoneId          private hosted-zone id (optional; looked up from zoneName if omitted)
- *     publicZoneId    PUBLIC hosted-zone id — MANAGED mode only (ACM DNS validation)
- *     publicZoneName  PUBLIC hosted-zone name — MANAGED mode only (explicit, not derived)
  *     ingressCidr     VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR   (required for pass 2)
  *     vpcId           import an existing VPC instead of creating one (optional)
  *     createVpcEndpoints  "false" to skip VPC endpoint creation when reusing a VPC
@@ -47,8 +45,6 @@ new GatewayStack(app, 'ClaudeGatewayStack', {
   certArn: ctx('certArn'),
   zoneName: ctx('zoneName'),
   zoneId: ctx('zoneId'),
-  publicZoneId: ctx('publicZoneId'),
-  publicZoneName: ctx('publicZoneName'),
   ingressCidr: ctx('ingressCidr'),
   vpcId: ctx('vpcId'),
   // Default true; only 'false' opts out (for a reused VPC that already has endpoints).

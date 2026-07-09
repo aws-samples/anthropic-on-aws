@@ -32,22 +32,20 @@ a common failure:
      --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
      --inference-config '{"maxTokens":5}' >/dev/null && echo model access OK
    ```
-2. **TLS — pick one.** Either **import** an ACM cert for your gateway hostname
-   (`CERT_ARN` / `-c certArn`) — developers then confirm its SHA-256 fingerprint on
-   first `/login` — or leave it unset for **managed public-cert mode**, which
-   requests a DNS-validated public ACM cert for you (browser-trusted, no prompt).
-   Managed mode needs a **public, delegated** Route 53 zone for the hostname's
-   parent domain (`PUBLIC_ZONE_ID` + `PUBLIC_ZONE_NAME` / `-c publicZoneId
-   -c publicZoneName`), used only for the ACM validation CNAME. See the TLS section
-   in [`../cdk/README.md`](../cdk/README.md).
+2. **An ACM cert** for your gateway hostname, passed as `CERT_ARN` / `-c certArn`.
+   On first `/login` the CLI pins the cert's SHA-256 fingerprint and prompts the
+   developer to confirm it — intended behavior (the CLI pinning the authentic
+   gateway). **Want no first-login prompt?** Request a **public** ACM cert for the
+   hostname, DNS-validate it, and pass its ARN as `CERT_ARN`: ACM public certs
+   validate by DNS, not endpoint reachability, so the cert is browser-trusted with
+   no prompt while the ALB stays internal.
 3. **A Route 53 hosted zone** (`ZONE_ID`/`ZONE_NAME` / `-c zoneId -c zoneName`)
    for the gateway A-record. The real requirement is that the hostname resolves
    to a **private** IP on developer laptops — the CLI rejects public gateway
    addresses. Two topologies satisfy it:
    - **Public zone, private answer** (simplest, verified live): put the A-record
      in the public delegated zone; it answers the internal ALB's private IPs, so
-     laptops need no special DNS — only a network route into the VPC. In managed
-     cert mode `ZONE_ID` may simply equal `PUBLIC_ZONE_ID`.
+     laptops need no special DNS — only a network route into the VPC.
    - **Private hosted zone**: keeps the record out of the public DNS tree, but
      note the example does **not** associate the zone with the VPC it creates
      (associate it yourself for in-VPC resolution), and off-VPC laptops then need
@@ -81,16 +79,14 @@ OIDC_ISSUER=https://example.okta.com \
 OIDC_CLIENT_ID=0oa1example2 \
 OIDC_CLIENT_SECRET=your-oidc-client-secret \
 ALLOWED_EMAIL_DOMAINS=example.com \
-PUBLIC_ZONE_ID=Z0PUBLICEXAMPLE \
-PUBLIC_ZONE_NAME=example.com \
+CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/abc-123 \
 ZONE_ID=Z0123456789ABCDEFGHIJ \
 ZONE_NAME=example.com \
 INGRESS_CIDR=10.100.0.0/16 \
 cdk/scripts/setup.sh
 ```
 
-> Swap the two `PUBLIC_ZONE_*` lines for `CERT_ARN=arn:aws:acm:...` to use an
-> imported cert instead. `INGRESS_CIDR` is the VPN/corp **client** CIDR developers
+> `INGRESS_CIDR` is the VPN/corp **client** CIDR developers
 > connect from — **not** the VPC CIDR — *unless* that path is **AWS Client VPN**,
 > which source-NATs client traffic to the association subnet's IP: then use the
 > VPC CIDR (`10.20.0.0/16` for the VPC this script creates). See the Client VPN
@@ -110,7 +106,7 @@ internal IPv4 ALB (idle timeout 3600s, `/healthz` health check), the ECS service
 
 It is **idempotent** — re-run it any time to roll a new image or reconcile drift.
 It finishes by printing the ALB hostname, the OAuth redirect URI to register, and
-(imported-cert mode only) the cert SHA-256 fingerprint to publish to developers.
+the cert SHA-256 fingerprint to publish to developers.
 
 Optional flags: `VPC_ID=vpc-...` (reuse an existing VPC). The full list with
 defaults is at the top of [`setup.sh`](../cdk/scripts/setup.sh).
@@ -163,12 +159,11 @@ docker push "${ECR_URI}:${CLAUDE_VERSION}"
 npx cdk deploy \
   -c publicUrl=https://claude-gateway.example.com \
   -c zoneName=example.com -c zoneId=Z0123456789ABCDEFGHIJ \
-  -c publicZoneId=Z0PUBLICEXAMPLE -c publicZoneName=example.com \
+  -c certArn=arn:aws:acm:us-east-1:123456789012:certificate/abc-123 \
   -c ingressCidr=10.100.0.0/16
 ```
 
-> Swap the `publicZone*` line for `-c certArn=arn:aws:acm:...` to use an imported
-> cert. Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
+> Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
 > service endpoints, `-c createVpcEndpoints=false`.
 
 The stack creates `claude-gateway-oidc-client-secret` as a `REPLACE_ME`
@@ -226,9 +221,9 @@ Then push the managed-settings file to developer machines via MDM:
 | Linux / WSL | `/etc/claude-code/managed-settings.json` |
 | Windows | `C:\Program Files\ClaudeCode\managed-settings.json` |
 
-In imported-cert mode, publish the cert's SHA-256 fingerprint (printed by
-`setup.sh`, or the `CertFingerprintHint` stack output) so developers can confirm the
-prompt on first `/login`. Managed-cert mode shows no prompt.
+Publish the cert's SHA-256 fingerprint (printed by `setup.sh`, or the
+`CertFingerprintHint` stack output) so developers can confirm the prompt on first
+`/login`. (A public, browser-trusted ACM cert shows no prompt — see prerequisite 2.)
 
 ## Cost expectations
 
