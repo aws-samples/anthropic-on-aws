@@ -40,7 +40,7 @@ target. A natural AWS design points it at a collector over a private Cloud Map n
   internal NLB/ALB terminating an ACM cert, or give the collector a cert the
   gateway trusts — and point `forward_to` at its `https://` name.
 
-> Customer takeaway: budget for TLS on your telemetry collector from day one, or
+> Takeaway: budget for TLS on your telemetry collector from day one, or
 > accept telemetry-off. Don't assume a plain private endpoint will work.
 
 ---
@@ -59,7 +59,7 @@ and then `COPY`s it, the file lands root-owned and unreadable by `nonroot`.
 **Fix:** `COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml` in the Dockerfile.
 Don't rely on the host file's mode.
 
-> Customer takeaway: any file you bake into a non-root distroless image needs an
+> Takeaway: any file you bake into a non-root distroless image needs an
 > explicit readable mode. This bites silently — the build succeeds, the container
 > only fails at runtime.
 
@@ -84,7 +84,7 @@ const svc = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Gateway
 svc.loadBalancer.connections.allowFrom(ec2.Peer.ipv4(ingressCidr), ec2.Port.tcp(443));
 ```
 
-> Customer takeaway: for a credential-holding internal service, audit the
+> Takeaway: for a credential-holding internal service, audit the
 > *synthesized* SG rules — don't trust that a hand-rolled SG is the one in effect.
 > (Hand-rolled `setup.sh`-style scripts have the mirror risk: leaking an over-open
 > `0.0.0.0/0:5432` on RDS. RDS ingress must be from the task SG only, never a CIDR.)
@@ -115,7 +115,7 @@ machines. So you cannot "just expose it":
 - The security-group rule that matters is allowing 443 from the **VPN/client
   CIDR** (`ingressCidr`), *not* a laptop's public IP.
 
-> Customer takeaway: this is the **#1 "it doesn't work from my laptop"** failure.
+> Takeaway: this is the **#1 "it doesn't work from my laptop"** failure.
 > Connectivity + private DNS is a hard prerequisite, not an afterthought. Plan it
 > before you deploy. (See `connectivity.md`.)
 
@@ -222,7 +222,7 @@ of those means a rebuild.
 **Fix / alternative:** on EKS the Secrets Store CSI driver *can* file-mount, so you
 can use `${file:/secrets/…}` and keep the image generic. (See `eks-notes.md`.)
 
-> Customer takeaway: this is a deliberate trade-off (keeps the image distroless, no
+> Takeaway: this is a deliberate trade-off (keeps the image distroless, no
 > wrapper, config versioned as code) but surprises anyone expecting the GCP
 > example's store-the-YAML-in-a-secret pattern.
 

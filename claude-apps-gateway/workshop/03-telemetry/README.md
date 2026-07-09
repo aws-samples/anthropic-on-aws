@@ -4,13 +4,13 @@
 
 The gateway relays OpenTelemetry Protocol (OTLP) metrics from Claude Code to a collector you configure. Each export is stamped with the developer's identity (user ID, email, IdP groups), giving you per-user cost and usage breakdowns with no developer-side configuration.
 
-## What the customer gets
+## Benefits
 
 - Per-user usage breakdowns: who used which models, how many tokens, at what latency
 - Identity stamping: automatic, no developer-side setup
 - Any OTLP backend: works with any OpenTelemetry-compatible collector
 - Sensitivity control: metrics (safe) vs logs/traces (sensitive, opt-in)
-- Data stays under customer control: telemetry goes to their collector, never to Anthropic
+- Data stays under your control: telemetry goes to your collector, never to Anthropic
 
 ## How to configure it
 
