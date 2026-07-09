@@ -7,6 +7,7 @@ import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as fs from 'fs';
 import * as path from 'path';
 import { ackNag } from './nag';
 
@@ -36,6 +37,12 @@ export interface BootstrapStackProps extends StackProps {
   readonly desktopClientId: string;
   /** ECR image tag for the bootstrap image (default 'latest'). */
   readonly imageTag?: string;
+  /**
+   * Two-pass deploy, same convention as claude-apps-gateway: pass 1
+   * (imageReady=false) creates only the ECR repo; build+push the image; pass 2
+   * (imageReady=true, the default) deploys the service and listener rule.
+   */
+  readonly imageReady: boolean;
 }
 
 /**
@@ -65,14 +72,26 @@ export class BootstrapStack extends Stack {
 
     // ── ECR repository for the bootstrap image (built/pushed like the gateway's:
     // `docker build` + push, see README — no standing build infrastructure) ──
+    // No fixed repositoryName: a generated name avoids collisions with any other
+    // deployment in the account; consumers read the EcrRepositoryUri output.
     const repo = new ecr.Repository(this, 'Repo', {
-      repositoryName: 'claude-bootstrap',
       imageScanOnPush: true,
       // Example posture: clean teardown (mirrors claude-apps-gateway).
       removalPolicy: RemovalPolicy.DESTROY,
       emptyOnDelete: true,
     });
     new CfnOutput(this, 'EcrRepositoryUri', { value: repo.repositoryUri });
+
+    // Pass 1: repo only — build and push the image, then re-deploy with
+    // imageReady=true (mirrors the claude-apps-gateway two-pass flow).
+    if (!props.imageReady) {
+      new CfnOutput(this, 'NextStep', {
+        value:
+          'Build+push the bootstrap image to the EcrRepositoryUri above, then '
+          + 're-run: cdk deploy -c imageReady=true (same remaining context).',
+      });
+      return;
+    }
 
     // ── S3-backed client configuration: DATA, not code ──
     const configBucket = new s3.Bucket(this, 'ConfigBucket', {
@@ -91,9 +110,22 @@ export class BootstrapStack extends Stack {
         + 'bootstrap task role.',
     });
     const CONFIG_KEY = 'bootstrap-config.json';
+    // Seed the LIVE key (not just the example): the service reads CONFIG_KEY and
+    // silently falls back to its image-bundled default when the object is absent —
+    // which would make later S3 edits appear to have no effect. Seeding the example
+    // content under the real key means Step 3 (customize + push) is an edit, not a
+    // create, and the config path is exercised from the first boot.
     new s3deploy.BucketDeployment(this, 'SeedConfig', {
       destinationBucket: configBucket,
-      sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'bootstrap', 'config'))],
+      sources: [
+        s3deploy.Source.data(
+          CONFIG_KEY,
+          fs.readFileSync(
+            path.join(__dirname, '..', '..', 'bootstrap', 'config', 'bootstrap-config.example.json'),
+            'utf8',
+          ),
+        ),
+      ],
       // Seed once; later S3 edits are never overwritten (prune:false, hash-gated).
       prune: false,
     });
@@ -205,6 +237,18 @@ export class BootstrapStack extends Stack {
       allowAllOutbound: true, // S3 config reads + Entra JWKS fetch
     });
     serviceSg.addIngressRule(albSg, ec2.Port.tcp(8081), 'bootstrap from gateway ALB');
+    // The gateway sample's ALB SG uses RESTRICTED egress (only its own targets:
+    // 8080/4318/13133), so health checks to this add-on's port are dropped unless
+    // we author the matching egress rule. Owned by THIS stack; the gateway stack
+    // remains unmodified.
+    new ec2.CfnSecurityGroupEgress(this, 'AlbToBootstrap', {
+      groupId: props.albSgId,
+      destinationSecurityGroupId: serviceSg.securityGroupId,
+      ipProtocol: 'tcp',
+      fromPort: 8081,
+      toPort: 8081,
+      description: 'gateway ALB to bootstrap add-on targets',
+    });
 
     const service = new ecs.FargateService(this, 'BootstrapService', {
       cluster,

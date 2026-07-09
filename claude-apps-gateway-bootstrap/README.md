@@ -18,13 +18,14 @@ PKCE), presents the access token to `GET /user/bootstrap`, and receives its conf
 overlay. PKCE mode lifts the platform's origin-pinning, so managed MCP servers are
 delivered with their **native cross-origin URLs and native auth** — no reverse-proxying.
 
+![Architecture](images/architecture.png)
+
 ```
-Claude Desktop ──(1) Entra PKCE sign-in──────────────▶ Microsoft Entra ID
-       │                                                      │
-       ├──(2) Bearer access token──▶ /user/bootstrap ─▶ BootstrapStack (this add-on)
-       │                                 │                    reads bootstrap-config.json (S3, 60s TTL)
-       ├──(3) device-code sign-in──▶ claude-apps-gateway ─▶ Amazon Bedrock   (inference, unchanged)
-       └──(4) direct connections──▶ managed MCP servers      (native URLs + native auth)
+Sign-in flow:
+(1) Entra PKCE sign-in ──▶ IdP            (configuration + MCP identity)
+(2) Bearer token ──▶ /user/bootstrap      (this add-on serves the config overlay from S3)
+(3) gateway device-code sign-in           (inference — the gateway sample, unchanged)
+(4) direct MCP connections                (native URLs + native auth from the config)
 ```
 
 **One gateway definition.** This add-on consumes a deployed `ClaudeGatewayStack` purely
@@ -159,13 +160,18 @@ aws s3 cp bootstrap-config.json s3://<ConfigBucketName output>/bootstrap-config.
 
 This object is the **live client configuration** — the service re-reads it on a 60-second
 TTL. Every later change (add an MCP server, flip a governance key, change the model list)
-is an S3 push + client relaunch. **No redeploys, ever.**
+is an S3 push + client relaunch. **No redeploys**
 
 Three managed-MCP entry shapes are supported (see the example file):
 **no-auth remote** (plain `url`), **OAuth remote** (`oauth` block — the client runs its own
 code+loopback flow against your IdP; note some IdPs reject the RFC 8707 `resource`
 parameter the client sends — Cognito works, Entra does not), and **built-in**
 (`server: "microsoft365"` + tenant/client IDs from step 1).
+
+> `inferenceModels` here controls only the Desktop **picker** — the gateway still
+> enforces model access server-side. See
+> [Configuration model](#configuration-model-gateway-vs-bootstrap--who-owns-what)
+> for how the two files divide ownership.
 
 ## Step 4 — Wire a client
 
@@ -203,6 +209,87 @@ collector, set in the S3 config:
 "otlpProtocol": "http/protobuf"
 ```
 
+## Org plugins and skills (optional)
+
+Organization plugins (skills, slash commands, agents packaged for every user) are the one
+managed surface that does **not** travel through this server: network plugin delivery
+(`organizationPluginsUrl`) is unavailable in PKCE mode, so plugins ship via the
+**filesystem channel** — a directory your MDM/software-distribution tool populates:
+
+| Platform | Directory |
+| --- | --- |
+| macOS | `/Library/Application Support/Claude/org-plugins/` |
+| Windows | `C:\Program Files\Claude\org-plugins\` |
+
+Each plugin is one subdirectory with a `.claude-plugin/plugin.json` manifest plus its
+`skills/` / `commands/` / `agents/` content, e.g.:
+
+```
+org-plugins/
+└── incident-runbook/
+    ├── .claude-plugin/plugin.json     {"name":"incident-runbook","version":"1.0.0", ...}
+    └── skills/
+        └── triage-report/SKILL.md
+```
+
+The app scans the directory at launch; users see the skills immediately (a `/skill-name`
+in chat, or auto-invoked when relevant). Updating a plugin = replacing its directory via
+MDM — bump the manifest `version` so the app re-syncs. Note the deployment asymmetry with
+everything else in this add-on: **configuration changes at business speed via S3, but
+plugin content moves at MDM speed** — plan plugin rollouts like software pushes, not
+config edits. If the platform later adds PKCE-mode network plugin delivery, this section
+collapses into the S3 workflow (see [Workarounds](#workarounds-and-expected-supersession)).
+
+## Configuration model: gateway vs. bootstrap — who owns what
+
+Some concerns appear in **both** the gateway's `gateway.yaml` and this S3 object — most
+visibly models. They are not merged and they are not a union; they sit at **different
+layers**:
+
+- **`gateway.yaml` is the enforcement layer** (the *inference contract*). Its `models:`
+  block defines which model ids exist and how each routes to a Bedrock inference profile;
+  `managed.policies.availableModels` gates them per user group, **enforced server-side**
+  at `/v1/messages`. Changing any of it means rebuilding/redeploying the gateway image —
+  deliberately, since this is the security contract.
+- **The S3 bootstrap object is the presentation layer** (the *client experience*). Its
+  `inferenceModels` controls only which models appear in the Desktop **picker** — it
+  grants nothing. Surface toggles, MCP fleet, egress allowlist, and banner live here,
+  and change at business speed (S3 push, 60s TTL, no redeploy).
+
+The set a user can actually **use** is `gateway models ∩ gateway allowlist`; what they
+**see** is the bootstrap list. Keep `inferenceModels ⊆` the gateway's allowlisted set:
+a model listed here but not allowed by the gateway shows in the picker and then fails
+with `400 ... not in your role's availableModels allowlist`; a model the gateway allows
+but this file omits works but is hidden.
+
+The same two-layer split applies to every concern that appears in both files:
+
+| Concern | Gateway (`gateway.yaml`) — enforced | Bootstrap (S3) — client surface | Watch out |
+| --- | --- | --- | --- |
+| Models | `models:` + `managed.policies.availableModels` | `inferenceModels` (picker) | Keep bootstrap ⊆ gateway allowlist (above) |
+| Tool governance | `managed.policies.cli.permissions` deny/allow rules — enforced for **Claude Code** sessions | `disabledBuiltinTools` / `builtinToolPolicy` / `coworkEgressAllowedHosts` — shape the **Desktop/Cowork** surface | Denying a tool in one layer does not touch the other surface; audit both when asked "is X disabled?" |
+| Telemetry | `telemetry.forward_to` — the gateway **pushes** OTLP env to CLI clients | `otlpEndpoint`/`otlpProtocol`/`otlpHeaders` — point **Desktop/Cowork** at a collector | Two settings, usually the same collector URL; set only one and the other surface reports nothing |
+
+**Similar-sounding, but different things** (the ones that generate support tickets):
+
+- **Three OIDC configurations, two app registrations.** The gateway's `oidc:` block is a
+  *confidential client* (its own app registration + secret, for the device-code flow);
+  this add-on's `ENTRA_TENANT_ID`/`ENTRA_AUDIENCE` describe the *desktop public client*
+  (step 1's registration) whose tokens it validates; the client-side `bootstrapOidc`
+  names that same public client. Cross-wiring the two app ids produces
+  `invalid_token`/AADSTS errors that look like auth outages.
+- **Three "web search" switches, three mechanisms**: `coworkWebSearchEnabled` (the
+  server-side Anthropic search tool in chat), `WebSearch` inside `disabledBuiltinTools`
+  (the client-side built-in tool), and `deny: [WebSearch]` in the gateway's CLI
+  permissions. On Bedrock all three are typically off, for the same reason (see
+  Workarounds) — but they are independent controls.
+- **Expiry knobs that share a word**: the gateway's `session.ttl_hours` is the inference
+  session lifetime (your offboarding lever, ≤1h); this server's 60-second config TTL and
+  the response `expiresAt` are config-freshness only. Tuning one does not affect the other.
+- **No email-domain gate here, by design**: the gateway has `allowed_email_domains`; the
+  bootstrap server deliberately has none — single-tenant token validation (issuer +
+  audience + signature) is its boundary.
+
 ## Day-2 operations
 
 | Task | How |
@@ -222,6 +309,21 @@ collector, set in the S3 config:
   `requestedAccessTokenVersion: 2` and the bare-GUID `.default` scope.
 - **Config change not appearing** → wait for the 60s TTL and fully relaunch the client;
   confirm with `Copy Managed Configuration Report`.
+- **400 `model X is not in your role's availableModels allowlist`** → the gateway's
+  `managed.policies` allowlist must list the exact model `id`s from its `models:` block
+  (e.g. `claude-sonnet-4-6`, not `claude-sonnet-5`). The template's example allowlist and
+  a region-customized `models:` block can silently disagree; align them and rebuild the
+  gateway image.
+- **Requests to the gateway hostname hang over AWS Client VPN** (TCP never connects,
+  despite a correct `ingressCidr`) → also admit the **Client VPN endpoint's security
+  group** on the gateway ALB SG (`aws ec2 authorize-security-group-ingress --group-id
+  <alb-sg> --protocol tcp --port 443 --source-group <vpn-sg>`). Traffic entering via the
+  VPN association ENI carries the VPN SG as its source, which a client-CIDR rule may not
+  match.
+- **S3 config edits appear to have no effect** → confirm the object key is exactly
+  `bootstrap-config.json` (the key the service reads). If the key is absent the service
+  silently falls back to the image-bundled default. The stack seeds the live key at
+  deploy; `Copy Managed Configuration Report` in the app shows which config was served.
 - **VPN connects but the bootstrap fetch times out** (small responses work, large ones
   hang) → MTU blackhole on the tunnel: the AWS VPN Client sets MTU 1500 on connect; if
   the underlying path passes less, TLS responses are silently dropped. Interim fix
@@ -239,7 +341,7 @@ on each Claude Desktop release:
 | Desktop **≥ 1.19367.0** pin | Earlier builds had a bootstrap connector-intake bug (managed/built-in MCP entries delivered but not instantiated) | Already fixed in 1.19367.0; pin exists so fleets don't roll out older builds |
 | `disabledBuiltinTools: ["WebSearch"]` + `coworkWebSearchEnabled: false` in the example config | Amazon Bedrock rejects the server-side `web_search_*` tool type (HTTP 400); disabling avoids burned retries. **Not needed on providers that support server-side search** | Server-side web search becomes available on your inference provider |
 | PKCE mode itself (vs. device-code single-origin bootstrap) | Device-code mode origin-pins the response, which forces reverse-proxying of cross-origin MCP URLs | Native cross-origin MCP delivery in device-code mode, if the platform adds it |
-| Org plugins/skills not delivered here | Network plugin delivery (`organizationPluginsUrl`) is unavailable in PKCE mode; plugins ship via the filesystem org-plugins directory through MDM | PKCE-mode network plugin delivery, if the platform adds it |
+| Org plugins/skills via filesystem, not this server | Network plugin delivery (`organizationPluginsUrl`) is unavailable in PKCE mode; plugins ship via the org-plugins directory through MDM (see [Org plugins and skills](#org-plugins-and-skills-optional)) | PKCE-mode network plugin delivery, if the platform adds it |
 
 ## Security notes
 

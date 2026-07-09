@@ -1,0 +1,106 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/27.0.9 Chrome/134.0.6998.205 Electron/35.4.0 Safari/537.36" version="27.0.9">
+  <diagram id="bootstrap-addon" name="bootstrap-addon">
+    <mxGraphModel dx="3683" dy="1448" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1560" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="aws" value="AWS Account" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=14;fontStyle=1;container=0;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=40;fontColor=#232F3E;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="470" y="60" width="1040" height="880" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc" value="VPC" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=13;fontStyle=1;container=0;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc2;strokeColor=#8C4FFF;fillColor=none;verticalAlign=top;align=left;spacingLeft=40;fontColor=#8C4FFF;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="510" y="140" width="660" height="700" as="geometry" />
+        </mxCell>
+        <mxCell id="laptop" value="Developer laptop&#xa;Claude Desktop / Cowork" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#232F3E;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="330" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp" value="Managed MCP servers&#xa;(native URLs + native auth)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#7f7f7f;dashed=1;fontSize=12;fontColor=#444444;" parent="1" vertex="1">
+          <mxGeometry x="136" y="568" width="250" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="idp" value="Microsoft Entra ID&#xa;(or any OIDC IdP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#232F3E;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="700" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="alb" value="Internal ALB&#xa;HTTPS :443 (ACM)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#945DF2;gradientDirection=north;fillColor=#5A30B5;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elastic_load_balancing;" parent="1" vertex="1">
+          <mxGeometry x="560" y="400" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="gw" value="Claude apps gateway&#xa;ECS Fargate — prerequisite&#xa;(../claude-apps-gateway)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;" parent="1" vertex="1">
+          <mxGeometry x="861" y="220" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="adot" value="ADOT collector&#xa;OTLP :4318 (gateway sample)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;" parent="1" vertex="1">
+          <mxGeometry x="1052" y="148" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="rds" value="Amazon RDS PostgreSQL&#xa;(gateway sessions)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" parent="1" vertex="1">
+          <mxGeometry x="830" y="430" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="bs" value="&lt;span style=&quot;background-color: rgb(255, 255, 255);&quot;&gt;Bootstrap resource server&lt;br&gt;Fargate :8081 — no secrets&lt;/span&gt;" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.fargate;" parent="1" vertex="1">
+          <mxGeometry x="830" y="650" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="bedrock" value="Amazon Bedrock" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4AB29A;gradientDirection=north;fillColor=#116D5B;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.bedrock;" parent="1" vertex="1">
+          <mxGeometry x="1279" y="330" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="S3 config bucket&#xa;bootstrap-config.json&#xa;(edit + push — no redeploy, 60s TTL)" style="sketch=0;outlineConnect=0;fontColor=#D05C17;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" parent="1" vertex="1">
+          <mxGeometry x="1294" y="551" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="ecr" value="Amazon ECR&#xa;bootstrap image" style="sketch=0;outlineConnect=0;fontColor=#D05C17;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecr;" parent="1" vertex="1">
+          <mxGeometry x="1303" y="736" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="HTTPS over VPN / private network" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;strokeWidth=2;fontSize=12;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="laptop" target="alb" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="1. PKCE sign-in (browser)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;dashed=1;fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="laptop" target="idp" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="80" y="480" />
+              <mxPoint x="80" y="660" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" value="4. direct MCP connections" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7f7f7f;dashed=1;fontSize=11;exitX=0.75;exitY=1;entryX=0.75;entryY=0;" parent="1" source="laptop" target="mcp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="3. device-code login + inference&#xa;default → :8080" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;strokeWidth=2;fontSize=11;exitX=1;exitY=0.25;entryX=0;entryY=0.5;" parent="1" source="alb" target="gw" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="2. Bearer token → priority 5&#xa;/user/bootstrap → :8081" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D05C17;strokeWidth=2;fontSize=11;fontColor=#D05C17;fontStyle=1;exitX=1;exitY=0.75;entryX=0;entryY=0.5;" parent="1" source="alb" target="bs" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="OTLP :4318" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7f7f7f;dashed=1;fontSize=11;exitX=0.5;exitY=0;entryX=0;entryY=0.75;" parent="1" source="alb" target="adot" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="599" y="170" />
+              <mxPoint x="1000" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="InvokeModel(Stream)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;strokeWidth=2;fontSize=12;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="gw" target="bedrock" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="5432" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;fontSize=11;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="gw" target="rds" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="config read (60s TTL)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D05C17;strokeWidth=2;fontSize=11;fontColor=#D05C17;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="bs" target="s3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="JWKS (public keys only)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#232F3E;dashed=1;fontSize=11;exitX=0.25;exitY=1;entryX=1;entryY=0.5;" parent="1" source="bs" target="idp" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="850" y="880" />
+              <mxPoint x="453" y="880" />
+              <mxPoint x="453" y="740" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" value="image pull" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D05C17;dashed=1;fontSize=11;fontColor=#D05C17;entryX=1;entryY=0.75;" parent="1" source="ecr" target="bs" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="950" y="773" />
+              <mxPoint x="950" y="709" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" value="Legend&#xa;━ black: claude-apps-gateway sample (prerequisite, unmodified)&#xa;━ orange: this add-on (ClaudeBootstrapStack)&#xa;╌ dashed: OAuth / OIDC / pull flows&#xa;&#xa;Sign-in flow: 1 PKCE (config+MCP) · 2 bearer → /user/bootstrap · 3 gateway device-code (inference) · 4 MCP direct" style="text;html=1;strokeColor=#7f7f7f;fillColor=#f8f8f8;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=11;spacing=8;" parent="1" vertex="1">
+          <mxGeometry x="40" y="830" width="400" height="130" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
