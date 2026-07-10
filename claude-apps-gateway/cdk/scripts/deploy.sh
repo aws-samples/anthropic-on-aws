@@ -33,7 +33,7 @@ echo ""
 # two. These are required for the pass-2 (full) deploy; fail early with a clear
 # message rather than letting `cdk synth` throw a cryptic "Missing required context".
 : "${GATEWAY_HOSTNAME:?set GATEWAY_HOSTNAME in .env (e.g. claude-gateway.internal.company.com)}"
-: "${HOSTED_ZONE_NAME:?set HOSTED_ZONE_NAME in .env (your Route53 private zone, e.g. internal.company.com)}"
+: "${HOSTED_ZONE_NAME:?set HOSTED_ZONE_NAME in .env (your Route53 hosted zone, public or private, e.g. internal.company.com)}"
 : "${CERT_ARN:?set CERT_ARN in .env (imported ACM cert ARN for the GATEWAY_HOSTNAME)}"
 : "${INGRESS_CIDR:?set INGRESS_CIDR in .env (VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR)}"
 : "${BEDROCK_REGION:?set BEDROCK_REGION in .env}"
