@@ -32,38 +32,21 @@ telemetry:
 - Each destination independently opts into metrics, logs, and traces
 - Multiple destinations are supported (e.g., one for metrics, another for logs)
 
-### CloudWatch OTLP (AWS-native)
+### CloudWatch OTLP (AWS-native, no collector)
 
-Amazon CloudWatch now supports native OTLP metrics ingestion. To send gateway telemetry to CloudWatch, you need an OTLP collector (such as the AWS Distro for OpenTelemetry) running in your VPC that forwards to CloudWatch. The collector authenticates to CloudWatch using its IAM role.
+Amazon CloudWatch's native OTLP metrics endpoint accepts requests straight from the gateway — no ADOT collector, no extra ECS service, no ALB listener to run. The endpoint is already HTTPS, and it accepts a **bearer-token API key** as an alternative to SigV4, which is exactly what `telemetry.forward_to`'s `url` + `headers` config already supports:
 
-Example collector setup (ADOT running as ECS sidecar or separate service):
-```yaml
-# ADOT collector config
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-exporters:
-  awsemf:
-    namespace: ClaudeGateway
-    region: us-east-1
-
-service:
-  pipelines:
-    metrics:
-      receivers: [otlp]
-      exporters: [awsemf]
-```
-
-Then point the gateway at the collector:
 ```yaml
 telemetry:
   forward_to:
-    - url: https://adot-collector.internal.company.com:4318
+    # No /v1/metrics suffix — the gateway appends the OTLP signal path itself.
+    - url: https://monitoring.us-east-1.amazonaws.com
+      headers:
+        Authorization: Bearer ${CW_METRICS_API_KEY}
       metrics: true
 ```
+
+See [`docs/deployment.md`](../../docs/deployment.md#telemetry) for how to generate the `CW_METRICS_API_KEY` bearer token and seed it. This endpoint is metrics-only: logs and traces need SigV4 or a separate bearer-token setup, so keep them `false` unless you add that separately.
 
 ### What gets stamped on each metric
 
@@ -133,6 +116,6 @@ The developer doesn't set any of these manually.
 ✅ Gateway rejects loopback OTLP destinations by default (SSRF guard)
 ✅ CLAUDE_GATEWAY_ALLOW_LOOPBACK=1 overrides for local development
 ✅ Per-user attribution proven via /effective endpoint (email, name, spend per period)
-✅ CloudWatch integration documented (via ADOT collector pattern)
+✅ CloudWatch integration documented (direct to the native OTLP metrics endpoint, bearer-token auth, no collector)
 ⚠️ Actual OTLP data flow requires an interactive Claude Code session (CLI sends to gateway, gateway relays to collector)
 ```

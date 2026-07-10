@@ -171,20 +171,6 @@ export class GatewayStack extends cdk.Stack {
     // ALB -> task on 8080 is wired by the pattern; here we only add task -> endpoints.
     vpceSg.connections.allowFrom(taskSg, ec2.Port.tcp(443), 'tasks to VPC endpoints');
 
-    // Collector is reached over the gateway ALB's HTTPS :4318 listener (the gateway
-    // requires https:// for a non-loopback telemetry target, and there's no
-    // custom-CA/skip-verify option for forward_to — so it must be a publicly-trusted
-    // cert, which the ALB already has). Ingress rules for the ALB<->collector hop
-    // are wired after the ALB exists, below.
-    const otelSg = new ec2.SecurityGroup(this, 'OtelSg', {
-      vpc,
-      description: 'ADOT collector: 4318 (OTLP) + 13133 (health) from the ALB only',
-      allowAllOutbound: true,
-    });
-    // The collector also needs the VPC endpoints (CloudWatch logs + metrics) — it
-    // logs to the same group and exports metrics via the monitoring endpoint.
-    vpceSg.connections.allowFrom(otelSg, ec2.Port.tcp(443), 'collector to VPC endpoints');
-
     // ── RDS PostgreSQL 16 (private, not public, encrypted, managed master secret)─
     // Example posture: easy teardown. See README "Productionising" to harden
     // (deletion protection, multi-AZ, longer backups, RETAIN) the moment you
@@ -238,6 +224,15 @@ export class GatewayStack extends cdk.Stack {
         excludePunctuation: true,
       },
     });
+    // CloudWatch Metrics OTLP endpoint bearer token (a service-specific credential
+    // for an IAM user with the CloudWatchAPIKeyAccess policy — see docs/deployment.md
+    // "Telemetry"). Not an AWS-managed secret: create it out of band, then either
+    // `put-secret-value` here or pass it as CW_METRICS_API_KEY at deploy time.
+    const cwMetricsApiKeySecret = new secretsmanager.Secret(this, 'CwMetricsApiKeySecret', {
+      secretName: `${gatewayName}-cw-metrics-api-key`,
+      description: 'CloudWatch Metrics OTLP bearer token (service-specific credential) — set the real value after deploy',
+      secretStringValue: cdk.SecretValue.unsafePlainText('REPLACE_ME'),
+    });
 
     // ── Log group (gateway stderr: audit events + operational logs) ───────────
     const logGroup = new logs.LogGroup(this, 'GatewayLogGroup', {
@@ -252,72 +247,6 @@ export class GatewayStack extends cdk.Stack {
       clusterName: gatewayName,
     });
 
-
-    // ── ADOT collector — its own small Fargate service (metrics-only default) ─
-    // A SEPARATE service, not a sidecar: the gateway's SSRF guard blocks loopback
-    // by default, and a sidecar in the same awsvpc task is loopback. A separate
-    // service on a private IP passes the guard with no CLAUDE_GATEWAY_ALLOW_LOOPBACK.
-    // health_check extension on :13133 gives the ALB target group something to GET
-    // (raw OTLP/:4318 doesn't answer GET). TLS is terminated at the ALB, so the
-    // collector itself listens plain HTTP on 4318.
-    const adotConfig = [
-      'extensions:',
-      '  health_check:',
-      '    endpoint: 0.0.0.0:13133',
-      'receivers:',
-      '  otlp:',
-      '    protocols:',
-      '      http:',
-      '        endpoint: 0.0.0.0:4318',
-      'processors:',
-      '  batch: {}',
-      'exporters:',
-      '  awsemf:',
-      '    namespace: ClaudeGateway',
-      '    log_group_name: /claude-gateway/otel-metrics',
-      'service:',
-      '  extensions: [health_check]',
-      '  pipelines:',
-      '    metrics:',
-      '      receivers: [otlp]',
-      '      processors: [batch]',
-      '      exporters: [awsemf]',
-    ].join('\n');
-
-    const otelTaskDef = new ecs.FargateTaskDefinition(this, 'OtelTaskDef', {
-      cpu: 256,
-      memoryLimitMiB: 512,
-    });
-    otelTaskDef.taskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        actions: [
-          'cloudwatch:PutMetricData',
-          'logs:CreateLogGroup',
-          'logs:CreateLogStream',
-          'logs:PutLogEvents',
-          'logs:DescribeLogGroups',
-          'logs:DescribeLogStreams',
-        ],
-        resources: ['*'],
-      }),
-    );
-    otelTaskDef.addContainer('aws-otel-collector', {
-      image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/aws-otel-collector:latest'),
-      environment: { AOT_CONFIG_CONTENT: adotConfig },
-      portMappings: [{ containerPort: 4318 }, { containerPort: 13133 }],
-      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'otel', logGroup }),
-    });
-    const otelService = new ecs.FargateService(this, 'OtelService', {
-      cluster,
-      taskDefinition: otelTaskDef,
-      desiredCount: 1,
-      minHealthyPercent: 0, // single fire-and-forget collector; fine to replace in place
-      circuitBreaker: { rollback: true }, // fail a bad deploy fast instead of hanging for hours
-      securityGroups: [otelSg],
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-    });
-    // OTLP is fire-and-forget: if the collector is down, inference is unaffected.
-    // The collector is registered to the gateway ALB's :4318 listener below.
 
     // ── Gateway task role: dual-ARN Bedrock policy ────────────────────────────
     // BOTH inference-profile (global.anthropic.*) AND foundation-model (anthropic.*)
@@ -383,6 +312,7 @@ export class GatewayStack extends cdk.Stack {
           OIDC_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oidcSecret),
           DB_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
           DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+          CW_METRICS_API_KEY: ecs.Secret.fromSecretsManager(cwMetricsApiKeySecret),
         },
         logDriver: ecs.LogDrivers.awsLogs({ streamPrefix: 'gateway', logGroup }),
       },
@@ -403,36 +333,6 @@ export class GatewayStack extends cdk.Stack {
       healthyHttpCodes: '200',
     });
 
-    // ── Telemetry: HTTPS :4318 listener on the gateway ALB → ADOT collector ────
-    // The gateway requires https:// for a non-loopback forward_to and offers no
-    // custom-CA/skip-verify for it, so the collector must sit behind the ALB's
-    // publicly-trusted ACM cert. TLS terminates at the ALB; the collector speaks
-    // plain OTLP/HTTP on 4318 behind it. The stamped gateway.yaml points
-    // telemetry.forward_to at https://<public_url host>:4318.
-    const otelListener = fargate.loadBalancer.addListener('OtelListener', {
-      port: 4318,
-      protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [certificate],
-      sslPolicy: elbv2.SslPolicy.TLS13_RES,
-    });
-    otelListener.addTargets('OtelTargets', {
-      port: 4318,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targets: [otelService.loadBalancerTarget({ containerName: 'aws-otel-collector', containerPort: 4318 })],
-      healthCheck: { port: '13133', path: '/', healthyHttpCodes: '200' },
-      deregistrationDelay: cdk.Duration.seconds(10),
-    });
-    // Only the gateway task SG may reach the ALB's :4318 listener (developers hit 443 only).
-    fargate.loadBalancer.connections.allowFrom(taskSg, ec2.Port.tcp(4318), 'gateway to ALB (OTLP/HTTPS)');
-    // ALB → collector on 4318 (OTLP) and 13133 (health).
-    otelSg.connections.allowFrom(fargate.loadBalancer, ec2.Port.tcp(4318), 'ALB to collector (OTLP)');
-    otelSg.connections.allowFrom(fargate.loadBalancer, ec2.Port.tcp(13133), 'ALB to collector (health)');
-
-    new cdk.CfnOutput(this, 'OtelForwardTo', {
-      value: `https://${recordHost}:4318`,
-      description: 'gateway.yaml telemetry.forward_to (ADOT collector via the gateway ALB)',
-    });
-
     // ── Outputs ───────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'AlbDnsName', { value: fargate.loadBalancer.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'PublicUrl', { value: publicUrl });
@@ -445,6 +345,12 @@ export class GatewayStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CertFingerprintHint', {
       value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,
       description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
+    });
+    new cdk.CfnOutput(this, 'CwMetricsApiKeySecretName', {
+      value: cwMetricsApiKeySecret.secretName,
+      description:
+        'Set this secret to a CloudWatch Metrics API key (iam create-service-specific-credential ' +
+        '--service-name cloudwatch.amazonaws.com) before telemetry works — see docs/deployment.md "Telemetry".',
     });
   }
 }

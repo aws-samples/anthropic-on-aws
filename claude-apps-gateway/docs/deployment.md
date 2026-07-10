@@ -2,8 +2,8 @@
 
 The canonical install walkthrough for this example: prerequisites, then one of two
 deployment tracks, then verification. Both tracks provision the **same** ECS Fargate
-deployment (internal ALB, RDS PostgreSQL, ECR, Secrets Manager, IAM task role,
-ADOT telemetry collector); pick by what you want:
+deployment (internal ALB, RDS PostgreSQL, ECR, Secrets Manager, IAM task role);
+pick by what you want:
 
 | Track | Tool | Best when | Teardown |
 |---|---|---|---|
@@ -113,8 +113,8 @@ What it does, in order: stamps `gateway.yaml` from the template (refusing to
 continue if any placeholder is unresolved), downloads the pinned `claude` binary and
 verifies its SHA-256 against the GPG-signed release manifest, builds and pushes the
 distroless image, then provisions VPC + endpoints, RDS, Secrets Manager, the
-internal IPv4 ALB (idle timeout 3600s, `/healthz` health check), the ECS services
-(gateway + ADOT collector), DNS, and IAM.
+internal IPv4 ALB (idle timeout 3600s, `/healthz` health check), the gateway ECS
+service, DNS, and IAM.
 
 It is **idempotent** — re-run it any time to roll a new image or reconcile drift.
 It finishes by printing the ALB hostname, the OAuth redirect URI to register, and
@@ -239,12 +239,55 @@ Publish the cert's SHA-256 fingerprint (printed by `setup.sh`, or the
 `CertFingerprintHint` stack output) so developers can confirm the prompt on first
 `/login`. (A public, browser-trusted ACM cert shows no prompt — see prerequisite 2.)
 
+## Telemetry
+
+`gateway.yaml`'s `telemetry.forward_to` points straight at CloudWatch's native
+OTLP metrics endpoint (`https://monitoring.<region>.amazonaws.com/v1/metrics`) —
+no collector to run. It authenticates with a CloudWatch Metrics API key (a
+bearer token), not SigV4: the gateway attaches a static `Authorization` header,
+it doesn't sign requests with AWS credentials.
+
+Both tracks provision a Secrets Manager secret (`<project>-cw-metrics-api-key`)
+as a `REPLACE_ME` placeholder — telemetry stays off until you set it, same
+pattern as the OIDC client secret. Generate the token:
+
+```bash
+# One-time IAM user + managed policy (or use the AWS console "Generate API key"
+# quick start under CloudWatch > Settings > Global, which does this for you).
+aws iam create-user --user-name cloudwatch-metrics-api-key-user
+aws iam attach-user-policy --user-name cloudwatch-metrics-api-key-user \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchAPIKeyAccess
+
+aws iam create-service-specific-credential \
+  --user-name cloudwatch-metrics-api-key-user \
+  --service-name cloudwatch.amazonaws.com \
+  --credential-age-days 90
+# → note the ServiceCredentialSecret value; it can't be retrieved again.
+```
+
+Then seed it and roll the service:
+
+```bash
+# Track A
+aws secretsmanager put-secret-value --secret-id claude-gateway-cw-metrics-api-key \
+  --secret-string '<ServiceCredentialSecret>'
+aws ecs update-service --cluster claude-gateway --service claude-gateway --force-new-deployment
+
+# Track B — same secretsmanager command with the CDK-stack secret name
+# (CwMetricsApiKeySecretName output), then force-new-deployment as above.
+```
+
+Metrics only: the bearer-token endpoint doesn't accept logs or traces — those
+need SigV4 or a separate logs-specific bearer token, out of scope here. See
+[`workshop/03-telemetry/README.md`](../workshop/03-telemetry/README.md) and
+[`gotchas.md`](gotchas.md) §1 for more.
+
 ## Cost expectations
 
-A live deploy of this example idles at roughly **US$6–8/day** (us-east-1,
-defaults). The two biggest line items are easy to miss: the **five interface VPC
-endpoints × two AZs (~$2.40/day)** and the **NAT gateway (~$1.15/day + data)**;
-Fargate (2× gateway + 1× collector) is ~$1.50/day, the ALB ~$0.60/day, RDS
+A live deploy of this example idles at roughly **US$5–7/day** (us-east-1,
+defaults). The two biggest line items are easy to miss: the **six interface VPC
+endpoints × two AZs (~$2.90/day)** and the **NAT gateway (~$1.15/day + data)**;
+Fargate (2× gateway) is ~$1/day, the ALB ~$0.60/day, RDS
 `db.t4g.micro` ~$0.45/day. If you build the Client VPN sketch from
 [`connectivity.md`](connectivity.md), add ~$2.40/day per subnet association plus
 $0.05/h per connected client. Tear down when idle ([`teardown.md`](teardown.md)).
