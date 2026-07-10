@@ -221,7 +221,7 @@ All values come from `.env`. The CDK code reads them at deploy time.
 
 | Variable | What it is |
 |----------|-----------|
-| `GATEWAY_NAME` | Prefix for all resource names (cluster, service, ALB, RDS, etc.) |
+| `GATEWAY_NAME` | Prefix for the stack's named resources (repo, cluster, service, secrets, log group); `deploy.sh` passes it to the `gatewayName` context so the stack matches |
 | `GATEWAY_HOSTNAME` | The full DNS name developers connect to |
 | `HOSTED_ZONE_ID` | Route53 zone ID where the DNS record is created (optional if managing DNS externally) |
 | `HOSTED_ZONE_NAME` | Route53 zone name (optional if managing DNS externally) |
@@ -232,6 +232,8 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `BEDROCK_REGION` | Region for Bedrock API calls |
 | `CERT_ARN` | Imported ACM cert ARN for `GATEWAY_HOSTNAME` (required; `deploy.sh` maps it to the `certArn` context) |
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
+| `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
+| `CREATE_VPC_ENDPOINTS` | Optional. Set `false` with `VPC_ID` when the reused VPC already has the interface endpoints; maps to `createVpcEndpoints` |
 
 ### CDK context variables
 

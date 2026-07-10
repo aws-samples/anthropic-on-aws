@@ -37,11 +37,17 @@ echo ""
 : "${INGRESS_CIDR:?set INGRESS_CIDR in .env (VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR)}"
 : "${BEDROCK_REGION:?set BEDROCK_REGION in .env}"
 
+# GATEWAY_NAME is the name prefix for the stack's resources (repo, cluster, service,
+# secrets, log group). The stack honors it via -c gatewayName, so any value works —
+# but it MUST match what CDK creates, hence we thread the same value everywhere below.
+GATEWAY_NAME="${GATEWAY_NAME:-claude-gateway}"
+
 # Map .env → CDK context. deploy.sh builds the image as :latest via CodeBuild, so
 # we pin imageTag=latest to match — otherwise the stack defaults to the pinned
 # claude version tag, which this convenience path never pushes.
 CDK_CTX=(
   -c "region=${BEDROCK_REGION}"
+  -c "gatewayName=${GATEWAY_NAME}"
   -c "publicUrl=https://${GATEWAY_HOSTNAME}"
   -c "zoneName=${HOSTED_ZONE_NAME}"
   -c "ingressCidr=${INGRESS_CIDR}"
@@ -53,6 +59,11 @@ CDK_CTX=(
 if [ -n "${HOSTED_ZONE_ID:-}" ] && [ "${HOSTED_ZONE_ID}" != "ZXXXXXXXXXXXXXXXXX" ]; then
   CDK_CTX+=(-c "zoneId=${HOSTED_ZONE_ID}")
 fi
+# Optional: reuse an existing VPC (e.g. to keep a Client VPN association intact).
+# If that VPC already has the Bedrock/Secrets Manager/ECR/CloudWatch/S3 endpoints,
+# also set CREATE_VPC_ENDPOINTS=false — the stack refuses to recreate them.
+[ -n "${VPC_ID:-}" ] && CDK_CTX+=(-c "vpcId=${VPC_ID}")
+[ -n "${CREATE_VPC_ENDPOINTS:-}" ] && CDK_CTX+=(-c "createVpcEndpoints=${CREATE_VPC_ENDPOINTS}")
 
 # --- Step 1: CDK pass 1 — ECR repository only ---
 # The ECS service can't start until its image exists, so the stack splits the
@@ -67,11 +78,22 @@ echo ""
 echo "Step 2/5: Reading stack outputs..."
 ECR_URI=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
   --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)
-echo "   ECR: $ECR_URI"
+# The repo name the stack actually created, taken from the URI — this is what the
+# CodeBuild IAM policy and docker tags must reference (never assume GATEWAY_NAME
+# alone, so a name mismatch with the stack can't break the push).
+REPO_NAME="${ECR_URI##*/}"
+echo "   ECR: $ECR_URI (repo: $REPO_NAME)"
 echo ""
 
 # --- Step 3: Build and push image ---
 echo "Step 3/5: Building and pushing gateway image..."
+
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+BUCKET="claude-gateway-build-${ACCOUNT_ID}"
+# Create the S3 build bucket BEFORE the CodeBuild project, which references it as
+# its source location — create-project fails with "Bucket ... does not exist"
+# otherwise (only bites a first-ever run, where the project doesn't yet exist).
+aws s3 mb "s3://$BUCKET" 2>/dev/null || true
 
 # Check if CodeBuild project exists, create if not
 if ! aws codebuild batch-get-projects --names claude-gateway-build --query "projects[0].name" --output text 2>/dev/null | grep -q claude-gateway-build; then
@@ -81,24 +103,17 @@ if ! aws codebuild batch-get-projects --names claude-gateway-build --query "proj
   aws iam create-role --role-name claude-gateway-codebuild \
     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' 2>/dev/null || true
 
-  ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
   aws iam put-role-policy --role-name claude-gateway-codebuild --policy-name build-perms \
-    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}\",\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${BEDROCK_REGION}:${ACCOUNT_ID}:repository/${GATEWAY_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}" 2>/dev/null
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}\",\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${BEDROCK_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}" 2>/dev/null
 
   sleep 10  # Wait for IAM propagation
 
   aws codebuild create-project --name claude-gateway-build \
-    --source "{\"type\":\"S3\",\"location\":\"claude-gateway-build-${ACCOUNT_ID}/\",\"buildspec\":\"buildspec.yml\"}" \
+    --source "{\"type\":\"S3\",\"location\":\"${BUCKET}/\",\"buildspec\":\"buildspec.yml\"}" \
     --artifacts '{"type":"NO_ARTIFACTS"}' \
     --environment '{"type":"LINUX_CONTAINER","image":"aws/codebuild/standard:7.0","computeType":"BUILD_GENERAL1_SMALL","privilegedMode":true}' \
     --service-role "arn:aws:iam::${ACCOUNT_ID}:role/claude-gateway-codebuild" >/dev/null
 fi
-
-# Upload build artifacts to S3
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-BUCKET="claude-gateway-build-${ACCOUNT_ID}"
-aws s3 mb "s3://$BUCKET" 2>/dev/null || true
 
 # Find the linux binary
 LINUX_BINARY=""
@@ -121,8 +136,8 @@ phases:
   build:
     commands:
       - chmod +x claude
-      - docker build -t ${GATEWAY_NAME} .
-      - docker tag ${GATEWAY_NAME}:latest ${ECR_URI}:latest
+      - docker build -t ${REPO_NAME} .
+      - docker tag ${REPO_NAME}:latest ${ECR_URI}:latest
   post_build:
     commands:
       - docker push ${ECR_URI}:latest
@@ -157,7 +172,11 @@ session:
   ttl_hours: 1
 
 store:
-  postgres_url: \${GATEWAY_POSTGRES_URL}
+  # Compose the URL from the env vars the CDK task def actually injects (DB_HOST,
+  # DB_USER, DB_PASSWORD) — matches gateway.yaml.template. The CDK task def never
+  # sets GATEWAY_POSTGRES_URL, so referencing it here left the store unconfigured.
+  postgres_url: postgres://\${DB_HOST}:5432/claude_gateway?sslmode=require
+  username: \${DB_USER}
   password: \${DB_PASSWORD}
 
 upstreams:
