@@ -10,7 +10,10 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STAMP="${REPO_ROOT}/stamp-config.sh"
+STAMP="${REPO_ROOT}/cdk/scripts/stamp-config.sh"
+# The script defaults TEMPLATE to ./gateway.yaml.template (CWD-relative), so pin
+# it to the tracked template regardless of where the tests are run from.
+export TEMPLATE="${REPO_ROOT}/cdk/gateway.yaml.template"
 PASS=0
 FAIL=0
 

@@ -52,16 +52,38 @@ target. A natural AWS design points it at a collector over a private Cloud Map n
 claude gateway: EACCES: permission denied, open '/etc/claude/gateway.yaml'
 ```
 
-**Why:** the distroless image runs as the `nonroot` uid (65532). If your build
-stamps `gateway.yaml` via `mktemp` (which creates files at mode `0600`, owner-only)
-and then `COPY`s it, the file lands root-owned and unreadable by `nonroot`.
+**Why:** the distroless image runs as the `nonroot` uid (65532). Two ways to
+land here: the file itself isn't readable, *or* its parent dir isn't traversable.
 
-**Fix:** `COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml` in the Dockerfile.
-Don't rely on the host file's mode.
+- If your build stamps `gateway.yaml` via `mktemp` (mode `0600`, owner-only) and
+  then `COPY`s it, the file lands root-owned and unreadable by `nonroot`.
+- The obvious one-liner fix — `COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml`
+  — is **not enough on Docker/BuildKit**: the `--chmod` also stamps the
+  *auto-created* `/etc/claude` parent at `0644`, dropping its traverse (execute)
+  bit, so `nonroot` can't enter the directory → same `EACCES`. (podman's builder
+  doesn't propagate the mode to the parent, so the one-liner *appears* to work
+  there — an easy way to ship this bug if you only test on podman.)
+
+**Fix:** assemble `/etc/claude` in a small builder stage with explicit modes
+(dir `0755`, file `0644`), then copy the finished tree into the shell-less
+distroless image — `COPY --from` preserves the modes verbatim on every builder:
+
+```dockerfile
+FROM debian:12-slim AS config
+COPY gateway.yaml /tmp/gateway.yaml
+RUN mkdir -p /out/etc/claude \
+ && cp /tmp/gateway.yaml /out/etc/claude/gateway.yaml \
+ && chmod 0755 /out/etc/claude \
+ && chmod 0644 /out/etc/claude/gateway.yaml
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY --from=config /out/etc/claude /etc/claude
+```
 
 > Takeaway: any file you bake into a non-root distroless image needs an
-> explicit readable mode. This bites silently — the build succeeds, the container
-> only fails at runtime.
+> explicit readable mode **and** a traversable parent dir. This bites silently —
+> the build succeeds, the container only fails at runtime — and it's
+> builder-dependent, so a green build on one engine doesn't clear the other.
 
 ---
 
@@ -248,12 +270,15 @@ cert, developers need the CA in their OS trust store or `NODE_EXTRA_CA_CERTS` se
 - **EC2 security-group rule *descriptions* reject `>`.** Allowed charset is
   `a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*`. Using `->` arrows in a rule description fails
   with `Invalid rule description`. Use `to`.
-- **`docker` isn't required — `podman` works, but drop `--provenance=false`.** On an
-  arm64 Mac, podman built the `linux/amd64` image via its VM's emulation and pushed
-  to ECR fine. But `--provenance=false` is a **buildx-only** flag — `podman build`
-  rejects it with `unknown flag: --provenance`. Podman emits a plain (non-OCI-index)
-  image by default, so just omit the flag when building with podman. (The flag
-  exists to stop buildx emitting an OCI image index that some runtimes reject.)
+- **`docker` isn't required — `podman`/`finch` work, and `setup.sh` handles the
+  flag difference.** On an arm64 Mac, podman built the `linux/amd64` image via its
+  VM's emulation and pushed to ECR fine. The trap: `--provenance=false` is a
+  **buildx-only** flag — `podman build` rejects it with `unknown flag: --provenance`.
+  (The flag exists to stop buildx emitting an OCI image index that some runtimes
+  reject; podman emits a plain image by default, so it simply doesn't need it.)
+  `setup.sh` auto-detects `docker`/`podman`/`finch` (override with
+  `CONTAINER_TOOL=…`) and only passes `--provenance=false` to docker — if you
+  build by hand with podman, omit the flag yourself.
 - **`setup.sh` needs bash 4+, but macOS ships bash 3.2.** The script uses no
   bash-4-isms now (an earlier `mapfile` was replaced with a `while read` loop), but
   if you extend it, avoid `mapfile`/`readarray`, `declare -A`, and `${var,,}`/`${var^^}`

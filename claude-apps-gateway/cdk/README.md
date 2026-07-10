@@ -79,7 +79,31 @@ tar -xzf claude-gateway-*-all.tar.gz linux-x64/claude
 
 Or download it via the standard installer on a Linux machine.
 
+## TLS: bring an ACM cert
+
+The gateway needs a TLS cert on the internal ALB. Import one with `certArn` and the
+ALB uses it as-is. On first `/login` the CLI **pins the cert's SHA-256 fingerprint**
+and prompts the developer to confirm it — this is intended behavior (the CLI pinning
+the authentic gateway). The stack prints the command to read that fingerprint (the
+`CertFingerprintHint` output; `setup.sh` prints it too) so you can publish it.
+
+**Want no first-login prompt?** Request a **public** ACM cert for the gateway
+hostname, DNS-validate it, and pass its ARN as `certArn`. ACM public certs validate
+by **DNS, not endpoint reachability**, so the cert is browser-trusted (no prompt, no
+`NODE_EXTRA_CA_CERTS`, no keychain import) while the ALB stays internal — DNS
+validation never needs the hostname to be publicly resolvable.
+
 ## How to deploy
+
+> [!IMPORTANT]
+> The canonical, verified walkthrough (for both this CDK track and `setup.sh`) is
+> [`../docs/deployment.md`](../docs/deployment.md) — a two-pass `cdk deploy` driven
+> by the [context variables below](#cdk-context-variables), with the image built
+> from the tracked distroless `Dockerfile` and SHA-verified binary. The
+> `.env` + `deploy.sh` flow in the steps below is a convenience path: `deploy.sh`
+> builds the image via CodeBuild using its own inline Dockerfile and config, and
+> `npx cdk deploy` still needs the required context values supplied (e.g. in
+> `cdk.context.json`).
 
 ### Step 1: Configure
 
@@ -186,6 +210,26 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
 | `BEDROCK_REGION` | Region for Bedrock API calls |
+
+### CDK context variables
+
+The stack itself is parameterized by CDK context (`-c key=value`, or set them in
+`cdk.json` / `cdk.context.json`). The two-pass deploy exists because the ECS service
+needs the image to exist: pass 1 (`-c imageReady=false`) creates just the ECR repo,
+pass 2 (default) deploys the full stack.
+
+| Context | Pass | Required | Meaning |
+|---|---|---|---|
+| `region` | both | no | AWS region (default `CDK_DEFAULT_REGION` or `us-east-1`) |
+| `imageReady` | both | no | `false` = pass 1 (repo only); omit/`true` = pass 2 |
+| `publicUrl` | 2 | **yes** | Internal ALB https origin, e.g. `https://claude-gateway.example.com` |
+| `imageTag` | 2 | no | ECR tag (default = pinned claude version) |
+| `certArn` | 2 | **yes** | ACM cert ARN for `publicUrl`'s hostname (imported) |
+| `zoneName` | 2 | **yes** | Route 53 hosted-zone name, e.g. `example.com` |
+| `zoneId` | 2 | no | Hosted-zone id (looked up from `zoneName` if omitted) |
+| `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
+| `vpcId` | 2 | no | Import an existing VPC instead of creating one |
+| `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch/S3 endpoints — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy |
 
 ## Before going to production
 

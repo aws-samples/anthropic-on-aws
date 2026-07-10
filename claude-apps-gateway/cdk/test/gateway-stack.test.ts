@@ -21,7 +21,7 @@ const REGION = 'us-east-1';
 const PASS2: GatewayStackProps = {
   env: { account: ACCOUNT, region: REGION },
   imageReady: true,
-  imageTag: '2.1.197',
+  imageTag: '2.1.199',
   publicUrl: 'https://claude-gateway.example.com',
   certArn: `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/abc-123`,
   zoneName: 'example.com',
@@ -36,7 +36,7 @@ function synth(props: GatewayStackProps): Template {
 }
 
 describe('pass 1 (imageReady: false) — ECR repo only', () => {
-  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.197' });
+  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.199' });
 
   test('creates the ECR repository', () => {
     template.resourceCountIs('AWS::ECR::Repository', 1);
@@ -131,6 +131,21 @@ describe('pass 2 (imageReady: true) — full stack', () => {
       Name: 'claude-gateway-oidc-client-secret',
       SecretString: 'REPLACE_ME',
     });
+  });
+});
+
+describe('TLS: imported ACM cert', () => {
+  test('the cert is imported (no in-stack cert resource) and the fingerprint hint is output', () => {
+    // fromCertificateArn imports an existing cert, so the stack synthesizes NO
+    // AWS::CertificateManager::Certificate. The CLI pins the leaf by SHA-256 on
+    // first /login, so the stack emits the command to read that fingerprint.
+    const template = synth(PASS2);
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
+    template.hasOutput('CertFingerprintHint', {});
+  });
+
+  test('pass 2 fails fast without certArn', () => {
+    expect(() => synth({ ...PASS2, certArn: undefined })).toThrow(/certArn/);
   });
 });
 

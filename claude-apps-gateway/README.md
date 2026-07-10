@@ -82,7 +82,7 @@ You will need to provide: the OIDC issuer URL, a client ID, and a client secret.
 You need an AWS account where they can create the following resources:
 - **Compute**: ECS cluster (Fargate), EKS cluster, or EC2 instances
 - **Database**: An RDS PostgreSQL instance (db.t4g.micro is sufficient; the gateway stores only a few KB of sign-in state)
-- **Networking**: A VPC with private subnets, an internal ALB, and a TLS certificate from ACM
+- **Networking**: A VPC with private subnets, an internal ALB, and an imported ACM TLS certificate (use a public ACM cert to skip the first-login fingerprint prompt — see [`cdk/README.md`](cdk/README.md))
 - **IAM role**: The gateway's task role needs `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` permissions on inference-profile and foundation-model ARNs
 
 The IAM policy for the task role looks like:
@@ -107,6 +107,8 @@ Cross-region inference profiles (e.g., `us.anthropic.claude-sonnet-4-6`) require
 Both the gateway server (Linux binary) and each developer's Claude Code CLI must be on v2.1.195 or later. This is the first version that includes the `claude gateway` subcommand and the Cloud gateway login flow.
 
 Developers can update with `claude update`. The gateway server uses the same binary, downloaded from the Claude Code release page and packaged into a container image.
+
+Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot. The worked example in this repo pins **2.1.199** to get both. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
 
 ### 5. Device management (for pushing settings to developers)
 
@@ -181,6 +183,17 @@ managed:
 - `availableModels` is enforced both client-side (model picker) and server-side (400 on unauthorized model)
 - `disableBypassPermissionsMode: disable` prevents developers from using `--dangerously-skip-permissions`
 - Settings refresh hourly; policy changes reach developers within an hour of redeployment
+
+**What's enforced server-side vs. client-side:** the gateway sits on the inference path (`/v1/messages`), so it hard-enforces anything about a model request; it cannot enforce what happens on a developer's machine.
+
+| Control | Enforced | Bypassable by a patched client? |
+|---|---|---|
+| Identity / authentication | Server-side (signed token) | No |
+| Model access (`availableModels`) | Server-side at `/v1/messages` → `400` | No |
+| Spend caps | Server-side | No |
+| Tool permissions / hooks / env (`cli` managed settings) | **Client-side** (delivered to the CLI) | **Yes** |
+
+Tool/permission policies are defense-in-depth (a patched client can ignore them); for a hard boundary use MDM-locked settings on managed devices. The governance guarantees are the server-side rows.
 
 ---
 
@@ -262,7 +275,7 @@ models:
 ```
 
 **Key points:**
-- Failover is automatic: 5xx, 429, and timeouts try the next upstream; 4xx does not
+- Failover is automatic: 5xx, 429, and timeouts try the next upstream; 4xx does not (except on gateway v2.1.198+, where a `404` also fails over — so a model missing from one upstream falls through to one that has it)
 - Cross-region is supported (gateway in us-east-1, Amazon Bedrock in eu-west-1)
 - Cross-account is supported (each upstream can have different credentials)
 - `auth: {}` uses the AWS default credential chain (ECS task role, IRSA, instance profile)
@@ -334,7 +347,7 @@ upstreams:    # Where inference goes (provider: bedrock, region, auth)
 | EKS + Internal Ingress | Customers already on Kubernetes. Use IRSA for Amazon Bedrock auth. |
 | EC2 + Internal ALB | Simple. Instance profile for Amazon Bedrock auth. |
 
-**We have a [CDK stack](cdk/)** that deploys the full setup (ECS + ALB + RDS + IAM + DNS) in one command.
+**We have a [CDK stack](cdk/)** that deploys the full setup (ECS + ALB + RDS + IAM + DNS), and an idempotent [`setup.sh`](cdk/scripts/setup.sh) that provisions the same deployment via the AWS CLI. The step-by-step walkthrough for both — prerequisites, deploy, verify — is **[`docs/deployment.md`](docs/deployment.md)**.
 
 ---
 
@@ -415,8 +428,10 @@ Existing signed-in developers keep working (tokens validate locally). New sign-i
 
 | Resource | Link |
 |----------|------|
+| **Deployment guide (this repo)** | [`docs/deployment.md`](docs/deployment.md) |
+| Field guide to deployment traps (this repo) | [`docs/gotchas.md`](docs/gotchas.md) |
 | Official docs | https://code.claude.com/docs/en/claude-apps-gateway |
 | Config reference | https://code.claude.com/docs/en/claude-apps-gateway-config |
 | Deployment & ops | https://code.claude.com/docs/en/claude-apps-gateway-deploy |
 | Spend limits | https://code.claude.com/docs/en/claude-apps-gateway-spend-limits |
-| CDK template | `../claude-gateway-cdk/` |
+| CDK stack (this repo) | [`cdk/`](cdk/) |

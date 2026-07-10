@@ -4,7 +4,8 @@
 # dependencies are glibc libraries, so `cc-debian12` satisfies them with no shell
 # and no package manager. We run the binary directly — no wrapper script — which
 # is exactly why config is baked in rather than written at start by an entrypoint
-# (a wrapper would need a shell this image doesn't have). See ADR 0001.
+# (a wrapper would need a shell this image doesn't have). See the header of
+# gateway.yaml.template for why config is baked into the image.
 #
 # Build context must already contain (both staged by setup.sh / the CDK build step
 # BEFORE `docker build`):
@@ -15,6 +16,23 @@
 # --provenance=false; the binary is linux/amd64):
 #   docker build --platform=linux/amd64 --provenance=false -t <repo>:<tag> .
 
+# ── Stage 1: assemble /etc/claude with deterministic perms ──
+# Distroless has no shell to chmod in, and a single
+# `COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml` is not enough: on
+# Docker/BuildKit the --chmod also stamps the auto-created /etc/claude parent at
+# 0644 (no traverse bit), so the nonroot uid 65532 can't enter the dir → EACCES
+# crash-loop at boot. (podman's builder doesn't propagate the mode, which is why
+# the single-COPY form appears to work there.) Build the tree here with explicit
+# dir/file modes and copy the finished directory across — COPY --from preserves
+# these modes verbatim on every builder. See docs/gotchas.md §2.
+FROM debian:12-slim AS config
+COPY gateway.yaml /tmp/gateway.yaml
+RUN mkdir -p /out/etc/claude \
+ && cp /tmp/gateway.yaml /out/etc/claude/gateway.yaml \
+ && chmod 0755 /out/etc/claude \
+ && chmod 0644 /out/etc/claude/gateway.yaml
+
+# ── Stage 2: distroless runtime ──
 FROM gcr.io/distroless/cc-debian12:nonroot
 
 # The pinned native binary. setup.sh/CDK verify its SHA256 against the release's
@@ -22,11 +40,10 @@ FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --chmod=0755 claude /usr/local/bin/claude
 
 # The stamped config (real literal values; only secrets + DB facts remain as
-# ${VAR} for boot-time env expansion). Read once at boot, never written.
-# --chmod=0644 so the nonroot uid can read it regardless of the host file's mode
-# (stamp-config.sh writes via mktemp, which is 0600 — without this the gateway
-# fails to boot with EACCES opening /etc/claude/gateway.yaml).
-COPY --chmod=0644 gateway.yaml /etc/claude/gateway.yaml
+# ${VAR} for boot-time env expansion). Read once at boot, never written. Copied
+# from the config stage as a finished tree: /etc/claude lands 0755, gateway.yaml
+# 0644 — readable and traversable by the nonroot uid regardless of builder.
+COPY --from=config /out/etc/claude /etc/claude
 
 # Minimal images have no writable home; the gateway needs a writable state dir.
 ENV CLAUDE_CONFIG_DIR=/tmp/.claude

@@ -4,8 +4,7 @@ The primary track in this repo is **ECS Fargate** (`setup.sh` and `cdk/`). EKS i
 viable alternative; these notes capture what changes. They are **notes, not a
 turnkey deploy** — adopt them if EKS is already your platform.
 
-Why Fargate is primary, and the one EKS gotcha it sidesteps, is in
-[`adr/0002-ecs-fargate-as-primary-compute.md`](adr/0002-ecs-fargate-as-primary-compute.md):
+Why Fargate is primary comes down to one EKS gotcha it sidesteps:
 on **EC2-backed** node groups the default **IMDSv2 hop limit of 1** blocks the
 in-container metadata call, so the AWS SDK's credential chain can't resolve the
 role and **every Bedrock request returns 502** (`Could not load credentials from
@@ -45,8 +44,8 @@ chain — no static keys.
 ### 2. Config + secrets: the Secrets Store CSI driver (file mounts)
 
 This is **the one place a file mount is the natural AWS answer**, so the EKS track
-diverges from the ECS "bake config + secrets-as-env-vars" decision
-([`adr/0001`](adr/0001-bake-config-into-image-secrets-as-env.md)). With the
+diverges from the ECS "bake config + secrets-as-env-vars" decision (see the
+`gateway.yaml.template` header for that rationale). With the
 [AWS Secrets Store CSI driver](https://github.com/aws/secrets-store-csi-driver-provider-aws)
 you can mount **both** the config and the secrets as files and use the
 `${file:/path}` expansion form the gateway supports:

@@ -55,6 +55,12 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways �
 - **Container image:** distroless glibc base (`gcr.io/distroless/cc-debian12:nonroot`) around the
   pinned `linux-x64` native `claude` binary; build `--platform=linux/amd64 --provenance=false`
   (buildx OCI image indexes are rejected by some runtimes). `CLAUDE_CONFIG_DIR=/tmp/.claude`.
+- **TLS is an imported ACM cert.** `CERT_ARN`/`certArn` is required for pass 2; the ALB
+  uses it as-is and the CLI pins its SHA-256 fingerprint on first `/login` (intended 1p
+  behavior — the CLI pinning the authentic gateway). To skip the prompt, import a
+  **public** ACM cert: DNS validation needs no public endpoint, so the ALB stays internal
+  and the cert is browser-trusted. Keep `setup.sh` and CDK in sync. See the "TLS: bring an
+  ACM cert" section of `cdk/README.md`.
 
 ## Conventions
 
@@ -79,8 +85,11 @@ No live AWS account is wired up here, so verification is local/static:
 - Tests (run these after changing the stack or `stamp-config.sh`, and add cases when
   fixing a deployment trap): `cd cdk && npm test` (Jest + CDK `assertions` over the
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
-  `:4318` listener, `createVpcEndpoints` opt-out) and `./test/stamp-config.test.sh`
-  (dependency-free bash: placeholder guard + Google scope auto-injection). Neither
+  `:4318` listener, `createVpcEndpoints` opt-out, imported-cert TLS),
+  `./test/stamp-config.test.sh`
+  (dependency-free bash: placeholder guard + Google scope auto-injection), and
+  `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool
+  detection / `--provenance` gating + the OIDC-secret preflight). None
   needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
 - Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).

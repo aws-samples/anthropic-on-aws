@@ -17,11 +17,11 @@ export interface GatewayStackProps extends cdk.StackProps {
   readonly publicUrl?: string;
   /** ECR image tag (defaults to the pinned claude version). */
   readonly imageTag: string;
-  /** ACM cert ARN for publicUrl's hostname — IMPORTED, not issued in-stack. */
+  /** ACM cert ARN for publicUrl's hostname — IMPORTED. Required for pass 2. */
   readonly certArn?: string;
-  /** Route 53 hosted-zone name, e.g. example.com */
+  /** Route 53 PRIVATE hosted-zone name, e.g. example.com (holds the A-record). */
   readonly zoneName?: string;
-  /** Route 53 hosted-zone id (optional; looked up from zoneName if omitted). */
+  /** Route 53 private hosted-zone id (optional; looked up from zoneName if omitted). */
   readonly zoneId?: string;
   /** VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR. */
   readonly ingressCidr?: string;
@@ -67,8 +67,9 @@ export class GatewayStack extends cdk.Stack {
     if (!props.imageReady) {
       new cdk.CfnOutput(this, 'NextStep', {
         value:
-          'Pass 1 complete. Build + push the image to the repo above, then ' +
-          're-run: cdk deploy -c imageReady=true (with certArn/zoneName/ingressCidr/publicUrl).',
+          'Pass 1 complete. Build + push the image to the repo above, then re-run: ' +
+          'cdk deploy -c imageReady=true -c publicUrl=... -c zoneName=... -c ingressCidr=... ' +
+          '-c certArn=... (imported ACM cert for the gateway hostname).',
       });
       return;
     }
@@ -76,11 +77,26 @@ export class GatewayStack extends cdk.Stack {
     // Pass-2 required inputs. We fail fast with a clear message rather than let
     // CDK synth a half-configured stack.
     const publicUrl = req(props.publicUrl, 'publicUrl');
-    const certArn = req(props.certArn, 'certArn');
     const zoneName = req(props.zoneName, 'zoneName');
     const ingressCidr = req(props.ingressCidr, 'ingressCidr');
+    const certArn = req(props.certArn, 'certArn');
     // publicUrl is https://<host>; the record name is the host part.
     const recordHost = publicUrl.replace(/^https?:\/\//, '');
+
+    // Private zone: holds the gateway A-record → internal ALB.
+    const privateZone = props.zoneId
+      ? route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
+          hostedZoneId: props.zoneId,
+          zoneName,
+        })
+      : route53.HostedZone.fromLookup(this, 'Zone', { domainName: zoneName, privateZone: true });
+
+    // The one certificate both listeners share: an imported ACM cert for the
+    // gateway hostname. The CLI pins its SHA-256 fingerprint on first /login
+    // (the CertFingerprintHint output below prints how to read it). Want no
+    // prompt? Import a public, browser-trusted ACM cert — DNS validation needs
+    // no public endpoint, so the ALB can stay internal (see docs/deployment.md).
+    const certificate = acm.Certificate.fromCertificateArn(this, 'Cert', certArn);
 
     // ── VPC (2 AZs, public + private-with-egress) ─────────────────────────────
     // NAT is retained for the IdP leg only (public OIDC issuer); all AWS-service
@@ -310,23 +326,18 @@ export class GatewayStack extends cdk.Stack {
       taskSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [taskSg],
       protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificate: acm.Certificate.fromCertificateArn(this, 'Cert', certArn),
+      certificate,
       sslPolicy: elbv2.SslPolicy.TLS13_RES,
       idleTimeout: cdk.Duration.seconds(3600), // long streaming responses
       // Route 53 private record: claude-gateway.<zoneName> → the internal ALB.
       domainName: recordHost,
-      domainZone: props.zoneId
-        ? route53.HostedZone.fromHostedZoneAttributes(this, 'Zone', {
-            hostedZoneId: props.zoneId,
-            zoneName,
-          })
-        : route53.HostedZone.fromLookup(this, 'Zone', { domainName: zoneName, privateZone: true }),
+      domainZone: privateZone,
       healthCheckGracePeriod: cdk.Duration.seconds(120),
       taskImageOptions: {
         image,
         containerPort: 8080,
         taskRole,
-        // NO non-secret app config here — it's baked into the image (ADR 0001).
+        // NO non-secret app config here — it's baked into the image by design.
         // DB_HOST is the non-secret RDS endpoint (the RDS-managed secret holds
         // only username/password, not host).
         environment: {
@@ -368,7 +379,7 @@ export class GatewayStack extends cdk.Stack {
     const otelListener = fargate.loadBalancer.addListener('OtelListener', {
       port: 4318,
       protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [acm.Certificate.fromCertificateArn(this, 'OtelCert', certArn)],
+      certificates: [certificate],
       sslPolicy: elbv2.SslPolicy.TLS13_RES,
     });
     otelListener.addTargets('OtelTargets', {
@@ -410,8 +421,9 @@ function req(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(
       `Missing required context "${name}". For pass 2 deploy with: ` +
-        `-c publicUrl=... -c certArn=... -c zoneName=... -c ingressCidr=... ` +
-        `(or set imageReady=false for the pass-1 ECR-repo-only deploy).`,
+        `-c publicUrl=... -c zoneName=... -c ingressCidr=... -c certArn=... ` +
+        `(imported ACM cert for the gateway hostname). ` +
+        `Or set imageReady=false for the pass-1 ECR-repo-only deploy.`,
     );
   }
   return value;
