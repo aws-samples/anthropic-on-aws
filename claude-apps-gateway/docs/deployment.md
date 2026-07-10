@@ -45,7 +45,10 @@ a common failure:
    addresses. Two topologies satisfy it:
    - **Public zone, private answer** (simplest, verified live): put the A-record
      in the public delegated zone; it answers the internal ALB's private IPs, so
-     laptops need no special DNS — only a network route into the VPC.
+     laptops need no special DNS — only a network route into the VPC. On Track B
+     (CDK), pass `-c zoneId` explicitly for this topology: the automatic zone
+     lookup filters for a *private* zone (`fromLookup(..., { privateZone: true })`)
+     and won't find a public one.
    - **Private hosted zone**: keeps the record out of the public DNS tree, but
      note the example does **not** associate the zone with the VPC it creates
      (associate it yourself for in-VPC resolution), and off-VPC laptops then need

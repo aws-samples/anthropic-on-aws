@@ -4,7 +4,8 @@
 # dependencies are glibc libraries, so `cc-debian12` satisfies them with no shell
 # and no package manager. We run the binary directly — no wrapper script — which
 # is exactly why config is baked in rather than written at start by an entrypoint
-# (a wrapper would need a shell this image doesn't have). See ADR 0001.
+# (a wrapper would need a shell this image doesn't have). See the header of
+# gateway.yaml.template for why config is baked into the image.
 #
 # Build context must already contain (both staged by setup.sh / the CDK build step
 # BEFORE `docker build`):
