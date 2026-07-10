@@ -12,40 +12,57 @@ live deploy does.
 
 ---
 
-## 1. Telemetry: the OTLP collector must be HTTPS  **[hit live]**
+## 1. Telemetry: `forward_to.url` must be the bare origin, not the OTLP path  **[hit live]**
 
-**Symptom:** gateway fails to boot, logs:
+**Symptom:** the gateway boots fine and relays telemetry, but every export logs:
 ```
-forward_to.url must be https:// (http:// allowed for loopback only)
+otel forward to https://monitoring.<region>.amazonaws.com/v1/metrics failed: Error: 404 Not Found
 ```
 
-**Why:** the gateway requires `https://` for any **non-loopback** `telemetry.forward_to`
-target. A natural AWS design points it at a collector over a private Cloud Map name
-(`http://otel.<ns>:4318`) — but that's plain HTTP, so boot fails. The published
-`aws-otel-collector` image does **not** serve TLS out of the box.
+**Why:** the gateway appends the OTLP-standard signal path itself (`/v1/metrics`
+for metrics, `/v1/logs`, `/v1/traces`) — same convention every OTLP HTTP
+exporter follows. Configuring `forward_to.url` as
+`https://monitoring.<region>.amazonaws.com/v1/metrics` (i.e. already including
+the suffix) makes the actual request go to `.../v1/metrics/v1/metrics`, which
+404s. The upstream config docs' own examples confirm this: they show a bare
+origin (`https://otel-collector.internal.example.com`,
+`https://api.datadoghq.com/api/v2/otlp`) with no signal-specific suffix.
 
-**The tension:** the two obvious ways to satisfy the HTTPS rule both have a catch:
-- **Sidecar collector** in the same task → reachable on `localhost`, but that's
-  *loopback*, which the gateway's SSRF guard blocks unless you set
-  `CLAUDE_GATEWAY_ALLOW_LOOPBACK=1` — and the docs explicitly say keep that unset
-  in production.
-- **Separate collector service** on a private IP → passes the SSRF guard, but now
-  it's non-loopback, so it **must** be HTTPS.
-
-**Fix options:**
-- **Simplest:** leave `telemetry.forward_to` commented out. Telemetry is
-  optional-by-construction; the gateway runs fine without it and inference is
-  unaffected. (This is what the example ships by default.)
-- **To actually forward telemetry:** front the collector with TLS — e.g. an
-  internal NLB/ALB terminating an ACM cert, or give the collector a cert the
-  gateway trusts — and point `forward_to` at its `https://` name.
-
-> Takeaway: budget for TLS on your telemetry collector from day one, or
-> accept telemetry-off. Don't assume a plain private endpoint will work.
+**Fix:** point `forward_to.url` at `https://monitoring.<region>.amazonaws.com`
+— no `/v1/metrics`. `gateway.yaml.template` and `gateway.yaml.example` in this
+repo already do this correctly; this entry exists because an earlier draft of
+the CloudWatch-direct migration got it wrong and only a live deploy caught it
+(the gateway logs the failure but doesn't fail boot or the client request —
+telemetry silently drops).
 
 ---
 
-## 2. Baked config must be world-readable in the image  **[hit live]**
+## 2. Telemetry: OTLP-ingested metrics don't show up in `list-metrics`/`get-metric-data`  **[hit live]**
+
+**Symptom:** the gateway relays telemetry with zero errors, but `list-metrics` /
+`get-metric-data` / `get-metric-statistics` return empty even minutes after real traffic.
+
+**Why:** those classic APIs only surface `PutMetricData`-style metrics. OTLP-ingested
+metrics land in a separate PromQL-native backend — no propagation delay involved, those
+APIs simply never return OTLP data.
+
+**Fix:** verify via the PromQL HTTP API (`https://monitoring.<region>.amazonaws.com/api/v1/query`,
+SigV4-signed) or a PromQL-aware surface (Query Studio, Grafana), e.g. `{"claude_code.session.count"}`.
+
+---
+
+## 3. Telemetry: CloudWatch's OTLP endpoint is metrics-only, and auth is a bearer token, not SigV4
+
+The gateway signs no AWS requests itself, so `telemetry.forward_to`'s static
+`url` + `headers` reaches CloudWatch's native OTLP endpoint directly via a
+bearer-token API key — no collector needed. See `gateway.yaml.template`'s
+`telemetry:` block and [docs/deployment.md](deployment.md) "Telemetry" for setup.
+Logs and traces need SigV4 or their own separate auth, so this example ships
+`logs: false` / `traces: false`.
+
+---
+
+## 4. Baked config must be world-readable in the image  **[hit live]**
 
 **Symptom:** every gateway task crash-loops; logs:
 ```
@@ -87,7 +104,7 @@ COPY --from=config /out/etc/claude /etc/claude
 
 ---
 
-## 3. The ALB pattern opens 443 to the world by default  **[hit live]**
+## 5. The ALB pattern opens 443 to the world by default  **[hit live]**
 
 **Symptom (CDK):** the synthesized template has a security-group ingress of
 `CidrIp: 0.0.0.0/0` on port 443, even though you created a separate, restricted SG.
@@ -113,7 +130,7 @@ svc.loadBalancer.connections.allowFrom(ec2.Peer.ipv4(ingressCidr), ec2.Port.tcp(
 
 ---
 
-## 4. An internal ALB is unreachable from a laptop — and you can't fix that with public exposure  **[hit live]**
+## 6. An internal ALB is unreachable from a laptop — and you can't fix that with public exposure  **[hit live]**
 
 **Symptom:** `claude /login` from a laptop reports
 `Could not resolve gateway host …`, or the connection times out.
@@ -143,7 +160,7 @@ machines. So you cannot "just expose it":
 
 ---
 
-## 5. IPv4-only internal ALB — dual-stack returns public AAAA  **[verified live]**
+## 7. IPv4-only internal ALB — dual-stack returns public AAAA  **[verified live]**
 
 **Symptom:** `/login` rejects the gateway as public even though the ALB is
 "internal".
@@ -157,7 +174,7 @@ deploy: the internal IPv4 ALB resolved to `10.0.x.x` only, with **no AAAA record
 
 ---
 
-## 6. Bedrock model access is a separate, non-IAM prerequisite
+## 8. Bedrock model access is a separate, non-IAM prerequisite
 
 **Symptom:** invoke returns `AccessDeniedException` even though the IAM policy is
 correct.
@@ -172,7 +189,7 @@ failure** and it's easy to miss because IAM looks correct.
 
 ---
 
-## 7. Bedrock IAM needs two ARN families
+## 9. Bedrock IAM needs two ARN families
 
 **Symptom:** `403` on invoke despite granting `bedrock:InvokeModel*`.
 
@@ -187,7 +204,7 @@ account segment — `:*::` — that's correct, not a typo.)
 
 ---
 
-## 8. EC2/EKS-on-EC2: the IMDSv2 hop-limit trap
+## 10. EC2/EKS-on-EC2: the IMDSv2 hop-limit trap
 
 **Symptom:** every Bedrock request `502`s with
 `Could not load credentials from any providers` — but boot and `/readyz` pass.
@@ -205,7 +222,7 @@ reason.)
 
 ---
 
-## 9. The RDS-managed master secret has no `host` field
+## 11. The RDS-managed master secret has no `host` field
 
 **Symptom:** injecting `DB_HOST` from `<rds-secret>:host::` resolves empty / fails.
 
@@ -220,7 +237,7 @@ only needs `postgres://${DB_HOST}:5432/<db>?sslmode=require`.
 
 ---
 
-## 10. `public_url` drives everything — and forces planning, not a redeploy loop
+## 12. `public_url` drives everything — and forces planning, not a redeploy loop
 
 **Why:** the gateway builds its OIDC `redirect_uri` and discovery doc **only** from
 `listen.public_url`, never from `X-Forwarded-*` (those are client-spoofable). So:
@@ -234,7 +251,7 @@ service** (the two-pass deploy).
 
 ---
 
-## 11. Config is baked → the image is per-environment
+## 13. Config is baked → the image is per-environment
 
 **Why:** on ECS the task definition's `secrets:` injects **env vars only**, never
 files, so this example bakes `gateway.yaml` into the image (only secrets + DB facts
@@ -250,7 +267,7 @@ can use `${file:/secrets/…}` and keep the image generic. (See `eks-notes.md`.)
 
 ---
 
-## 12. TLS cert pinning — ACM renewal is a planned event
+## 14. TLS cert pinning — ACM renewal is a planned event
 
 **Why:** the CLI pins the ALB **leaf certificate by SHA-256** on first `/login`.
 When ACM renews the cert, the fingerprint changes.
@@ -261,7 +278,7 @@ cert, developers need the CA in their OS trust store or `NODE_EXTRA_CA_CERTS` se
 
 ---
 
-## 13. Operational papercuts  **[hit live]**
+## 15. Operational papercuts  **[hit live]**
 
 - **`AWS_REGION` overrides `CDK_DEFAULT_REGION`.** A deploy can silently land in the
   wrong region if `AWS_REGION` is set in your shell. Pin region explicitly and
@@ -291,7 +308,7 @@ cert, developers need the CA in their OS trust store or `NODE_EXTRA_CA_CERTS` se
 
 ---
 
-## 14. Smoke-testing without laptop connectivity  **[hit live]**
+## 16. Smoke-testing without laptop connectivity  **[hit live]**
 
 If you can't reach the internal ALB yet, you can still validate the full HTTP
 surface with a **throwaway Fargate task in the VPC** that curls the gateway:
@@ -314,7 +331,7 @@ needs real connectivity + the OIDC client secret set).
 
 ---
 
-## 15. A gateway session and a direct-Bedrock config can't share a config dir  **[hit live]**
+## 17. A gateway session and a direct-Bedrock config can't share a config dir  **[hit live]**
 
 **Symptom:** a developer signs in to the gateway successfully (the gateway audit
 log shows `session.mint` → success and `managed.serve`), but the CLI then exits
@@ -358,7 +375,7 @@ Back up any existing managed-settings file before testing, and restore it after.
 
 ---
 
-## 16. Re-running `/login` when already signed in shows the generic picker  **[hit live]**
+## 18. Re-running `/login` when already signed in shows the generic picker  **[hit live]**
 
 **Symptom:** after a successful gateway sign-in, running `/login` **again** shows
 the normal `1. Claude account / 2. Console / 3. 3rd-party` picker, which looks like

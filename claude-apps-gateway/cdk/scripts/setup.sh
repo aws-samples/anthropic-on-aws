@@ -144,11 +144,12 @@ LOG_GROUP="${LOG_GROUP:-/claude-gateway/gateway}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-90}"
 GATEWAY_LOG_LEVEL="${GATEWAY_LOG_LEVEL:-info}"
 
-# Telemetry collector (ADOT) — its own small Fargate service, reached over the
-# gateway ALB's HTTPS :4318 listener (the gateway requires https:// for a
-# non-loopback forward_to target; see the telemetry block in gateway.yaml.template).
-OTEL_SERVICE="${OTEL_SERVICE:-otel}"
-ADOT_IMAGE="${ADOT_IMAGE:-public.ecr.aws/aws-observability/aws-otel-collector:latest}"
+# CloudWatch Metrics OTLP bearer token (a service-specific credential for an IAM
+# user with the CloudWatchAPIKeyAccess policy — see docs/deployment.md "Telemetry").
+# Not created by this script: create it out of band, then export it here so phase 4
+# seeds/updates Secrets Manager from it (same pattern as OIDC_CLIENT_SECRET below).
+CW_METRICS_API_KEY="${CW_METRICS_API_KEY:-}"
+CW_METRICS_API_KEY_SECRET_NAME="${PROJECT}-cw-metrics-api-key"
 
 # Required inputs (no safe default — fail loudly). See header.
 PUBLIC_URL="${PUBLIC_URL:?required: the internal ALB https origin, e.g. https://claude-gateway.example.com}"
@@ -410,11 +411,10 @@ ensure_sg() {
   fi
   echo "${id}"
 }
-ALB_SG="$(ensure_sg "${PROJECT}-alb-sg"  "ALB: 443 from client CIDR, 4318 from task SG")"
+ALB_SG="$(ensure_sg "${PROJECT}-alb-sg"  "ALB: 443 from client CIDR")"
 TASK_SG="$(ensure_sg "${PROJECT}-task-sg" "Gateway tasks: 8080 from ALB only")"
 RDS_SG="$(ensure_sg "${PROJECT}-rds-sg"  "RDS: 5432 from task SG only")"
 VPCE_SG="$(ensure_sg "${PROJECT}-vpce-sg" "VPC endpoints: 443 from task SG")"
-OTEL_SG="$(ensure_sg "${PROJECT}-otel-sg" "ADOT collector: 4318+13133 from ALB SG only")"
 
 # authorize helper: add a rule, tolerating "already exists".
 sg_ingress_cidr() { aws ec2 authorize-security-group-ingress --group-id "$1" \
@@ -423,14 +423,10 @@ sg_ingress_sg()   { aws ec2 authorize-security-group-ingress --group-id "$1" \
   --protocol tcp --port "$2" --source-group "$3" --region "${AWS_REGION}" >/dev/null 2>&1 || true; }
 
 sg_ingress_cidr "${ALB_SG}"  443   "${INGRESS_CIDR}"  # developers → ALB (sign-in)
-sg_ingress_sg   "${ALB_SG}"  4318  "${TASK_SG}"       # gateway task → ALB (OTLP over HTTPS)
 sg_ingress_sg   "${TASK_SG}" 8080  "${ALB_SG}"        # ALB → tasks
 sg_ingress_sg   "${RDS_SG}"  5432  "${TASK_SG}"       # tasks → RDS (NOT a CIDR)
 sg_ingress_sg   "${VPCE_SG}" 443   "${TASK_SG}"       # gateway tasks → VPC endpoints
-sg_ingress_sg   "${VPCE_SG}" 443   "${OTEL_SG}"       # collector → VPC endpoints (CloudWatch logs/metrics)
-sg_ingress_sg   "${OTEL_SG}" 4318  "${ALB_SG}"        # ALB → ADOT collector (OTLP)
-sg_ingress_sg   "${OTEL_SG}" 13133 "${ALB_SG}"        # ALB → ADOT collector (health)
-info "security groups: alb=${ALB_SG} task=${TASK_SG} rds=${RDS_SG} vpce=${VPCE_SG} otel=${OTEL_SG}"
+info "security groups: alb=${ALB_SG} task=${TASK_SG} rds=${RDS_SG} vpce=${VPCE_SG}"
 
 # 3e. Interface VPC endpoints (AWS-backbone, no internet) + S3 gateway endpoint.
 PRIVATE_SUBNETS="${PRI_SUBNET_A} ${PRI_SUBNET_B}"
@@ -547,6 +543,32 @@ if [[ "$(aws_q secretsmanager get-secret-value --secret-id "${OIDC_SECRET_NAME}"
     aws secretsmanager put-secret-value --secret-id ${OIDC_SECRET_NAME} --secret-string '<your-oidc-client-secret>' --region ${AWS_REGION}"
 fi
 
+# CloudWatch Metrics OTLP bearer token — same seed-or-placeholder pattern as the
+# OIDC secret above, but telemetry is optional-by-construction: no preflight/guard
+# blocks the deploy on a REPLACE_ME value here, since the gateway runs fine (just
+# without telemetry) until you set it. See docs/deployment.md "Telemetry" for how
+# to generate the token (aws iam create-service-specific-credential).
+if aws_q secretsmanager describe-secret --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" >/dev/null; then
+  if [[ -n "${CW_METRICS_API_KEY}" ]] && [[ "$(aws_q secretsmanager get-secret-value \
+       --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" --query SecretString)" != "${CW_METRICS_API_KEY}" ]]; then
+    aws secretsmanager put-secret-value --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" \
+      --secret-string "${CW_METRICS_API_KEY}" --region "${AWS_REGION}" >/dev/null
+    info "updated ${CW_METRICS_API_KEY_SECRET_NAME} from CW_METRICS_API_KEY"
+  else
+    skip "secret ${CW_METRICS_API_KEY_SECRET_NAME}"
+  fi
+else
+  aws secretsmanager create-secret --name "${CW_METRICS_API_KEY_SECRET_NAME}" \
+    --description "CloudWatch Metrics OTLP bearer token" \
+    --secret-string "${CW_METRICS_API_KEY:-REPLACE_ME}" --region "${AWS_REGION}" >/dev/null
+  if [[ -n "${CW_METRICS_API_KEY}" ]]; then
+    info "created ${CW_METRICS_API_KEY_SECRET_NAME} (seeded from CW_METRICS_API_KEY)"
+  else
+    info "created ${CW_METRICS_API_KEY_SECRET_NAME} (placeholder REPLACE_ME — telemetry stays off until you set it)"
+  fi
+fi
+CW_METRICS_API_KEY_SECRET_ARN="$(aws_q secretsmanager describe-secret --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" --query ARN)"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 5 — IAM roles + CloudWatch log group
 # ──────────────────────────────────────────────────────────────────────────────
@@ -583,7 +605,7 @@ aws iam attach-role-policy --role-name "${EXEC_ROLE}" \
 EXEC_SECRETS_POLICY=$(cat <<JSON
 {"Version":"2012-10-17","Statement":[
   {"Effect":"Allow","Action":["secretsmanager:GetSecretValue"],
-   "Resource":["${JWT_SECRET_ARN}","${OIDC_SECRET_ARN}","${DB_SECRET_ARN}"]},
+   "Resource":["${JWT_SECRET_ARN}","${OIDC_SECRET_ARN}","${DB_SECRET_ARN}","${CW_METRICS_API_KEY_SECRET_ARN}"]},
   {"Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],
    "Resource":"arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:log-group:${LOG_GROUP}:*"}
 ]}
@@ -612,14 +634,6 @@ JSON
 aws iam put-role-policy --role-name "${TASK_ROLE}" \
   --policy-name "${PROJECT}-bedrock-invoke" --policy-document "${BEDROCK_POLICY}" >/dev/null
 TASK_ROLE_ARN="$(aws iam get-role --role-name "${TASK_ROLE}" --query Role.Arn --output text)"
-
-# 5c. ADOT collector task role — CloudWatch metrics + logs.
-OTEL_TASK_ROLE="${PROJECT}-otel-task-role"
-ensure_role "${OTEL_TASK_ROLE}"
-OTEL_POLICY='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["cloudwatch:PutMetricData","logs:CreateLogStream","logs:PutLogEvents","logs:CreateLogGroup","logs:DescribeLogStreams","logs:DescribeLogGroups"],"Resource":"*"}]}'
-aws iam put-role-policy --role-name "${OTEL_TASK_ROLE}" \
-  --policy-name "${PROJECT}-otel" --policy-document "${OTEL_POLICY}" >/dev/null
-OTEL_TASK_ROLE_ARN="$(aws iam get-role --role-name "${OTEL_TASK_ROLE}" --query Role.Arn --output text)"
 info "exec=${EXEC_ROLE_ARN}"
 info "task=${TASK_ROLE_ARN}"
 
@@ -690,99 +704,6 @@ else
   info "created HTTPS:443 listener (cert ${CERT_ARN})"
 fi
 
-# 6b. ADOT collector — reached over the gateway ALB's HTTPS :4318 listener. The
-# gateway requires https:// for a non-loopback forward_to and has no custom-CA/
-# skip-verify option, so the collector sits behind the ALB's publicly-trusted
-# cert (TLS terminates at the ALB; the collector speaks plain OTLP/HTTP behind it).
-# The health_check extension on :13133 gives the target group something to GET.
-OTEL_TG_ARN="$(aws_q elbv2 describe-target-groups --names "${PROJECT}-otel-tg" \
-  --query 'TargetGroups[0].TargetGroupArn' || true)"
-if [[ -z "${OTEL_TG_ARN}" || "${OTEL_TG_ARN}" == "None" ]]; then
-  OTEL_TG_ARN="$(aws_q elbv2 create-target-group --name "${PROJECT}-otel-tg" \
-    --protocol HTTP --port 4318 --vpc-id "${VPC_ID}" --target-type ip \
-    --health-check-protocol HTTP --health-check-port 13133 --health-check-path / \
-    --matcher HttpCode=200 \
-    --query 'TargetGroups[0].TargetGroupArn')"
-  info "created target group ${PROJECT}-otel-tg (health :13133)"
-else
-  skip "target group ${PROJECT}-otel-tg"
-fi
-# shellcheck disable=SC2016  # backticks are JMESPath literal syntax, not shell expansion
-if [[ "$(aws_q elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" \
-      --query 'Listeners[?Port==`4318`].ListenerArn')" =~ arn: ]]; then
-  skip "HTTPS:4318 listener"
-else
-  aws elbv2 create-listener --load-balancer-arn "${ALB_ARN}" \
-    --protocol HTTPS --port 4318 \
-    --certificates "CertificateArn=${CERT_ARN}" \
-    --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
-    --default-actions "Type=forward,TargetGroupArn=${OTEL_TG_ARN}" \
-    --region "${AWS_REGION}" >/dev/null
-  info "created HTTPS:4318 listener → otel target group"
-fi
-
-ADOT_CONFIG='extensions:
-  health_check:
-    endpoint: 0.0.0.0:13133
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-processors:
-  batch: {}
-exporters:
-  awsemf:
-    namespace: ClaudeGateway
-    log_group_name: /claude-gateway/otel-metrics
-service:
-  extensions: [health_check]
-  pipelines:
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awsemf]'
-
-OTEL_TASKDEF=$(cat <<JSON
-{
-  "family": "${PROJECT}-otel",
-  "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "256", "memory": "512",
-  "executionRoleArn": "${EXEC_ROLE_ARN}",
-  "taskRoleArn": "${OTEL_TASK_ROLE_ARN}",
-  "containerDefinitions": [{
-    "name": "aws-otel-collector",
-    "image": "${ADOT_IMAGE}",
-    "essential": true,
-    "portMappings": [{"containerPort": 4318, "protocol": "tcp"}, {"containerPort": 13133, "protocol": "tcp"}],
-    "environment": [{"name": "AOT_CONFIG_CONTENT", "value": $(printf '%s' "${ADOT_CONFIG}" | jq -Rs .)}],
-    "logConfiguration": {"logDriver": "awslogs", "options": {
-      "awslogs-group": "${LOG_GROUP}", "awslogs-region": "${AWS_REGION}", "awslogs-stream-prefix": "otel"}}
-  }]
-}
-JSON
-)
-OTEL_TD_ARN="$(aws_q ecs register-task-definition --cli-input-json "${OTEL_TASKDEF}" \
-  --query 'taskDefinition.taskDefinitionArn')"
-info "registered ADOT task def ${OTEL_TD_ARN}"
-
-# ADOT Fargate service — registered to the otel target group on the ALB.
-if aws_q ecs describe-services --cluster "${CLUSTER}" --services "${OTEL_SERVICE}" \
-     --query "services[?status=='ACTIVE'].serviceName" | grep -q .; then
-  aws ecs update-service --cluster "${CLUSTER}" --service "${OTEL_SERVICE}" \
-    --task-definition "${OTEL_TD_ARN}" --region "${AWS_REGION}" >/dev/null
-  skip "ecs service ${OTEL_SERVICE} (updated task def)"
-else
-  aws ecs create-service --cluster "${CLUSTER}" --service-name "${OTEL_SERVICE}" \
-    --task-definition "${OTEL_TD_ARN}" --desired-count 1 --launch-type FARGATE \
-    --health-check-grace-period-seconds 60 \
-    --network-configuration "awsvpcConfiguration={subnets=[${PRI_SUBNET_A},${PRI_SUBNET_B}],securityGroups=[${OTEL_SG}],assignPublicIp=DISABLED}" \
-    --load-balancers "targetGroupArn=${OTEL_TG_ARN},containerName=aws-otel-collector,containerPort=4318" \
-    --region "${AWS_REGION}" >/dev/null
-  info "created ADOT service ${OTEL_SERVICE} (behind ALB :4318)"
-fi
-
 # 6d. Route 53 private A-record (alias to the ALB).
 RECORD_NAME="${PUBLIC_URL#https://}"
 CHANGE_BATCH=$(cat <<JSON
@@ -820,7 +741,8 @@ GW_TASKDEF=$(cat <<JSON
       {"name": "GATEWAY_JWT_SECRET",  "valueFrom": "${JWT_SECRET_ARN}"},
       {"name": "OIDC_CLIENT_SECRET",  "valueFrom": "${OIDC_SECRET_ARN}"},
       {"name": "DB_USER",     "valueFrom": "${DB_SECRET_ARN}:username::"},
-      {"name": "DB_PASSWORD", "valueFrom": "${DB_SECRET_ARN}:password::"}
+      {"name": "DB_PASSWORD", "valueFrom": "${DB_SECRET_ARN}:password::"},
+      {"name": "CW_METRICS_API_KEY", "valueFrom": "${CW_METRICS_API_KEY_SECRET_ARN}"}
     ],
     "logConfiguration": {"logDriver": "awslogs", "options": {
       "awslogs-group": "${LOG_GROUP}", "awslogs-region": "${AWS_REGION}", "awslogs-stream-prefix": "gateway"}}
@@ -885,6 +807,12 @@ $(log "Deploy complete")
   ${TLS_STEP}
   5. Push forceLoginMethod/forceLoginGatewayUrl to developer machines
      (managed-settings.json — see the Verify section of docs/deployment.md).
+  6. Telemetry is OFF until you set a real CloudWatch Metrics API key:
+        aws iam create-service-specific-credential --user-name <a CloudWatchAPIKeyAccess IAM user> \\
+          --service-name cloudwatch.amazonaws.com
+        aws secretsmanager put-secret-value --secret-id ${CW_METRICS_API_KEY_SECRET_NAME} \\
+          --secret-string '<ServiceCredentialSecret>' --region ${AWS_REGION}
+     (see docs/deployment.md "Telemetry"). Then re-run this script to roll the task def.
 
   Smoke test once DNS + a session route exist:
      curl -fsS ${PUBLIC_URL}/.well-known/oauth-authorization-server | jq .

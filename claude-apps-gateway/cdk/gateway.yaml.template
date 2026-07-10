@@ -123,22 +123,25 @@ upstreams:
   #  first-party model IDs; if you curate `models:`, key the entry `anthropicAws:`)
 
 telemetry:
-  # The ADOT collector is reached over the gateway ALB's HTTPS :4318 listener.
-  # The gateway REQUIRES https:// for any non-loopback forward_to target and
-  # offers no custom-CA/skip-verify option for it, so the collector sits behind
-  # the ALB's publicly-trusted ACM cert (TLS terminates at the ALB; the collector
-  # speaks plain OTLP/HTTP behind it). Telemetry turns on only when forward_to AND
-  # listen.public_url are both set; the gateway then pushes OTEL_* env to clients
-  # (one-time client approval dialog).
+  # Forwards straight to CloudWatch's native OTLP metrics endpoint — no collector
+  # to run or maintain. Auth is a CloudWatch Metrics API key (bearer token; see
+  # docs/deployment.md "Telemetry"), NOT SigV4: the gateway signs no requests, it
+  # only attaches the static Authorization header below, and the metrics endpoint
+  # accepts that as an alternative to SigV4 for workloads outside the AWS SDK.
+  # Telemetry turns on only when forward_to AND listen.public_url are both set;
+  # the gateway then pushes OTEL_* env to clients (one-time client approval dialog).
   forward_to:
-    - url: @@PUBLIC_URL@@:4318
+    # No /v1/metrics suffix: the gateway appends the OTLP-standard signal path
+    # itself (like any OTLP HTTP exporter), so a base URL that already ends in
+    # /v1/metrics gets it doubled and 404s — see gotchas.md.
+    - url: https://monitoring.@@AWS_REGION@@.amazonaws.com
+      headers:
+        Authorization: Bearer ${CW_METRICS_API_KEY}
       # Default is metrics-only. Metrics are aggregate counters (tokens, requests,
-      # latency). logs/traces can carry full bash commands, tool inputs, and file
-      # paths — enable them ONLY on a destination with the access controls and
-      # retention that data warrants.
+      # latency). The CloudWatch metrics OTLP endpoint doesn't accept logs/traces —
+      # those need the separate logs (SigV4 or its own bearer token) or traces
+      # (SigV4-only) endpoints, out of scope for this bearer-token setup.
       metrics: true
-      # logs: false
-      # traces: false
 
 # Constrain the model picker to a curated allowlist. This turns the silent
 # Bedrock AccessDenied trap into an explicit allowlist: align this with the
@@ -154,6 +157,13 @@ managed:
     #     availableModels: [claude-haiku-4-5]
     #     enforceAvailableModels: true
     #     permissions: { allow: [Read, Grep] }
+    # Per-team cost attribution: OTEL_RESOURCE_ATTRIBUTES is stamped on every
+    # OTLP export, so CloudWatch's PromQL layer can group spend/usage by team
+    # (sum by ("@resource.team.id") (...)) same as user.id/user.email already are.
+    # - match: { groups: [team-platform] }
+    #   cli:
+    #     env:
+    #       OTEL_RESOURCE_ATTRIBUTES: "team.id=platform,department=engineering,cost_center=cc-1001"
     # Catch-all base: matches every authenticated user.
     - match: {}
       cli:
