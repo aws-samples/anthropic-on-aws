@@ -28,21 +28,50 @@ echo "=== Claude Gateway Deploy ==="
 echo "Gateway: https://$GATEWAY_HOSTNAME"
 echo ""
 
-# --- Step 1: CDK Deploy ---
-echo "Step 1/4: Deploying infrastructure (CDK)..."
-npx cdk deploy --require-approval never
-echo "✅ Infrastructure deployed"
+# The stack is parameterized by CDK context (-c), not .env — deploy.sh bridges the
+# two. These are required for the pass-2 (full) deploy; fail early with a clear
+# message rather than letting `cdk synth` throw a cryptic "Missing required context".
+: "${GATEWAY_HOSTNAME:?set GATEWAY_HOSTNAME in .env (e.g. claude-gateway.internal.company.com)}"
+: "${HOSTED_ZONE_NAME:?set HOSTED_ZONE_NAME in .env (your Route53 private zone, e.g. internal.company.com)}"
+: "${CERT_ARN:?set CERT_ARN in .env (imported ACM cert ARN for the GATEWAY_HOSTNAME)}"
+: "${INGRESS_CIDR:?set INGRESS_CIDR in .env (VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR)}"
+: "${BEDROCK_REGION:?set BEDROCK_REGION in .env}"
+
+# Map .env → CDK context. deploy.sh builds the image as :latest via CodeBuild, so
+# we pin imageTag=latest to match — otherwise the stack defaults to the pinned
+# claude version tag, which this convenience path never pushes.
+CDK_CTX=(
+  -c "region=${BEDROCK_REGION}"
+  -c "publicUrl=https://${GATEWAY_HOSTNAME}"
+  -c "zoneName=${HOSTED_ZONE_NAME}"
+  -c "ingressCidr=${INGRESS_CIDR}"
+  -c "certArn=${CERT_ARN}"
+  -c "imageTag=latest"
+)
+# zoneId is optional (looked up from zoneName if omitted). Pass it only when the
+# user set a real value, not the .env.example placeholder.
+if [ -n "${HOSTED_ZONE_ID:-}" ] && [ "${HOSTED_ZONE_ID}" != "ZXXXXXXXXXXXXXXXXX" ]; then
+  CDK_CTX+=(-c "zoneId=${HOSTED_ZONE_ID}")
+fi
+
+# --- Step 1: CDK pass 1 — ECR repository only ---
+# The ECS service can't start until its image exists, so the stack splits the
+# deploy in two: pass 1 creates just the ECR repo; we build+push; pass 2 (below)
+# brings up the full stack. See cdk/README.md "CDK context variables".
+echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
+npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
+echo "✅ ECR repository created"
 echo ""
 
 # --- Step 2: Get outputs ---
-echo "Step 2/4: Reading stack outputs..."
+echo "Step 2/5: Reading stack outputs..."
 ECR_URI=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
   --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)
 echo "   ECR: $ECR_URI"
 echo ""
 
 # --- Step 3: Build and push image ---
-echo "Step 3/4: Building and pushing gateway image..."
+echo "Step 3/5: Building and pushing gateway image..."
 
 # Check if CodeBuild project exists, create if not
 if ! aws codebuild batch-get-projects --names claude-gateway-build --query "projects[0].name" --output text 2>/dev/null | grep -q claude-gateway-build; then
@@ -161,20 +190,22 @@ while true; do
 done
 echo ""
 
-# --- Step 4: Start the service ---
-echo "Step 4/4: Starting ECS service..."
-aws ecs update-service --cluster "$GATEWAY_NAME" --service "${GATEWAY_NAME}-svc" \
-  --desired-count 1 --force-new-deployment --query "service.desiredCount" --output text >/dev/null
+# --- Step 4: CDK pass 2 — full stack incl. the Fargate service ---
+# The image now exists in ECR, so pass 2 brings up the service (desiredCount 2)
+# behind the internal ALB. cdk deploy blocks until the service is stable, so no
+# manual `update-service` scale-up is needed.
+echo "Step 4/5: Pass 2 — deploying the full stack (CDK)..."
+npx cdk deploy --require-approval never -c imageReady=true "${CDK_CTX[@]}"
+echo "✅ Full stack deployed"
+echo ""
 
-echo "   Waiting for service to stabilize..."
-sleep 60
-
-# Verify
+# --- Step 5: Verify ---
+echo "Step 5/5: Verifying the gateway..."
 RESPONSE=$(curl -s "https://${GATEWAY_HOSTNAME}/.well-known/oauth-authorization-server" 2>/dev/null || echo "")
 if echo "$RESPONSE" | grep -q "device_authorization_endpoint"; then
   echo "✅ Gateway is live at https://${GATEWAY_HOSTNAME}"
 else
-  echo "⚠️  Gateway may still be starting. Check in a minute with:"
+  echo "⚠️  Gateway may still be starting (or unreachable without VPN). Check with:"
   echo "   curl https://${GATEWAY_HOSTNAME}/.well-known/oauth-authorization-server"
 fi
 

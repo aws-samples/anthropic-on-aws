@@ -102,8 +102,9 @@ validation never needs the hostname to be publicly resolvable.
 > from the tracked distroless `Dockerfile` and SHA-verified binary. The
 > `.env` + `deploy.sh` flow in the steps below is a convenience path: `deploy.sh`
 > builds the image via CodeBuild using its own inline Dockerfile and config, and
-> `npx cdk deploy` still needs the required context values supplied (e.g. in
-> `cdk.context.json`).
+> maps your `.env` values onto the CDK context (`-c`) the stack requires, running
+> both deploy passes for you. Driving `npx cdk deploy` directly (Option B below)
+> means supplying that context yourself.
 
 ### Step 1: Configure
 
@@ -134,6 +135,12 @@ ALLOWED_EMAIL_DOMAINS=company.com
 
 # AWS region where Amazon Bedrock models are available
 BEDROCK_REGION=us-east-1
+
+# Imported ACM cert ARN for GATEWAY_HOSTNAME (use a public, browser-trusted cert)
+CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/abc-123
+
+# VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR
+INGRESS_CIDR=10.0.0.0/8
 ```
 
 ### Step 2: Install dependencies
@@ -150,19 +157,32 @@ npm install
 ./scripts/deploy.sh
 ```
 
-**Option B: Infrastructure only.** Deploy the stack, then push the image separately:
+**Option B: Drive CDK yourself.** Run the two passes by hand, supplying the
+context the stack requires (`deploy.sh` does this for you from `.env`). Pass 1
+creates just the ECR repo; build and push the image to the ECR URI shown in its
+outputs; then pass 2 brings up the full stack (the service starts automatically
+at `desiredCount 2` — no manual scale-up):
 
 ```bash
 npx cdk bootstrap    # first time only
-npx cdk deploy
+
+# Pass 1: ECR repo only
+npx cdk deploy -c imageReady=false \
+  -c publicUrl=https://claude-gateway.internal.company.com \
+  -c zoneName=internal.company.com -c ingressCidr=10.0.0.0/8 \
+  -c certArn=arn:aws:acm:us-east-1:123456789012:certificate/abc-123
+
+# ...build + push the image to the ECR repo...
+
+# Pass 2: full stack (imageReady defaults to true)
+npx cdk deploy \
+  -c publicUrl=https://claude-gateway.internal.company.com \
+  -c zoneName=internal.company.com -c ingressCidr=10.0.0.0/8 \
+  -c certArn=arn:aws:acm:us-east-1:123456789012:certificate/abc-123
 ```
 
-After the stack completes, build and push the gateway image to the ECR URI shown in the outputs, then scale up:
-
-```bash
-aws ecs update-service --cluster claude-gateway --service claude-gateway-svc \
-  --desired-count 1 --force-new-deployment
-```
+See [CDK context variables](#cdk-context-variables) for the full list, or
+[`../docs/deployment.md`](../docs/deployment.md) for the canonical walkthrough.
 
 ### Step 4: Verify
 
@@ -210,6 +230,8 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
 | `BEDROCK_REGION` | Region for Bedrock API calls |
+| `CERT_ARN` | Imported ACM cert ARN for `GATEWAY_HOSTNAME` (required; `deploy.sh` maps it to the `certArn` context) |
+| `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 
 ### CDK context variables
 
@@ -233,14 +255,24 @@ pass 2 (default) deploys the full stack.
 
 ## Before going to production
 
-This stack is designed for quick testing and proof-of-concept. Before using it with real workloads:
+This stack is a worked example — it already ships the security-relevant defaults
+(internal IPv4-only ALB, `desiredCount: 2`, ECS tasks in private subnets, the OIDC
+client secret and DB credentials pulled from Secrets Manager). What it trades for
+easy teardown is data durability. Before using it with real workloads, edit
+`claude-gateway-stack.ts` to:
 
-- Change the ALB from `internetFacing: true` to `internetFacing: false` in `claude-gateway-stack.ts`. Developers must access it through VPN.
-- Enable `deletionProtection: true` on the RDS instance so it's not accidentally deleted.
-- Move the OIDC client secret to AWS Secrets Manager instead of passing it as an environment variable.
-- Increase `desiredCount` from 0 to 2+ for high availability.
-- Use private subnets for ECS tasks and remove `assignPublicIp: true`.
-- Set up a VPN or Direct Connect so developers on the corporate network can reach the internal ALB.
+- **Protect the database.** The RDS instance uses `deletionProtection: false`,
+  `removalPolicy: DESTROY`, `multiAz: false`, and `backupRetention: 1 day` for clean
+  teardown. Flip to `deletionProtection: true`, `removalPolicy: RETAIN`,
+  `multiAz: true`, and a longer backup window.
+- **Retain the other stateful resources.** The ECR repository (`emptyOnDelete: true`)
+  and the log group set `removalPolicy: DESTROY`, and the secrets default to it. Switch
+  them to `RETAIN` so a `cdk destroy` can't wipe images, credentials, or audit logs.
+- **Populate the OIDC client secret.** The stack creates it in Secrets Manager with a
+  placeholder — set the real value from your IdP before developers sign in.
+- **Set up VPN or Direct Connect** so developers on the corporate network can reach the
+  internal ALB (its hostname must resolve to private IPs only, which is why the ALB is
+  internal in the first place).
 
 ## Testing without a VPN (local workaround)
 
