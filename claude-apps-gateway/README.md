@@ -199,23 +199,24 @@ Tool/permission policies are defense-in-depth (a patched client can ignore them)
 
 ### 3. Telemetry: per-user usage attribution
 
-**What it does:** The gateway relays OpenTelemetry Protocol (OTLP) metrics to a collector you configure. Each export is stamped with the developer's identity (user ID, email, groups), so you get per-user cost and usage breakdowns with no developer-side configuration.
+**What it does:** The gateway relays OpenTelemetry Protocol (OTLP) metrics to a destination you configure. Each export is stamped with the developer's identity (user ID, email, groups), so you get per-user cost and usage breakdowns with no developer-side configuration.
 
-**How it's configured:**
+**How it's configured:** this example ships pointed straight at CloudWatch's native OTLP metrics endpoint (bearer-token auth, no collector to run):
 
 ```yaml
 telemetry:
   forward_to:
-    - url: https://otel-collector.internal.customer.com
+    - url: https://monitoring.us-east-1.amazonaws.com
       headers:
-        Authorization: Bearer ${OTLP_TOKEN}
+        Authorization: Bearer ${CW_METRICS_API_KEY}
       metrics: true     # token counts, latency, model (default: true)
       logs: false       # bash commands, file paths (opt-in, sensitive)
       traces: false     # full tool inputs (opt-in, most sensitive)
 ```
 
+See [`docs/deployment.md`](docs/deployment.md#telemetry) for generating the API key. Any OTLP-compatible backend works — swap `url`/`headers` for Datadog, Splunk, or a self-hosted collector.
+
 **Key points:**
-- Any OTLP-compatible backend works
 - Metrics include: token counts, model used, user identity, request latency
 - Logs and traces are opt-in and carry sensitive data (commands, file paths)
 - The gateway itself does not log or store prompt/completion content
