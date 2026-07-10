@@ -1,0 +1,61 @@
+{
+  "allowUserAddedMcpServers": false,
+  "chatTabEnabled": true,
+  "coworkWebSearchEnabled": false,
+  "disableNonessentialTelemetry": true,
+  "disabledBuiltinTools": [
+    "WebSearch"
+  ],
+  "banner": {
+    "enabled": true,
+    "text": "Example Corp - Pilot Phase"
+  },
+  "otlpEndpoint": "https://claude-gateway.example.com:4318",
+  "otlpProtocol": "http/protobuf",
+  "otlpResourceAttributes": {
+    "service.name": "claude-desktop",
+    "deployment.environment": "prod"
+  },
+  "inferenceModels": [
+    "claude-opus-4-8",
+    "claude-fable-5",
+    "claude-sonnet-5",
+    "claude-haiku-4-5"
+  ],
+  "coworkEgressAllowedHosts": [
+    "example.com",
+    "*.example.com",
+    "docs.aws.amazon.com"
+  ],
+  "managedMcpServers": [
+    {
+      "name": "web-search",
+      "transport": "http",
+      "url": "https://<your-agentcore-gateway>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp",
+      "toolPolicy": {
+        "<target>___WebSearch": "allow"
+      }
+    },
+    {
+      "name": "example-oauth-server",
+      "transport": "http",
+      "url": "https://<your-mcp-server>/mcp",
+      "oauth": {
+        "mode": "byo",
+        "clientId": "<idp-client-id>",
+        "authorizationServer": [
+          "https://<your-idp-issuer>"
+        ],
+        "scope": " openid email profile",
+        "callbackPort": 8080
+      }
+    },
+    {
+      "name": "Microsoft 365",
+      "server": "microsoft365",
+      "tenantId": "<entra-tenant-id>",
+      "clientId": "<entra-public-client-id>",
+      "scope": "Mail.Read"
+    }
+  ]
+}

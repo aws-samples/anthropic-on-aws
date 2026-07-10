@@ -1,0 +1,17 @@
+# Deployment-specific — copy the .example files
+.env
+bootstrap/config/bootstrap-config.json
+cdk/cdk.context.json
+
+# Build artifacts & dependencies
+node_modules/
+cdk/cdk.out/
+cdk/*.js
+cdk/*.d.ts
+!cdk/jest.config.js
+
+# OS / editor
+*.log
+.DS_Store
+.vscode/
+.idea/
