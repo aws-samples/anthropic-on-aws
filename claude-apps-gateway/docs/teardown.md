@@ -19,7 +19,7 @@ automation) and must be cleaned up regardless: the **ACM certificate**, its
 
 ---
 
-## Track A — CDK
+## Track B — CDK
 
 ```bash
 cd cdk
@@ -43,7 +43,7 @@ groups, and VPC endpoints — everything in the stack.
 
 ---
 
-## Track B — `setup.sh` (hand teardown)
+## Track A — `setup.sh` (hand teardown)
 
 `setup.sh` has no `--destroy`. Delete in **reverse dependency order** — services
 before the cluster, listeners/target groups before the ALB, everything network

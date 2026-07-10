@@ -4,7 +4,8 @@
 #
 # Prerequisites:
 #   1. .env file configured (cp .env.example .env)
-#   2. linux-x64/claude binary available (from the gateway tarball)
+#   2. claude linux-x64 binary staged (from the gateway tarball) as either
+#      linux-x64/claude or ./claude — the latter is where the tracked CDK Dockerfile expects it
 #   3. AWS CLI configured
 #   4. npm install already run
 #
@@ -115,14 +116,20 @@ if ! aws codebuild batch-get-projects --names claude-gateway-build --query "proj
     --service-role "arn:aws:iam::${ACCOUNT_ID}:role/claude-gateway-codebuild" >/dev/null
 fi
 
-# Find the linux binary
+# Find the linux binary. Accept the tarball's linux-x64/ layout OR the location the
+# tracked CDK Dockerfile uses (cdk/claude, i.e. ./claude relative to cdk/), so the
+# two documented build paths agree on where the binary lives.
 LINUX_BINARY=""
 if [ -f "../linux-x64/claude" ]; then
   LINUX_BINARY="../linux-x64/claude"
 elif [ -f "./linux-x64/claude" ]; then
   LINUX_BINARY="./linux-x64/claude"
+elif [ -f "./claude" ]; then
+  LINUX_BINARY="./claude"
+elif [ -f "../claude" ]; then
+  LINUX_BINARY="../claude"
 else
-  echo "❌ linux-x64/claude binary not found. Extract it from the gateway tarball."
+  echo "❌ claude binary not found (looked for linux-x64/claude and ./claude). Extract it from the gateway tarball."
   exit 1
 fi
 

@@ -32,6 +32,15 @@ a common failure:
      --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
      --inference-config '{"maxTokens":5}' >/dev/null && echo model access OK
    ```
+
+   Not every model has a short-alias inference profile. `claude-opus-4-8`,
+   `claude-sonnet-5`, and `claude-fable-5` do, but **Haiku 4.5 exists only as the
+   dated profile** `us.anthropic.claude-haiku-4-5-20251001-v1:0` — the short
+   `us.anthropic.claude-haiku-4-5` is rejected as `ValidationException: invalid`.
+   Run `aws bedrock list-inference-profiles` for the exact IDs. This caveat only
+   affects this manual check; in `gateway.yaml` you still list the **friendly**
+   name (`claude-haiku-4-5`) and the gateway's built-in catalog resolves it to the
+   right profile.
 2. **An ACM cert** for your gateway hostname, passed as `CERT_ARN` / `-c certArn`.
    On first `/login` the CLI pins the cert's SHA-256 fingerprint and prompts the
    developer to confirm it — intended behavior (the CLI pinning the authentic
