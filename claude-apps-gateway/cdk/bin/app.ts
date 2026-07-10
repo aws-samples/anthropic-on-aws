@@ -16,6 +16,7 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  * Context vars (pass with -c key=value, or set in cdk.json / cdk.context.json):
  *   RUNTIME / INFRA (consumed by the stack):
  *     region          AWS region (default: CDK_DEFAULT_REGION or us-east-1)
+ *     gatewayName     name prefix for repo/cluster/service/secrets/log group (default: claude-gateway)
  *     publicUrl       internal ALB https origin, e.g. https://claude-gateway.example.com   (required)
  *     imageTag        ECR image tag (default: the claudeVersion below)
  *     certArn         ACM cert ARN for publicUrl's hostname — IMPORTED   (required for pass 2)
@@ -40,6 +41,7 @@ const claudeVersion = ctx('claudeVersion') ?? '2.1.199';
 new GatewayStack(app, 'ClaudeGatewayStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region },
   description: 'Claude apps gateway on ECS Fargate with Amazon Bedrock (worked example)',
+  gatewayName: ctx('gatewayName'),
   publicUrl: ctx('publicUrl'),
   imageTag: ctx('imageTag') ?? claudeVersion,
   certArn: ctx('certArn'),

@@ -37,6 +37,12 @@ export interface GatewayStackProps extends cdk.StackProps {
    * is the opt-out for that case.
    */
   readonly createVpcEndpoints?: boolean;
+  /**
+   * Name prefix for the stack's named resources (ECR repo, cluster, service,
+   * secrets, log group). Mirrors setup.sh's PROJECT. Defaults to 'claude-gateway'.
+   * deploy.sh passes this through from the .env GATEWAY_NAME.
+   */
+  readonly gatewayName?: string;
   /** false = pass 1 (ECR repo only); true = pass 2 (full stack incl. service). */
   readonly imageReady: boolean;
 }
@@ -51,10 +57,14 @@ export class GatewayStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GatewayStackProps) {
     super(scope, id, props);
 
+    // Name prefix for the stack's named resources. Mirrors setup.sh's PROJECT so
+    // the two tracks name resources identically; deploy.sh passes it from GATEWAY_NAME.
+    const gatewayName = props.gatewayName ?? 'claude-gateway';
+
     // ── ECR repository (the pass-1 target) ────────────────────────────────────
     // Created first so the image can be built+pushed before the service exists.
     const repo = new ecr.Repository(this, 'Repo', {
-      repositoryName: 'claude-gateway',
+      repositoryName: gatewayName,
       imageScanOnPush: true,
       // Example posture: clean teardown. Harden for production (see README).
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -193,7 +203,7 @@ export class GatewayStack extends cdk.Stack {
 
     // ── Gateway-owned secrets (DB creds come from the RDS-managed secret) ─────
     const jwtSecret = new secretsmanager.Secret(this, 'JwtSecret', {
-      secretName: 'claude-gateway-jwt-secret',
+      secretName: `${gatewayName}-jwt-secret`,
       description: 'Claude gateway JWT signing secret (>=32 bytes)',
       generateSecretString: {
         // >= 32 bytes of entropy; no JSON wrapper — the whole string is the secret.
@@ -202,9 +212,10 @@ export class GatewayStack extends cdk.Stack {
       },
     });
     const oidcSecret = new secretsmanager.Secret(this, 'OidcClientSecret', {
-      secretName: 'claude-gateway-oidc-client-secret',
+      secretName: `${gatewayName}-oidc-client-secret`,
       description: 'Claude gateway OIDC client secret — set the real value after deploy',
-      // Placeholder; replace with the real OIDC client secret:
+      // Placeholder; replace with the real OIDC client secret (secret id is
+      // <gatewayName>-oidc-client-secret):
       //   aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret \
       //     --secret-string '<your-oidc-client-secret>'
       secretStringValue: cdk.SecretValue.unsafePlainText('REPLACE_ME'),
@@ -212,7 +223,7 @@ export class GatewayStack extends cdk.Stack {
 
     // ── Log group (gateway stderr: audit events + operational logs) ───────────
     const logGroup = new logs.LogGroup(this, 'GatewayLogGroup', {
-      logGroupName: '/claude-gateway/gateway',
+      logGroupName: `/${gatewayName}/gateway`,
       retention: logs.RetentionDays.THREE_MONTHS,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
@@ -220,7 +231,7 @@ export class GatewayStack extends cdk.Stack {
     // ── ECS cluster ───────────────────────────────────────────────────────────
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
-      clusterName: 'claude-gateway',
+      clusterName: gatewayName,
     });
 
 
@@ -314,7 +325,7 @@ export class GatewayStack extends cdk.Stack {
     const image = ecs.ContainerImage.fromEcrRepository(repo, props.imageTag);
     const fargate = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Gateway', {
       cluster,
-      serviceName: 'claude-gateway',
+      serviceName: gatewayName,
       cpu: 512,
       memoryLimitMiB: 1024,
       desiredCount: 2, // zero-downtime rolling deploys + AZ resilience; Postgres is the shared layer

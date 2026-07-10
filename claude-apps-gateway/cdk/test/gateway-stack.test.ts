@@ -160,3 +160,21 @@ describe('createVpcEndpoints opt-out (VPC reuse)', () => {
     template.resourceCountIs('AWS::EC2::VPCEndpoint', 7);
   });
 });
+
+describe('gatewayName parameterization (must match setup.sh PROJECT / deploy.sh GATEWAY_NAME)', () => {
+  test('a custom gatewayName renames the repo, cluster, service, secret, and log group', () => {
+    // Guards the bug where deploy.sh honored GATEWAY_NAME but the stack hardcoded
+    // 'claude-gateway', so a renamed gateway pushed to a repo the IAM policy didn't cover.
+    const t = synth({ ...PASS2, gatewayName: 'claude-gateway2' });
+    t.hasResourceProperties('AWS::ECR::Repository', { RepositoryName: 'claude-gateway2' });
+    t.hasResourceProperties('AWS::ECS::Cluster', { ClusterName: 'claude-gateway2' });
+    t.hasResourceProperties('AWS::ECS::Service', { ServiceName: 'claude-gateway2' });
+    t.hasResourceProperties('AWS::SecretsManager::Secret', { Name: 'claude-gateway2-oidc-client-secret' });
+    t.hasResourceProperties('AWS::Logs::LogGroup', { LogGroupName: '/claude-gateway2/gateway' });
+  });
+
+  test('defaults to claude-gateway when gatewayName is omitted', () => {
+    const t = synth(PASS2);
+    t.hasResourceProperties('AWS::ECR::Repository', { RepositoryName: 'claude-gateway' });
+  });
+});

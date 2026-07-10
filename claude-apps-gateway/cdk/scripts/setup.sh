@@ -30,7 +30,8 @@
 #     behavior). To skip the prompt, use a PUBLIC ACM cert - DNS validation needs no
 #     public endpoint, so the ALB stays internal. See the "TLS: bring an ACM cert"
 #     section of cdk/README.md.
-#   * A private Route 53 hosted zone (ZONE_ID/ZONE_NAME) for the gateway A-record,
+#   * A Route 53 hosted zone (ZONE_ID/ZONE_NAME) for the gateway A-record — public
+#     or private; see the two topologies in docs/deployment.md prerequisite 3 —
 #     plus a network path + private-DNS resolution from developer laptops to the
 #     internal ALB (VPN/DX/TGW). See docs/connectivity.md - the #1 "internal ALB
 #     doesn't work from my laptop" failure.
@@ -164,8 +165,8 @@ ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS:?required: comma-separated, e.g. 
 # Imported ACM cert for PUBLIC_URL's hostname. The CLI pins its SHA-256 fingerprint
 # on first /login; use a PUBLIC ACM cert to skip the prompt (see the header).
 CERT_ARN="${CERT_ARN:?required: ACM cert ARN for the PUBLIC_URL hostname}"
-ZONE_ID="${ZONE_ID:?required: Route 53 PRIVATE hosted zone id for the gateway A-record}"
-ZONE_NAME="${ZONE_NAME:?required: Route 53 private zone name, e.g. example.com}"
+ZONE_ID="${ZONE_ID:?required: Route 53 hosted zone id for the gateway A-record (public or private; see deployment.md prereq 3)}"
+ZONE_NAME="${ZONE_NAME:?required: Route 53 zone name, e.g. example.com}"
 # The VPN/corp CLIENT CIDR developer traffic arrives from — NOT the VPC CIDR.
 # A wrong guess is either wide-open or fully-closed, so we refuse to default it.
 INGRESS_CIDR="${INGRESS_CIDR:?required: the VPN/corp client CIDR developers connect from}"
