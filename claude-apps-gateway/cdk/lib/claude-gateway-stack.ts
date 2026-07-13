@@ -43,6 +43,13 @@ export interface GatewayStackProps extends cdk.StackProps {
    * deploy.sh passes this through from the .env GATEWAY_NAME.
    */
   readonly gatewayName?: string;
+  /**
+   * Region of the Bedrock endpoint the gateway calls — used for the upstream and
+   * for scoping the inference-profile IAM ARN. Defaults to the stack's own region.
+   * The gateway uses GLOBAL cross-region inference profiles (global.anthropic.*),
+   * which resolve from any Bedrock region, so any value works.
+   */
+  readonly bedrockRegion?: string;
   /** false = pass 1 (ECR repo only); true = pass 2 (full stack incl. service). */
   readonly imageReady: boolean;
 }
@@ -60,6 +67,9 @@ export class GatewayStack extends cdk.Stack {
     // Name prefix for the stack's named resources. Mirrors setup.sh's PROJECT so
     // the two tracks name resources identically; deploy.sh passes it from GATEWAY_NAME.
     const gatewayName = props.gatewayName ?? 'claude-gateway';
+    // Region of the Bedrock endpoint; defaults to the deploy region. The gateway
+    // uses global.anthropic.* inference profiles, which resolve from any region.
+    const bedrockRegion = props.bedrockRegion ?? this.region;
 
     // ── ECR repository (the pass-1 target) ────────────────────────────────────
     // Created first so the image can be built+pushed before the service exists.
@@ -213,12 +223,20 @@ export class GatewayStack extends cdk.Stack {
     });
     const oidcSecret = new secretsmanager.Secret(this, 'OidcClientSecret', {
       secretName: `${gatewayName}-oidc-client-secret`,
-      description: 'Claude gateway OIDC client secret — set the real value after deploy',
-      // Placeholder; replace with the real OIDC client secret (secret id is
-      // <gatewayName>-oidc-client-secret):
-      //   aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret \
+      description: 'Claude gateway OIDC client secret — seeded out-of-band after deploy',
+      // Generated placeholder rather than a fixed value ON PURPOSE: `generateSecretString`
+      // only sets the value at CREATE time and CloudFormation never overwrites it on
+      // update, so seeding the real secret out-of-band survives future deploys. A fixed
+      // `secretStringValue` would reset the real value to the placeholder on every deploy.
+      // deploy.sh seeds it from .env OIDC_CLIENT_SECRET (see its Step 4b); with setup.sh
+      // export OIDC_CLIENT_SECRET so it seeds the value directly. Either way:
+      //   aws secretsmanager put-secret-value --secret-id <gatewayName>-oidc-client-secret \
       //     --secret-string '<your-oidc-client-secret>'
-      secretStringValue: cdk.SecretValue.unsafePlainText('REPLACE_ME'),
+      generateSecretString: {
+        // Placeholder entropy only — the real IdP client secret is seeded post-deploy.
+        passwordLength: 32,
+        excludePunctuation: true,
+      },
     });
 
     // ── Log group (gateway stderr: audit events + operational logs) ───────────
@@ -302,7 +320,7 @@ export class GatewayStack extends cdk.Stack {
     // The collector is registered to the gateway ALB's :4318 listener below.
 
     // ── Gateway task role: dual-ARN Bedrock policy ────────────────────────────
-    // BOTH inference-profile (us.anthropic.*) AND foundation-model (anthropic.*)
+    // BOTH inference-profile (global.anthropic.*) AND foundation-model (anthropic.*)
     // ARNs — missing either yields 403 on invoke. auth: {} in gateway.yaml picks
     // this up via the ECS container-credentials endpoint (no IMDS, no hop-limit trap).
     const taskRole = new iam.Role(this, 'TaskRole', {
@@ -313,7 +331,11 @@ export class GatewayStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
         resources: [
-          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.*`,
+          // GLOBAL cross-region inference profiles (gateway.yaml uses global.anthropic.*).
+          // The profile ARN is scoped to the source (bedrock) region; global profiles
+          // resolve from any region, so any bedrockRegion works. The foundation-model
+          // ARN is region-wildcarded (::) because global routes to any commercial region.
+          `arn:aws:bedrock:${bedrockRegion}:${this.account}:inference-profile/global.anthropic.*`,
           'arn:aws:bedrock:*::foundation-model/anthropic.*',
         ],
       }),

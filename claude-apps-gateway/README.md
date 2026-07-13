@@ -94,13 +94,13 @@ The IAM policy for the task role looks like:
     "bedrock:InvokeModelWithResponseStream"
   ],
   "Resource": [
-    "arn:aws:bedrock:<region>:<account>:inference-profile/us.anthropic.*",
+    "arn:aws:bedrock:<region>:<account>:inference-profile/global.anthropic.*",
     "arn:aws:bedrock:*::foundation-model/anthropic.*"
   ]
 }
 ```
 
-Cross-region inference profiles (e.g., `us.anthropic.claude-sonnet-4-6`) require model access enabled in each region the profile spans.
+The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-4-8`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`apac.` — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
 
 ### 4. Claude Code v2.1.195 or later
 
@@ -230,13 +230,22 @@ telemetry:
 **How it's configured:**
 
 ```yaml
-# Amazon Bedrock: single region
+# Amazon Bedrock — any region (global inference profiles)
 upstreams:
   - provider: bedrock
-    region: us-east-1
+    region: us-east-1     # any region; global profiles resolve everywhere
     auth: {}              # uses ECS task role / instance profile
 
-auto_include_builtin_models: true
+# Explicit catalog → global cross-region inference profiles, so the config is
+# region-agnostic. (For data residency, swap global. for a geo prefix: us./eu./apac.)
+auto_include_builtin_models: false
+models:
+  - id: claude-opus-4-8
+    label: Claude Opus 4.8
+    upstream_model: { bedrock: global.anthropic.claude-opus-4-8 }
+  - id: claude-haiku-4-5
+    label: Claude Haiku 4.5   # no short alias — dated profile id
+    upstream_model: { bedrock: global.anthropic.claude-haiku-4-5-20251001-v1:0 }
 ```
 
 ```yaml

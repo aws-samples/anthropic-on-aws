@@ -81,10 +81,34 @@ describe('pass 2 (imageReady: true) — full stack', () => {
       'AWS::IAM::Policy',
       invokeStatement('arn:aws:bedrock:*::foundation-model/anthropic.*'),
     );
-    // inference-profile ARN embeds the resolved region/account, so match its suffix.
+    // inference-profile ARN uses the GLOBAL cross-region prefix (global.anthropic.*),
+    // matching gateway.yaml's models: block — the us./eu./apac. prefixes would 403.
     template.hasResourceProperties(
       'AWS::IAM::Policy',
-      invokeStatement(Match.stringLikeRegexp('inference-profile/us\\.anthropic\\.\\*')),
+      invokeStatement(Match.stringLikeRegexp('inference-profile/global\\.anthropic\\.\\*')),
+    );
+  });
+
+  test('inference-profile ARN is scoped to bedrockRegion, and any region works (global profiles)', () => {
+    // Global profiles resolve from any Bedrock region, so a non-US bedrockRegion is
+    // fully supported. The ARN embeds the source (bedrock) region; the global. prefix
+    // is unchanged. Deploy in us-east-1 (PASS2) but call Bedrock in ap-southeast-2.
+    const t = synth({ ...PASS2, bedrockRegion: 'ap-southeast-2' });
+    t.hasResourceProperties(
+      'AWS::IAM::Policy',
+      Match.objectLike({
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Resource: Match.arrayWith([
+                Match.stringLikeRegexp(
+                  'arn:aws:bedrock:ap-southeast-2:.*inference-profile/global\\.anthropic\\.\\*',
+                ),
+              ]),
+            }),
+          ]),
+        },
+      }),
     );
   });
 
@@ -124,12 +148,17 @@ describe('pass 2 (imageReady: true) — full stack', () => {
     });
   });
 
-  test('the OIDC client secret is a placeholder, not a real value baked into the template', () => {
-    // Guards against the "read process.env at synth" anti-pattern — a real secret
-    // must never land in the synthesized CloudFormation.
+  test('the OIDC client secret uses a generated placeholder — no static value, so deploys never clobber the seeded secret', () => {
+    // Two guarantees at once:
+    //  1. No real secret is baked into the template (the "read process.env at
+    //     synth" anti-pattern) — there must be NO static SecretString.
+    //  2. The value comes from GenerateSecretString, which CloudFormation sets
+    //     only at create time. A fixed SecretString would reset the real,
+    //     out-of-band-seeded secret to the placeholder on every deploy.
     template.hasResourceProperties('AWS::SecretsManager::Secret', {
       Name: 'claude-gateway-oidc-client-secret',
-      SecretString: 'REPLACE_ME',
+      GenerateSecretString: Match.objectLike({ PasswordLength: 32 }),
+      SecretString: Match.absent(),
     });
   });
 });

@@ -16,7 +16,7 @@ runtime-only failure. See the fix below.
 
 - The **distroless image** is identical — same pinned `claude` binary, same
   `claude gateway --config …` entrypoint.
-- The **dual-ARN Bedrock policy** is identical (both `inference-profile/us.anthropic.*`
+- The **dual-ARN Bedrock policy** is identical (both `inference-profile/global.anthropic.*`
   and `foundation-model/anthropic.*`).
 - **RDS**, the **internal-ALB / private-IP** requirement, the **idle-timeout**
   need, and the **Bedrock model-access prerequisite** are unchanged.

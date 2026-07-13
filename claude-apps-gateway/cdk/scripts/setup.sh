@@ -20,10 +20,11 @@
 # Re-run any time to roll a new image.
 #
 # ── Prerequisites you must satisfy out of band ────────────────────────────────
-#   * Bedrock MODEL ACCESS enabled per region for each Claude model you list in
-#     gateway.yaml's managed.policies.availableModels — for cross-region inference
-#     profiles (us.anthropic.*), in EVERY region the profile spans. This is a
-#     console/account-level step IAM cannot grant; missing it yields
+#     * Bedrock MODEL ACCESS enabled for each Claude model you list in
+#     gateway.yaml's managed.policies.availableModels. The gateway uses GLOBAL
+#     inference profiles (global.anthropic.*), which route to any commercial region,
+#     so enable access in your source region (and any region global may route to).
+#     This is a console/account-level step IAM cannot grant; missing it yields
 #     AccessDeniedException on invoke even when IAM is correct. (#1 Bedrock failure.)
 #   * TLS: an imported ACM cert for PUBLIC_URL's hostname (set CERT_ARN). On first
 #     /login the CLI pins its SHA-256 fingerprint and prompts to confirm it (intended
@@ -594,8 +595,9 @@ aws iam put-role-policy --role-name "${EXEC_ROLE}" \
 EXEC_ROLE_ARN="$(aws iam get-role --role-name "${EXEC_ROLE}" --query Role.Arn --output text)"
 
 # 5b. Task role — the gateway's runtime identity. Dual-ARN Bedrock policy: BOTH
-# inference-profile (us.anthropic.*) AND foundation-model (anthropic.*) ARNs, or
-# invoke 403s. auth: {} in gateway.yaml picks this up via the ECS creds endpoint.
+# inference-profile (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or
+# invoke 403s. Matches gateway.yaml.template's global.anthropic.* model catalog, so
+# any region works. auth: {} in gateway.yaml picks this up via the ECS creds endpoint.
 TASK_ROLE="${PROJECT}-task-role"
 ensure_role "${TASK_ROLE}"
 BEDROCK_POLICY=$(cat <<JSON
@@ -603,7 +605,7 @@ BEDROCK_POLICY=$(cat <<JSON
   {"Effect":"Allow",
    "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"],
    "Resource":[
-     "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/us.anthropic.*",
+     "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/global.anthropic.*",
      "arn:aws:bedrock:*::foundation-model/anthropic.*"
    ]}
 ]}
@@ -877,9 +879,10 @@ $(log "Deploy complete")
   NEXT STEPS
   1. Register this redirect URI on your OIDC client (if not already):
         ${PUBLIC_URL}/oauth/callback
-  2. Ensure Bedrock MODEL ACCESS is enabled per region for the models in
-     gateway.yaml's availableModels — for us.anthropic.* profiles, in EVERY
-     region the profile spans. Missing this → AccessDeniedException on invoke.
+  2. Ensure Bedrock MODEL ACCESS is enabled for the models in gateway.yaml's
+     availableModels — the gateway uses global.anthropic.* profiles, so enable
+     access in your source region (and regions global may route to). Missing
+     this → AccessDeniedException on invoke.
   3. Confirm developer laptops resolve ${RECORD_NAME} to the ALB's PRIVATE IP
      (VPN/DX/TGW + private DNS — see docs/connectivity.md).
   ${TLS_STEP}

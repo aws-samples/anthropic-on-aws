@@ -135,11 +135,12 @@ telemetry:
       # logs: false
       # traces: false
 
-# Constrain the model picker to a curated allowlist. This turns the silent
-# Bedrock AccessDenied trap into an explicit allowlist: align this with the
-# Claude models you have ACTUALLY enabled access for, per region. Also enforced
-# server-side at /v1/messages, so a patched client can't bypass it.
-auto_include_builtin_models: true
+# Explicit model catalog (see `models:` at the bottom) instead of the built-in
+# one, so every model maps to a GLOBAL inference profile and no region-specific
+# us.* default can leak in. `availableModels` below is the picker allowlist —
+# align it with the models you've enabled access for; enforced server-side at
+# /v1/messages, so a patched client can't bypass it.
+auto_include_builtin_models: false
 managed:
   policies:
     # Example group-scoped policy (uncomment + adapt). Specific matches first;
@@ -156,7 +157,7 @@ managed:
           - claude-opus-4-8
           - claude-sonnet-5
           - claude-haiku-4-5
-          - claude-fable-5
+          # - claude-fable-5   # opt-in — see the models: block note below
         enforceAvailableModels: true
 
 # Optional blocks, left commented:
@@ -168,8 +169,32 @@ managed:
 #   # NOTE: enabling admin makes Postgres hold durable spend + audit + PII. Harden
 #   # RDS (backups, deletion protection, multi-AZ) — see the README "Productionising".
 #
-# models:       # required only for non-US Bedrock regions or provisioned-throughput ARNs
-#   - id: claude-opus-4-8
-#     label: Claude Opus 4.8
-#     upstream_model:
-#       bedrock: us.anthropic.claude-opus-4-8
+# Model catalog. Each id maps to a GLOBAL cross-region inference profile
+# (global.anthropic.*), which resolves from ANY Bedrock region — so this config is
+# region-agnostic. For data residency, swap global. for a geo profile (us./eu./apac.)
+# and confirm the exact id per model with `aws bedrock list-inference-profiles`
+# (see the README "Regions & data residency"). Claude Haiku 4.5 has no short alias —
+# it uses the dated profile id. For provisioned throughput, point `bedrock:` at the PT ARN.
+#
+# Claude Fable 5 is opt-in: on Bedrock it requires a non-default data retention mode
+# that isn't enabled in every region, so it 400s ("data retention mode 'default' is
+# not available for this model") where the default three deploy cleanly. To add it,
+# enable the retention prereq for your region, uncomment it in availableModels above,
+# and uncomment the entry below.
+models:
+  - id: claude-opus-4-8
+    label: Claude Opus 4.8
+    upstream_model:
+      bedrock: global.anthropic.claude-opus-4-8
+  - id: claude-sonnet-5
+    label: Claude Sonnet 5
+    upstream_model:
+      bedrock: global.anthropic.claude-sonnet-5
+  - id: claude-haiku-4-5
+    label: Claude Haiku 4.5
+    upstream_model:
+      bedrock: global.anthropic.claude-haiku-4-5-20251001-v1:0
+  # - id: claude-fable-5
+  #   label: Claude Fable 5
+  #   upstream_model:
+  #     bedrock: global.anthropic.claude-fable-5
