@@ -21,26 +21,26 @@ EKS is a documented alternative, not automated — see [`eks-notes.md`](eks-note
 These are **out of band** — the example does not create them, and missing any one is
 a common failure:
 
-1. **Bedrock model access** enabled in the console, **per region**, for each Claude
-   model in `gateway.yaml`'s `availableModels`. For cross-region inference profiles
-   (`us.anthropic.*`), enable it in **every region the profile spans**. Missing this
-   yields `AccessDeniedException` on invoke even when IAM is correct. Verify it up
+1. **Bedrock model access** enabled in the console for each Claude model in
+   `gateway.yaml`'s `availableModels`. The gateway uses **global** cross-region
+   inference profiles (`global.anthropic.*`), which route to any commercial region,
+   so enable access in your source region and any region global may route to. Missing
+   this yields `AccessDeniedException` on invoke even when IAM is correct. Verify it up
    front with a 5-token invoke per model (success = access is enabled):
 
    ```bash
-   aws bedrock-runtime converse --model-id us.anthropic.claude-sonnet-5 \
+   aws bedrock-runtime converse --model-id global.anthropic.claude-sonnet-5 \
      --messages '[{"role":"user","content":[{"text":"ping"}]}]' \
      --inference-config '{"maxTokens":5}' >/dev/null && echo model access OK
    ```
 
    Not every model has a short-alias inference profile. `claude-opus-4-8`,
    `claude-sonnet-5`, and `claude-fable-5` do, but **Haiku 4.5 exists only as the
-   dated profile** `us.anthropic.claude-haiku-4-5-20251001-v1:0` — the short
-   `us.anthropic.claude-haiku-4-5` is rejected as `ValidationException: invalid`.
-   Run `aws bedrock list-inference-profiles` for the exact IDs. This caveat only
-   affects this manual check; in `gateway.yaml` you still list the **friendly**
-   name (`claude-haiku-4-5`) and the gateway's built-in catalog resolves it to the
-   right profile.
+   dated profile** `global.anthropic.claude-haiku-4-5-20251001-v1:0` — the short
+   `global.anthropic.claude-haiku-4-5` is rejected as `ValidationException: invalid`.
+   Run `aws bedrock list-inference-profiles` for the exact IDs. In `gateway.yaml`'s
+   `models:` block the friendly name (`claude-haiku-4-5`) maps to the dated profile;
+   for data residency, swap the `global.` prefix for a geo profile (`us.`/`eu.`/`apac.`).
 2. **An ACM cert** for your gateway hostname, passed as `CERT_ARN` / `-c certArn`.
    On first `/login` the CLI pins the cert's SHA-256 fingerprint and prompts the
    developer to confirm it — intended behavior (the CLI pinning the authentic
@@ -178,10 +178,12 @@ npx cdk deploy \
 > Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
 > service endpoints, `-c createVpcEndpoints=false`.
 
-The stack creates `claude-gateway-oidc-client-secret` as a `REPLACE_ME`
+The stack creates `claude-gateway-oidc-client-secret` with a CDK-**generated**
 placeholder (a real secret can't ride in CDK context — it would land in
-`cdk.context.json`). After pass 2, set the real value and bounce the service so
-tasks pick it up:
+`cdk.context.json`). The value is generated, not a fixed string, on purpose:
+CloudFormation sets it only at create time and never overwrites it on later
+deploys, so the real value you seed below survives future `cdk deploy` runs.
+After pass 2, set the real value and bounce the service so tasks pick it up:
 
 ```bash
 aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret \

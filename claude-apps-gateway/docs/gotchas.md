@@ -163,8 +163,9 @@ deploy: the internal IPv4 ALB resolved to `10.0.x.x` only, with **no AAAA record
 correct.
 
 **Why:** Bedrock model access is an **account/console-level** grant, separate from
-IAM. And for cross-region inference profiles (`us.anthropic.*`), it must be enabled
-in **every region the profile spans**, not just your endpoint region.
+IAM. And for cross-region inference profiles (`global.anthropic.*`), it must be enabled
+in the source region and any region the profile may route to (global spans all
+commercial regions), not just your endpoint region.
 
 **Fix:** in the Bedrock console, per region, request + enable access for each Claude
 model you list in `availableModels`. This is the **#1 Bedrock-through-gateway
@@ -179,7 +180,7 @@ failure** and it's easy to miss because IAM looks correct.
 **Why:** you must grant the actions on **both** the inference-profile ARNs **and**
 the underlying foundation-model ARNs:
 ```
-arn:aws:bedrock:<region>:<acct>:inference-profile/us.anthropic.*
+arn:aws:bedrock:<region>:<acct>:inference-profile/global.anthropic.*
 arn:aws:bedrock:*::foundation-model/anthropic.*
 ```
 Missing either yields 403. (Note the foundation-model ARN has an empty region +

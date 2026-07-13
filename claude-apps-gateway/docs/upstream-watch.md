@@ -54,7 +54,7 @@ exceeds our pin, we're behind on that feature. Two known ones we already track:
   `cli` key newer than the pin fails **at gateway boot** or is rejected server-side
   at `/v1/messages`. Confirm every model in `availableModels` and every `cli` key is
   known to the pinned version. (See the README's Claude Code version prerequisite.)
-- **Bedrock IAM ARN families.** The two-ARN grant (`inference-profile/us.anthropic.*`
+- **Bedrock IAM ARN families.** The two-ARN grant (`inference-profile/global.anthropic.*`
   **and** `foundation-model/anthropic.*`) is asserted in the CDK tests. If the docs'
   IAM table changes, update the policy and the test.
 

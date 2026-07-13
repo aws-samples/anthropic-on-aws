@@ -15,7 +15,11 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *
  * Context vars (pass with -c key=value, or set in cdk.json / cdk.context.json):
  *   RUNTIME / INFRA (consumed by the stack):
- *     region          AWS region (default: CDK_DEFAULT_REGION or us-east-1)
+ *     region          region the STACK deploys into — VPC/ALB/RDS/ECR/ECS
+ *                     (default: CDK_DEFAULT_REGION or us-east-1)
+ *     bedrockRegion   region of the Bedrock endpoint the task calls — the upstream
+ *                     `region:` + inference-profile ARN (default: region). Any region
+ *                     works: the gateway uses global.anthropic.* inference profiles
  *     gatewayName     name prefix for repo/cluster/service/secrets/log group (default: claude-gateway)
  *     publicUrl       internal ALB https origin, e.g. https://claude-gateway.example.com   (required)
  *     imageTag        ECR image tag (default: the claudeVersion below)
@@ -36,12 +40,18 @@ const app = new cdk.App();
 
 const ctx = (k: string): string | undefined => app.node.tryGetContext(k);
 const region = ctx('region') ?? process.env.CDK_DEFAULT_REGION ?? 'us-east-1';
+// Region of the Bedrock endpoint the task calls. Defaults to the deploy region
+// (the common single-region case); set -c bedrockRegion to point the upstream +
+// the inference-profile IAM ARN at a different region. NOTE: cross-region Bedrock
+// also needs the VPC Bedrock interface endpoint reworked — see the stack.
+const bedrockRegion = ctx('bedrockRegion') ?? region;
 const claudeVersion = ctx('claudeVersion') ?? '2.1.199';
 
 new GatewayStack(app, 'ClaudeGatewayStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region },
   description: 'Claude apps gateway on ECS Fargate with Amazon Bedrock (worked example)',
   gatewayName: ctx('gatewayName'),
+  bedrockRegion,
   publicUrl: ctx('publicUrl'),
   imageTag: ctx('imageTag') ?? claudeVersion,
   certArn: ctx('certArn'),

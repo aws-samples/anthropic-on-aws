@@ -43,11 +43,36 @@ echo ""
 # but it MUST match what CDK creates, hence we thread the same value everywhere below.
 GATEWAY_NAME="${GATEWAY_NAME:-claude-gateway}"
 
+# OIDC client secret preflight. deploy.sh seeds Secrets Manager from this AFTER
+# pass 2 (see Step 4b) — but bail now, before the long CDK/CodeBuild run, if it's
+# unset or still the .env.example placeholder. Otherwise the stack comes up with a
+# REPLACE_ME secret and OIDC login fails at the IdP with no obvious cause.
+: "${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET in .env (the real OIDC client secret; it is seeded into Secrets Manager, never baked into the image)}"
+if [ "${OIDC_CLIENT_SECRET}" = "your-oidc-client-secret" ]; then
+  echo "❌ OIDC_CLIENT_SECRET is still the .env.example placeholder. Set the real value in .env."
+  exit 1
+fi
+
+# Region resolution. DEPLOY_REGION is where the STACK and all its resources live
+# (VPC, ALB, RDS, ECR, ECS, CodeBuild, S3); BEDROCK_REGION is only the upstream
+# model endpoint (gateway.yaml `region:` + the inference-profile IAM ARN). They
+# default to the same value — the common single-region case. Precedence for the
+# deploy region: explicit DEPLOY_REGION → BEDROCK_REGION → shell AWS_REGION →
+# profile default. Exporting AWS_REGION/AWS_DEFAULT_REGION pins EVERY bare `aws`
+# call AND CDK to this one value, so a region-less call can't silently follow a
+# different shell setting (the mismatch this replaces).
+DEPLOY_REGION="${DEPLOY_REGION:-${BEDROCK_REGION:-${AWS_REGION:-$(aws configure get region 2>/dev/null || true)}}}"
+: "${DEPLOY_REGION:?could not resolve a deploy region (set DEPLOY_REGION or BEDROCK_REGION in .env, or a default region in your AWS profile)}"
+export AWS_REGION="$DEPLOY_REGION" AWS_DEFAULT_REGION="$DEPLOY_REGION"
+echo "Deploy region: $DEPLOY_REGION   Bedrock region: $BEDROCK_REGION"
+echo ""
+
 # Map .env → CDK context. deploy.sh builds the image as :latest via CodeBuild, so
 # we pin imageTag=latest to match — otherwise the stack defaults to the pinned
 # claude version tag, which this convenience path never pushes.
 CDK_CTX=(
-  -c "region=${BEDROCK_REGION}"
+  -c "region=${DEPLOY_REGION}"
+  -c "bedrockRegion=${BEDROCK_REGION}"
   -c "gatewayName=${GATEWAY_NAME}"
   -c "publicUrl=https://${GATEWAY_HOSTNAME}"
   -c "zoneName=${HOSTED_ZONE_NAME}"
@@ -105,7 +130,7 @@ if ! aws codebuild batch-get-projects --names claude-gateway-build --query "proj
     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' 2>/dev/null || true
 
   aws iam put-role-policy --role-name claude-gateway-codebuild --policy-name build-perms \
-    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}\",\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${BEDROCK_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}" 2>/dev/null
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}\",\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}" 2>/dev/null
 
   sleep 10  # Wait for IAM propagation
 
@@ -139,7 +164,7 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - aws ecr get-login-password --region ${BEDROCK_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
+      - aws ecr get-login-password --region ${DEPLOY_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
   build:
     commands:
       - chmod +x claude
@@ -191,7 +216,36 @@ upstreams:
     region: ${BEDROCK_REGION}
     auth: {}
 
-auto_include_builtin_models: true
+# Curated model list mapped to GLOBAL cross-region inference profiles
+# (global.anthropic.*). Global profiles are region-agnostic — the same IDs resolve
+# from any Bedrock region — so this config deploys unchanged regardless of
+# BEDROCK_REGION, and the built-in catalog's region-specific us.* defaults are not
+# used (auto_include_builtin_models: false). NOTE: global profiles route inference
+# to any commercial AWS region; if you need data residency, swap global. for a geo
+# profile (us./eu./apac.) and see cdk/README "Regions & data residency". Claude
+# Haiku 4.5 has no short profile alias — it must use the dated ID.
+#
+# Claude Fable 5 is intentionally omitted: on Bedrock it requires a non-default data
+# retention mode that isn't enabled in every region, so it 400s ("data retention mode
+# 'default' is not available for this model") where the default set works everywhere.
+# To add it, enable the retention prereq for your region and append:
+#   - id: claude-fable-5
+#     label: Claude Fable 5
+#     upstream_model: { bedrock: global.anthropic.claude-fable-5 }
+auto_include_builtin_models: false
+models:
+  - id: claude-opus-4-8
+    label: Claude Opus 4.8
+    upstream_model:
+      bedrock: global.anthropic.claude-opus-4-8
+  - id: claude-sonnet-5
+    label: Claude Sonnet 5
+    upstream_model:
+      bedrock: global.anthropic.claude-sonnet-5
+  - id: claude-haiku-4-5
+    label: Claude Haiku 4.5
+    upstream_model:
+      bedrock: global.anthropic.claude-haiku-4-5-20251001-v1:0
 EOF
 
 aws s3 cp /tmp/gw-buildspec.yml "s3://$BUCKET/buildspec.yml" --quiet
@@ -223,6 +277,27 @@ echo ""
 echo "Step 4/5: Pass 2 — deploying the full stack (CDK)..."
 npx cdk deploy --require-approval never -c imageReady=true "${CDK_CTX[@]}"
 echo "✅ Full stack deployed"
+echo ""
+
+# --- Step 4b: Seed the OIDC client secret ---
+# The stack creates <gatewayName>-oidc-client-secret with a CDK-generated
+# placeholder (NOT a fixed value — so this seed survives future deploys instead of
+# being reset). Inject the real secret from .env now that the secret exists (pass 1
+# doesn't create it). The task reads it as the OIDC_CLIENT_SECRET env var; it is
+# never baked into the image. This mirrors setup.sh's Secrets Manager seeding.
+echo "Step 4b: Seeding the OIDC client secret into Secrets Manager..."
+aws secretsmanager put-secret-value \
+  --secret-id "${GATEWAY_NAME}-oidc-client-secret" \
+  --secret-string "${OIDC_CLIENT_SECRET}" >/dev/null
+# ECS resolves Secrets Manager values at task launch, so the tasks pass 2 already
+# started still hold the old placeholder. Force a fresh deployment to pick up the
+# seeded value, then block until the service is stable. (cluster + service are both
+# named GATEWAY_NAME.)
+aws ecs update-service --cluster "${GATEWAY_NAME}" --service "${GATEWAY_NAME}" \
+  --force-new-deployment >/dev/null
+echo "   Waiting for the service to redeploy with the seeded secret..."
+aws ecs wait services-stable --cluster "${GATEWAY_NAME}" --services "${GATEWAY_NAME}"
+echo "✅ OIDC client secret seeded and service redeployed"
 echo ""
 
 # --- Step 5: Verify ---

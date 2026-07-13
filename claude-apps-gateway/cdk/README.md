@@ -227,9 +227,10 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `HOSTED_ZONE_NAME` | Route53 zone name (optional if managing DNS externally) |
 | `OIDC_ISSUER` | Your IdP's OIDC discovery URL (must serve `/.well-known/openid-configuration`) |
 | `OIDC_CLIENT_ID` | OAuth client ID from your IdP app registration |
-| `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration |
+| `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration; `deploy.sh` seeds it into Secrets Manager (never baked into the image) and refuses to deploy while it's still the placeholder |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
-| `BEDROCK_REGION` | Region for Bedrock API calls |
+| `BEDROCK_REGION` | Region whose Bedrock endpoint the gateway calls (the upstream `region:` + the inference-profile IAM ARN). Any region works — the gateway uses global inference profiles. See [Regions & data residency](#regions--data-residency) |
+| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. See [Regions](#regions) |
 | `CERT_ARN` | Imported ACM cert ARN for `GATEWAY_HOSTNAME` (required; `deploy.sh` maps it to the `certArn` context) |
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 | `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
@@ -244,7 +245,8 @@ pass 2 (default) deploys the full stack.
 
 | Context | Pass | Required | Meaning |
 |---|---|---|---|
-| `region` | both | no | AWS region (default `CDK_DEFAULT_REGION` or `us-east-1`) |
+| `region` | both | no | Region the **stack** deploys into — VPC/ALB/RDS/ECR/ECS (default `CDK_DEFAULT_REGION` or `us-east-1`) |
+| `bedrockRegion` | both | no | Region of the Bedrock endpoint — the upstream `region:` + inference-profile ARN (default: `region`). Any region works — the gateway uses global inference profiles. See [Regions & data residency](#regions--data-residency) |
 | `imageReady` | both | no | `false` = pass 1 (repo only); omit/`true` = pass 2 |
 | `publicUrl` | 2 | **yes** | Internal ALB https origin, e.g. `https://claude-gateway.example.com` |
 | `imageTag` | 2 | no | ECR tag (default = pinned claude version) |
@@ -254,6 +256,67 @@ pass 2 (default) deploys the full stack.
 | `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
 | `vpcId` | 2 | no | Import an existing VPC instead of creating one |
 | `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch/S3 endpoints — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy |
+
+### Regions & data residency
+
+There are two region concepts, and they are **separate**:
+
+- **Deploy region** (`region` context / `DEPLOY_REGION` env) — where the stack's
+  own resources live: VPC, ALB, RDS, ECR, ECS, CodeBuild, S3.
+- **Bedrock region** (`bedrockRegion` context / `BEDROCK_REGION` env) — the Bedrock
+  endpoint the gateway calls: the upstream `region:` in `gateway.yaml` and the region
+  in the inference-profile IAM ARN.
+
+They **default to the same value**. `deploy.sh` resolves the deploy region as
+`DEPLOY_REGION → BEDROCK_REGION → shell AWS_REGION → profile default` and exports it
+as `AWS_REGION`/`AWS_DEFAULT_REGION`, so every `aws` CLI call and CDK agree on one
+region regardless of what your shell had set. (Before this, region-less `aws` calls
+silently followed the shell while CDK followed `.env`, so a mismatched shell
+`AWS_REGION` broke the deploy.)
+
+**Any Bedrock region works out of the box.** The `gateway.yaml` model catalog maps
+each model to a **global cross-region inference profile** (`global.anthropic.*`),
+which resolves from any commercial region — so `BEDROCK_REGION` can be `us-east-1`,
+`eu-central-1`, `ap-southeast-2`, etc. with no config change, and the IAM policy
+grants `inference-profile/global.anthropic.*` to match. The gateway still connects
+only to the Bedrock endpoint in `BEDROCK_REGION` over the private VPC interface
+endpoint; the cross-region routing happens inside Bedrock, so the "AWS traffic never
+leaves the VPC" posture is unchanged.
+
+**Data residency caveat.** A global profile routes inference to *any* commercial AWS
+region, and prompts/outputs may be processed or stored outside `BEDROCK_REGION` (AWS
+may retain inputs/outputs in the destination region for abuse detection). If you need
+inference confined to a specific geography, switch the catalog off global:
+
+- Edit the `models:` block (in `deploy.sh`'s inline `gateway.yaml`, or your stamped
+  `gateway.yaml` on the hardened path) — replace each `global.` prefix with a geo
+  profile (`us.` / `eu.` / `apac.`). Confirm the exact id per model with
+  `aws bedrock list-inference-profiles --region <your-region>` — they're not a clean
+  substitution (e.g. Claude Haiku 4.5 has no short alias, only a dated id).
+- Change `inference-profile/global.anthropic.*` → your geo prefix in
+  `claude-gateway-stack.ts`.
+- A geo (or in-region) profile only routes within that geography, so pick a
+  `BEDROCK_REGION` the profile actually spans.
+
+**Default model set.** The shipped catalog is Claude Opus 4.8, Sonnet 5, and Haiku 4.5
+— all three invoke via their global profiles from any region. **Claude Fable 5 is
+opt-in**: on Bedrock it requires a non-default data-retention mode that isn't enabled
+in every region, so it returns `ValidationException: data retention mode 'default' is
+not available for this model` where the default three work. To add it, enable that
+prereq for your region, then uncomment `claude-fable-5` in both `availableModels` and
+the `models:` block (`gateway.yaml.template` / `.example`, or `deploy.sh`'s inline
+`gateway.yaml`).
+
+> **Driving CDK by hand (Option B)?** The two-pass `cdk deploy` creates the OIDC
+> client secret with a generated placeholder — it does **not** seed your real
+> secret. After pass 2, seed it yourself (and re-run the service so tasks pick it up):
+> ```bash
+> aws secretsmanager put-secret-value \
+>   --secret-id <GATEWAY_NAME>-oidc-client-secret \
+>   --secret-string '<your-oidc-client-secret>'
+> aws ecs update-service --cluster <GATEWAY_NAME> --service <GATEWAY_NAME> --force-new-deployment
+> ```
+> `deploy.sh` (Option A) does both automatically from `.env`.
 
 ## Before going to production
 
@@ -342,7 +405,12 @@ upstreams:
     region: us-east-1
     auth: {}
 
-auto_include_builtin_models: true
+# Global inference profiles → region-agnostic (see "Regions & data residency")
+auto_include_builtin_models: false
+models:
+  - id: claude-opus-4-8
+    label: Claude Opus 4.8
+    upstream_model: { bedrock: global.anthropic.claude-opus-4-8 }
 ```
 
 **5. Trust the self-signed cert:**
