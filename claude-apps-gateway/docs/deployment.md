@@ -260,8 +260,12 @@ aws iam attach-user-policy --user-name cloudwatch-metrics-api-key-user \
 
 aws iam create-service-specific-credential \
   --user-name cloudwatch-metrics-api-key-user \
-  --service-name cloudwatch.amazonaws.com \
-  --credential-age-days 90
+  --service-name cloudwatch.amazonaws.com
+# No --credential-age-days: the credential never expires. This example has no
+# alerting on telemetry health, so an expiring credential fails silently —
+# the gateway logs a 403 on every export but keeps serving inference traffic.
+# Rotate deliberately with `aws iam reset-service-specific-credential` if your
+# security policy requires it.
 # → note the ServiceCredentialSecret value; it can't be retrieved again.
 ```
 
