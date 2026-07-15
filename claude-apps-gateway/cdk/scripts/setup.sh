@@ -145,12 +145,11 @@ LOG_GROUP="${LOG_GROUP:-/claude-gateway/gateway}"
 LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-90}"
 GATEWAY_LOG_LEVEL="${GATEWAY_LOG_LEVEL:-info}"
 
-# CloudWatch Metrics OTLP bearer token (a service-specific credential for an IAM
-# user with the CloudWatchAPIKeyAccess policy — see docs/deployment.md "Telemetry").
-# Not created by this script: create it out of band, then export it here so phase 4
-# seeds/updates Secrets Manager from it (same pattern as OIDC_CLIENT_SECRET below).
-CW_METRICS_API_KEY="${CW_METRICS_API_KEY:-}"
-CW_METRICS_API_KEY_SECRET_NAME="${PROJECT}-cw-metrics-api-key"
+# Telemetry: an ADOT collector sidecar in the gateway task receives OTLP on
+# localhost:4318 and forwards metrics to CloudWatch's native OTLP endpoint using
+# SigV4 via the task role — no bearer token or API key to manage or rotate. See
+# docs/deployment.md "Telemetry". The public ECR image for the collector:
+ADOT_IMAGE="${ADOT_IMAGE:-public.ecr.aws/aws-observability/aws-otel-collector:latest}"
 
 # Required inputs (no safe default — fail loudly). See header.
 PUBLIC_URL="${PUBLIC_URL:?required: the internal ALB https origin, e.g. https://claude-gateway.example.com}"
@@ -544,31 +543,8 @@ if [[ "$(aws_q secretsmanager get-secret-value --secret-id "${OIDC_SECRET_NAME}"
     aws secretsmanager put-secret-value --secret-id ${OIDC_SECRET_NAME} --secret-string '<your-oidc-client-secret>' --region ${AWS_REGION}"
 fi
 
-# CloudWatch Metrics OTLP bearer token — same seed-or-placeholder pattern as the
-# OIDC secret above, but telemetry is optional-by-construction: no preflight/guard
-# blocks the deploy on a REPLACE_ME value here, since the gateway runs fine (just
-# without telemetry) until you set it. See docs/deployment.md "Telemetry" for how
-# to generate the token (aws iam create-service-specific-credential).
-if aws_q secretsmanager describe-secret --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" >/dev/null; then
-  if [[ -n "${CW_METRICS_API_KEY}" ]] && [[ "$(aws_q secretsmanager get-secret-value \
-       --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" --query SecretString)" != "${CW_METRICS_API_KEY}" ]]; then
-    aws secretsmanager put-secret-value --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" \
-      --secret-string "${CW_METRICS_API_KEY}" --region "${AWS_REGION}" >/dev/null
-    info "updated ${CW_METRICS_API_KEY_SECRET_NAME} from CW_METRICS_API_KEY"
-  else
-    skip "secret ${CW_METRICS_API_KEY_SECRET_NAME}"
-  fi
-else
-  aws secretsmanager create-secret --name "${CW_METRICS_API_KEY_SECRET_NAME}" \
-    --description "CloudWatch Metrics OTLP bearer token" \
-    --secret-string "${CW_METRICS_API_KEY:-REPLACE_ME}" --region "${AWS_REGION}" >/dev/null
-  if [[ -n "${CW_METRICS_API_KEY}" ]]; then
-    info "created ${CW_METRICS_API_KEY_SECRET_NAME} (seeded from CW_METRICS_API_KEY)"
-  else
-    info "created ${CW_METRICS_API_KEY_SECRET_NAME} (placeholder REPLACE_ME — telemetry stays off until you set it)"
-  fi
-fi
-CW_METRICS_API_KEY_SECRET_ARN="$(aws_q secretsmanager describe-secret --secret-id "${CW_METRICS_API_KEY_SECRET_NAME}" --query ARN)"
+# Telemetry needs no secret: the ADOT sidecar authenticates to CloudWatch with
+# SigV4 via the task role (see phase 5b), so there is no bearer token to seed here.
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 5 — IAM roles + CloudWatch log group
@@ -606,7 +582,7 @@ aws iam attach-role-policy --role-name "${EXEC_ROLE}" \
 EXEC_SECRETS_POLICY=$(cat <<JSON
 {"Version":"2012-10-17","Statement":[
   {"Effect":"Allow","Action":["secretsmanager:GetSecretValue"],
-   "Resource":["${JWT_SECRET_ARN}","${OIDC_SECRET_ARN}","${DB_SECRET_ARN}","${CW_METRICS_API_KEY_SECRET_ARN}"]},
+   "Resource":["${JWT_SECRET_ARN}","${OIDC_SECRET_ARN}","${DB_SECRET_ARN}"]},
   {"Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],
    "Resource":"arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:log-group:${LOG_GROUP}:*"}
 ]}
@@ -620,6 +596,8 @@ EXEC_ROLE_ARN="$(aws iam get-role --role-name "${EXEC_ROLE}" --query Role.Arn --
 # inference-profile (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or
 # invoke 403s. Matches gateway.yaml.template's global.anthropic.* model catalog, so
 # any region works. auth: {} in gateway.yaml picks this up via the ECS creds endpoint.
+# Also grants cloudwatch:PutMetricData so the ADOT sidecar can push OTLP metrics
+# to CloudWatch via SigV4 (PutMetricData takes no resource scope, hence "*").
 TASK_ROLE="${PROJECT}-task-role"
 ensure_role "${TASK_ROLE}"
 BEDROCK_POLICY=$(cat <<JSON
@@ -629,7 +607,10 @@ BEDROCK_POLICY=$(cat <<JSON
    "Resource":[
      "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/global.anthropic.*",
      "arn:aws:bedrock:*::foundation-model/anthropic.*"
-   ]}
+   ]},
+  {"Effect":"Allow",
+   "Action":["cloudwatch:PutMetricData"],
+   "Resource":["*"]}
 ]}
 JSON
 )
@@ -640,7 +621,7 @@ info "exec=${EXEC_ROLE_ARN}"
 info "task=${TASK_ROLE_ARN}"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Phase 6 — ECS cluster, ALB, telemetry collector, gateway service
+# Phase 6 — ECS cluster, ALB, gateway service (with ADOT telemetry sidecar)
 # ──────────────────────────────────────────────────────────────────────────────
 log "Phase 6: ECS cluster, ALB, services"
 
@@ -722,39 +703,97 @@ info "upserted Route 53 A-record ${RECORD_NAME} → ${ALB_DNS}"
 # Secrets injected as env vars. DB_USER/DB_PASSWORD come from the RDS-managed master
 # secret's JSON fields; DB_HOST is the (non-secret) RDS endpoint as a plain env var,
 # because the RDS-managed secret holds only {username,password}, not the host.
-GW_TASKDEF=$(cat <<JSON
-{
-  "family": "${PROJECT}",
-  "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "512", "memory": "1024",
-  "executionRoleArn": "${EXEC_ROLE_ARN}",
-  "taskRoleArn": "${TASK_ROLE_ARN}",
-  "containerDefinitions": [{
-    "name": "gateway",
-    "image": "${IMAGE_URI}",
-    "essential": true,
-    "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
-    "environment": [
-      {"name": "CLAUDE_GATEWAY_LOG_LEVEL", "value": "${GATEWAY_LOG_LEVEL}"},
-      {"name": "DB_HOST", "value": "${DB_HOST}"}
-    ],
-    "secrets": [
-      {"name": "GATEWAY_JWT_SECRET",  "valueFrom": "${JWT_SECRET_ARN}"},
-      {"name": "OIDC_CLIENT_SECRET",  "valueFrom": "${OIDC_SECRET_ARN}"},
-      {"name": "DB_USER",     "valueFrom": "${DB_SECRET_ARN}:username::"},
-      {"name": "DB_PASSWORD", "valueFrom": "${DB_SECRET_ARN}:password::"},
-      {"name": "CW_METRICS_API_KEY", "valueFrom": "${CW_METRICS_API_KEY_SECRET_ARN}"}
-    ],
-    "logConfiguration": {"logDriver": "awslogs", "options": {
-      "awslogs-group": "${LOG_GROUP}", "awslogs-region": "${AWS_REGION}", "awslogs-stream-prefix": "gateway"}}
-  }]
-}
-JSON
-)
+#
+# Two containers: the gateway, and a non-essential ADOT collector sidecar. The
+# gateway forwards OTLP to the sidecar on localhost:4318 (CLAUDE_GATEWAY_ALLOW_LOOPBACK=1
+# lets it target loopback past the SSRF guard); the sidecar relays to CloudWatch's
+# native OTLP endpoint using SigV4 via the task role. Kept identical to the CDK
+# stack's adotConfig — keep the two in sync.
+ADOT_CONFIG="$(cat <<YAML
+extensions:
+  sigv4auth:
+    service: monitoring
+    region: ${AWS_REGION}
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+processors:
+  batch:
+    send_batch_size: 200
+    timeout: 10s
+exporters:
+  otlphttp:
+    metrics_endpoint: https://monitoring.${AWS_REGION}.amazonaws.com/v1/metrics
+    auth:
+      authenticator: sigv4auth
+    compression: gzip
+service:
+  extensions: [sigv4auth]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]
+YAML
+)"
+# Build with jq so the multi-line ADOT config is JSON-escaped correctly.
+GW_TASKDEF="$(jq -n \
+  --arg family "${PROJECT}" \
+  --arg execRole "${EXEC_ROLE_ARN}" \
+  --arg taskRole "${TASK_ROLE_ARN}" \
+  --arg image "${IMAGE_URI}" \
+  --arg adotImage "${ADOT_IMAGE}" \
+  --arg logLevel "${GATEWAY_LOG_LEVEL}" \
+  --arg dbHost "${DB_HOST}" \
+  --arg jwtArn "${JWT_SECRET_ARN}" \
+  --arg oidcArn "${OIDC_SECRET_ARN}" \
+  --arg dbArn "${DB_SECRET_ARN}" \
+  --arg logGroup "${LOG_GROUP}" \
+  --arg region "${AWS_REGION}" \
+  --arg adotConfig "${ADOT_CONFIG}" \
+  '{
+    family: $family,
+    networkMode: "awsvpc",
+    requiresCompatibilities: ["FARGATE"],
+    cpu: "512", memory: "1024",
+    executionRoleArn: $execRole,
+    taskRoleArn: $taskRole,
+    containerDefinitions: [
+      {
+        name: "gateway",
+        image: $image,
+        essential: true,
+        portMappings: [{containerPort: 8080, protocol: "tcp"}],
+        environment: [
+          {name: "CLAUDE_GATEWAY_LOG_LEVEL", value: $logLevel},
+          {name: "DB_HOST", value: $dbHost},
+          {name: "CLAUDE_GATEWAY_ALLOW_LOOPBACK", value: "1"}
+        ],
+        secrets: [
+          {name: "GATEWAY_JWT_SECRET", valueFrom: $jwtArn},
+          {name: "OIDC_CLIENT_SECRET", valueFrom: $oidcArn},
+          {name: "DB_USER", valueFrom: ($dbArn + ":username::")},
+          {name: "DB_PASSWORD", valueFrom: ($dbArn + ":password::")}
+        ],
+        logConfiguration: {logDriver: "awslogs", options: {
+          "awslogs-group": $logGroup, "awslogs-region": $region, "awslogs-stream-prefix": "gateway"}}
+      },
+      {
+        name: "otel-collector",
+        image: $adotImage,
+        essential: false,
+        memoryReservation: 128,
+        environment: [{name: "AOT_CONFIG_CONTENT", value: $adotConfig}],
+        logConfiguration: {logDriver: "awslogs", options: {
+          "awslogs-group": $logGroup, "awslogs-region": $region, "awslogs-stream-prefix": "otel"}}
+      }
+    ]
+  }')"
 GW_TD_ARN="$(aws_q ecs register-task-definition --cli-input-json "${GW_TASKDEF}" \
   --query 'taskDefinition.taskDefinitionArn')"
-info "registered gateway task def ${GW_TD_ARN}"
+info "registered gateway task def ${GW_TD_ARN} (gateway + otel-collector sidecar)"
 
 # 6f. Gateway Fargate service — desiredCount 2 across 2 AZs for zero-downtime
 # rolling deploys + AZ resilience (stateless; Postgres is the shared layer).
@@ -810,12 +849,11 @@ $(log "Deploy complete")
   ${TLS_STEP}
   5. Push forceLoginMethod/forceLoginGatewayUrl to developer machines
      (managed-settings.json — see the Verify section of docs/deployment.md).
-  6. Telemetry is OFF until you set a real CloudWatch Metrics API key:
-        aws iam create-service-specific-credential --user-name <a CloudWatchAPIKeyAccess IAM user> \\
-          --service-name cloudwatch.amazonaws.com
-        aws secretsmanager put-secret-value --secret-id ${CW_METRICS_API_KEY_SECRET_NAME} \\
-          --secret-string '<ServiceCredentialSecret>' --region ${AWS_REGION}
-     (see docs/deployment.md "Telemetry"). Then re-run this script to roll the task def.
+  6. Telemetry is ON automatically: the ADOT collector sidecar in the task relays
+     OTLP metrics to CloudWatch using SigV4 via the task role (no key to set).
+     Metrics land in CloudWatch's native OTLP (PromQL) backend — query them via
+     the PromQL API, NOT list-metrics (see docs/gotchas.md §2). See
+     docs/deployment.md "Telemetry".
 
   Smoke test once DNS + a session route exist:
      curl -fsS ${PUBLIC_URL}/.well-known/oauth-authorization-server | jq .

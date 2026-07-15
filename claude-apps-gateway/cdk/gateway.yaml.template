@@ -125,9 +125,10 @@ upstreams:
   #  first-party model IDs; if you curate `models:`, key the entry `anthropicAws:`)
 
 telemetry:
-  # Forwards to an ADOT collector sidecar running in the same Fargate task.
-  # The agent receives OTLP on localhost:4318 and relays to CloudWatch using
-  # The agent authenticates to CloudWatch using SigV4 via the task role.
+  # Forwards to an ADOT collector sidecar running in the same Fargate task. The
+  # collector receives OTLP on localhost:4318 and relays to CloudWatch's native
+  # OTLP metrics endpoint using SigV4 via the task role — no bearer token or API
+  # key to manage or rotate.
   # Telemetry turns on only when forward_to AND listen.public_url are both set;
   # the gateway then pushes OTEL_* env to clients (one-time client approval dialog).
   forward_to:

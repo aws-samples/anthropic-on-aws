@@ -243,9 +243,9 @@ Publish the cert's SHA-256 fingerprint (printed by `setup.sh`, or the
 
 `gateway.yaml`'s `telemetry.forward_to` sends OTLP metrics to an **ADOT collector
 sidecar** running in the same Fargate task. The gateway pushes to
-`http://localhost:4318` (the ADOT collector's OTLP receiver), and the agent forwards to
-CloudWatch using **SigV4 via the ECS task role**. No
-key rotation, no expiration concerns.
+`http://localhost:4318` (the ADOT collector's OTLP receiver), and the collector
+forwards to CloudWatch's native OTLP endpoint using **SigV4 via the ECS task
+role** — no bearer token or API key, so no key rotation or expiration concerns.
 
 The ADOT sidecar:
 - Authenticates automatically using the task role (needs `cloudwatch:PutMetricData`,
