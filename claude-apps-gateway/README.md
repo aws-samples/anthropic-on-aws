@@ -201,20 +201,18 @@ Tool/permission policies are defense-in-depth (a patched client can ignore them)
 
 **What it does:** The gateway relays OpenTelemetry Protocol (OTLP) metrics to a destination you configure. Each export is stamped with the developer's identity (user ID, email, groups), so you get per-user cost and usage breakdowns with no developer-side configuration.
 
-**How it's configured:** this example ships pointed straight at CloudWatch's native OTLP metrics endpoint (bearer-token auth, no collector to run):
+**How it's configured:** this example ships with a ADOT collector sidecar in the same Fargate task — the gateway sends OTLP to localhost, and the collector forwards to CloudWatch via SigV4 using the task role:
 
 ```yaml
 telemetry:
   forward_to:
-    - url: https://monitoring.us-east-1.amazonaws.com
-      headers:
-        Authorization: Bearer ${CW_METRICS_API_KEY}
+    - url: http://localhost:4318
       metrics: true     # token counts, latency, model (default: true)
       logs: false       # bash commands, file paths (opt-in, sensitive)
       traces: false     # full tool inputs (opt-in, most sensitive)
 ```
 
-See [`docs/deployment.md`](docs/deployment.md#telemetry) for generating the API key. Any OTLP-compatible backend works — swap `url`/`headers` for Datadog, Splunk, or a self-hosted collector.
+See [`docs/deployment.md`](docs/deployment.md#telemetry) for deployment details. Any OTLP-compatible backend works — swap `url` (and add `headers` if needed) for Datadog, Splunk, or a self-hosted collector.
 
 **Key points:**
 - Metrics include: token counts, model used, user identity, request latency

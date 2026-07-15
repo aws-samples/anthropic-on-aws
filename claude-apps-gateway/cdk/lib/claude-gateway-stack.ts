@@ -206,16 +206,6 @@ export class GatewayStack extends cdk.Stack {
       //     --secret-string '<your-oidc-client-secret>'
       secretStringValue: cdk.SecretValue.unsafePlainText('REPLACE_ME'),
     });
-    // CloudWatch Metrics OTLP endpoint bearer token (a service-specific credential
-    // for an IAM user with the CloudWatchAPIKeyAccess policy — see docs/deployment.md
-    // "Telemetry"). Not an AWS-managed secret: create it out of band, then either
-    // `put-secret-value` here or pass it as CW_METRICS_API_KEY at deploy time.
-    const cwMetricsApiKeySecret = new secretsmanager.Secret(this, 'CwMetricsApiKeySecret', {
-      secretName: `${gatewayName}-cw-metrics-api-key`,
-      description: 'CloudWatch Metrics OTLP bearer token (service-specific credential) — set the real value after deploy',
-      secretStringValue: cdk.SecretValue.unsafePlainText('REPLACE_ME'),
-    });
-
     // ── Log group (gateway stderr: audit events + operational logs) ───────────
     const logGroup = new logs.LogGroup(this, 'GatewayLogGroup', {
       logGroupName: `/${gatewayName}/gateway`,
@@ -236,7 +226,7 @@ export class GatewayStack extends cdk.Stack {
     // this up via the ECS container-credentials endpoint (no IMDS, no hop-limit trap).
     const taskRole = new iam.Role(this, 'TaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'Claude gateway task role: Bedrock invoke',
+      description: 'Claude gateway task role: Bedrock invoke + CloudWatch metrics',
     });
     taskRole.addToPolicy(
       new iam.PolicyStatement({
@@ -245,6 +235,12 @@ export class GatewayStack extends cdk.Stack {
           `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.*`,
           'arn:aws:bedrock:*::foundation-model/anthropic.*',
         ],
+      }),
+    );
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
       }),
     );
 
@@ -284,13 +280,13 @@ export class GatewayStack extends cdk.Stack {
           CLAUDE_GATEWAY_LOG_LEVEL: 'info',
           CLAUDE_CONFIG_DIR: '/tmp/.claude',
           DB_HOST: db.dbInstanceEndpointAddress,
+          CLAUDE_GATEWAY_ALLOW_LOOPBACK: '1', // ADOT sidecar is on localhost
         },
         secrets: {
           GATEWAY_JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
           OIDC_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oidcSecret),
           DB_USER: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
           DB_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
-          CW_METRICS_API_KEY: ecs.Secret.fromSecretsManager(cwMetricsApiKeySecret),
         },
         logDriver: ecs.LogDrivers.awsLogs({ streamPrefix: 'gateway', logGroup }),
       },
@@ -303,6 +299,46 @@ export class GatewayStack extends cdk.Stack {
       ec2.Port.tcp(443),
       'developers to ALB (HTTPS)',
     );
+
+    // ── ADOT collector sidecar (OTLP receiver → CW native OTLP metrics) ─────
+    // Receives OTLP from the gateway on localhost:4318 and forwards to CloudWatch's
+    // native OTLP endpoint using SigV4 via the task role.
+    // Runs as a sidecar in the same task (no ALB listener, no extra SG).
+    const adotConfig = [
+      'extensions:',
+      '  sigv4auth:',
+      '    service: monitoring',
+      `    region: ${this.region}`,
+      'receivers:',
+      '  otlp:',
+      '    protocols:',
+      '      http:',
+      '        endpoint: 127.0.0.1:4318',
+      'processors:',
+      '  batch:',
+      '    send_batch_size: 200',
+      '    timeout: 10s',
+      'exporters:',
+      '  otlphttp:',
+      `    metrics_endpoint: https://monitoring.${this.region}.amazonaws.com/v1/metrics`,
+      '    auth:',
+      '      authenticator: sigv4auth',
+      '    compression: gzip',
+      'service:',
+      '  extensions: [sigv4auth]',
+      '  pipelines:',
+      '    metrics:',
+      '      receivers: [otlp]',
+      '      processors: [batch]',
+      '      exporters: [otlphttp]',
+    ].join('\n');
+    fargate.taskDefinition.addContainer('otel-collector', {
+      image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/aws-otel-collector:latest'),
+      essential: false, // gateway continues if the collector crashes; telemetry is non-critical
+      environment: { AOT_CONFIG_CONTENT: adotConfig },
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'otel', logGroup }),
+      memoryReservationMiB: 128,
+    });
 
     // Health check → /healthz (liveness). Keeps replicas in rotation during a
     // Postgres blip; pointing it at /readyz would drain all replicas at once.
@@ -323,12 +359,6 @@ export class GatewayStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CertFingerprintHint', {
       value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,
       description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
-    });
-    new cdk.CfnOutput(this, 'CwMetricsApiKeySecretName', {
-      value: cwMetricsApiKeySecret.secretName,
-      description:
-        'Set this secret to a CloudWatch Metrics API key (iam create-service-specific-credential ' +
-        '--service-name cloudwatch.amazonaws.com) before telemetry works — see docs/deployment.md "Telemetry".',
     });
   }
 }

@@ -239,48 +239,27 @@ Publish the cert's SHA-256 fingerprint (printed by `setup.sh`, or the
 
 ## Telemetry
 
-`gateway.yaml`'s `telemetry.forward_to` points straight at CloudWatch's native
-OTLP metrics endpoint (`https://monitoring.<region>.amazonaws.com/v1/metrics`) —
-no collector to run. It authenticates with a CloudWatch Metrics API key (a
-bearer token), not SigV4: the gateway attaches a static `Authorization` header,
-it doesn't sign requests with AWS credentials.
+`gateway.yaml`'s `telemetry.forward_to` sends OTLP metrics to an **ADOT collector
+sidecar** running in the same Fargate task. The gateway pushes to
+`http://localhost:4318` (the ADOT collector's OTLP receiver), and the agent forwards to
+CloudWatch using **SigV4 via the ECS task role**. No
+key rotation, no expiration concerns.
 
-Both tracks provision a Secrets Manager secret (`<project>-cw-metrics-api-key`)
-as a `REPLACE_ME` placeholder — telemetry stays off until you set it, same
-pattern as the OIDC client secret. Generate the token:
+The ADOT sidecar:
+- Authenticates automatically using the task role (needs `cloudwatch:PutMetricData`,
+  already granted in the CDK stack / `setup.sh` IAM policy)
+- Is marked **non-essential** — if the agent crashes, the gateway continues serving
+  inference traffic uninterrupted
+- Requires `CLAUDE_GATEWAY_ALLOW_LOOPBACK=1` on the gateway container (already set)
+  to permit forwarding to a localhost destination (the gateway's SSRF guard blocks
+  loopback by default)
 
-```bash
-# One-time IAM user + managed policy (or use the AWS console "Generate API key"
-# quick start under CloudWatch > Settings > Global, which does this for you).
-aws iam create-user --user-name cloudwatch-metrics-api-key-user
-aws iam attach-user-policy --user-name cloudwatch-metrics-api-key-user \
-  --policy-arn arn:aws:iam::aws:policy/CloudWatchAPIKeyAccess
+Both tracks provision this automatically — no manual credential setup required for
+telemetry. The task role's `cloudwatch:PutMetricData` permission is the only
+prerequisite.
 
-aws iam create-service-specific-credential \
-  --user-name cloudwatch-metrics-api-key-user \
-  --service-name cloudwatch.amazonaws.com
-# No --credential-age-days: the credential never expires. This example has no
-# alerting on telemetry health, so an expiring credential fails silently —
-# the gateway logs a 403 on every export but keeps serving inference traffic.
-# Rotate deliberately with `aws iam reset-service-specific-credential` if your
-# security policy requires it.
-# → note the ServiceCredentialSecret value; it can't be retrieved again.
-```
-
-Then seed it and roll the service:
-
-```bash
-# Track A
-aws secretsmanager put-secret-value --secret-id claude-gateway-cw-metrics-api-key \
-  --secret-string '<ServiceCredentialSecret>'
-aws ecs update-service --cluster claude-gateway --service claude-gateway --force-new-deployment
-
-# Track B — same secretsmanager command with the CDK-stack secret name
-# (CwMetricsApiKeySecretName output), then force-new-deployment as above.
-```
-
-Metrics only: the bearer-token endpoint doesn't accept logs or traces — those
-need SigV4 or a separate logs-specific bearer token, out of scope here. See
+Metrics only: the ADOT sidecar in this example is configured for metrics. Logs and
+traces need additional ADOT pipeline configuration and are out of scope here. See
 [`workshop/03-telemetry/README.md`](../workshop/03-telemetry/README.md) and
 [`gotchas.md`](gotchas.md) §1 for more.
 
