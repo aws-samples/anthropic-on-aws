@@ -127,10 +127,10 @@ describe('pass 2 (imageReady: true) — full stack', () => {
     });
   });
 
-  test('telemetry forwards directly to CloudWatch — no ADOT collector service or :4318 listener', () => {
-    // The CloudWatch OTLP metrics endpoint accepts a bearer token, so
-    // telemetry.forward_to points straight at it — no collector service, no
-    // extra ALB listener needed.
+  test('telemetry forwards via ADOT collector sidecar — no separate service or :4318 ALB listener', () => {
+    // The ADOT collector runs as a sidecar in the same task, receiving OTLP
+    // on localhost:4318 and forwarding to CW via SigV4 (task role). No separate
+    // collector service, no extra ALB listener needed.
     template.resourceCountIs('AWS::ECS::Service', 1);
     template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
       Port: 443,
@@ -139,13 +139,6 @@ describe('pass 2 (imageReady: true) — full stack', () => {
       Properties: { Port: 4318 },
     });
     expect(Object.keys(listeners)).toHaveLength(0);
-  });
-
-  test('a CloudWatch Metrics API key secret is provisioned as a REPLACE_ME placeholder', () => {
-    template.hasResourceProperties('AWS::SecretsManager::Secret', {
-      Name: 'claude-gateway-cw-metrics-api-key',
-      SecretString: 'REPLACE_ME',
-    });
   });
 
   test('gateway target group health check points at /healthz, not /readyz', () => {

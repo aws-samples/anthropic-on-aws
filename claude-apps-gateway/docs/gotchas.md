@@ -51,14 +51,21 @@ SigV4-signed) or a PromQL-aware surface (Query Studio, Grafana), e.g. `{"claude_
 
 ---
 
-## 3. Telemetry: CloudWatch's OTLP endpoint is metrics-only, and auth is a bearer token, not SigV4
+## 3. Telemetry: ADOT collector sidecar handles SigV4 auth
 
-The gateway signs no AWS requests itself, so `telemetry.forward_to`'s static
-`url` + `headers` reaches CloudWatch's native OTLP endpoint directly via a
-bearer-token API key — no collector needed. See `gateway.yaml.template`'s
-`telemetry:` block and [docs/deployment.md](deployment.md) "Telemetry" for setup.
-Logs and traces need SigV4 or their own separate auth, so this example ships
-`logs: false` / `traces: false`.
+This example runs an **ADOT collector sidecar** in the same Fargate task.
+The gateway sends OTLP to `http://localhost:4318` (the ADOT container), which
+forwards metrics to CloudWatch using **SigV4 via the ECS task role** — no bearer
+The task role needs
+`cloudwatch:PutMetricData` (already granted in the CDK stack / `setup.sh`).
+
+The ADOT sidecar is marked **non-essential**: if the agent crashes, the gateway
+continues serving inference traffic. `CLAUDE_GATEWAY_ALLOW_LOOPBACK=1` is set on
+the gateway container to permit forwarding to the localhost destination (the
+gateway's SSRF guard blocks loopback by default).
+
+Logs and traces need additional ADOT pipeline configuration and are out of scope — this
+example ships `logs: false` / `traces: false`.
 
 ---
 

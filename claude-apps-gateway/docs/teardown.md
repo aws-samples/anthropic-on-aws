@@ -92,7 +92,7 @@ aws rds delete-db-subnet-group --db-subnet-group-name "$P-db-subnets" --region "
 
 ```bash
 # gateway-owned secrets (the RDS-managed master secret is deleted with the instance)
-for SEC in "$P-jwt-secret" "$P-oidc-client-secret" "$P-cw-metrics-api-key"; do
+for SEC in "$P-jwt-secret" "$P-oidc-client-secret"; do
   aws secretsmanager delete-secret --secret-id "$SEC" --force-delete-without-recovery --region "$AWS_REGION"
 done
 # IAM roles: delete inline policies + detach managed, then the role
@@ -107,14 +107,6 @@ for R in "$P-exec-role" "$P-task-role"; do
 done
 # log group
 aws logs delete-log-group --log-group-name /claude-gateway/gateway --region "$AWS_REGION" 2>/dev/null
-
-# If you created a dedicated IAM user + service-specific credential for the
-# CloudWatch Metrics API key (see docs/deployment.md "Telemetry"), remove those too:
-#   aws iam delete-service-specific-credential --user-name cloudwatch-metrics-api-key-user \
-#     --service-specific-credential-id <id> --region "$AWS_REGION"
-#   aws iam detach-user-policy --user-name cloudwatch-metrics-api-key-user \
-#     --policy-arn arn:aws:iam::aws:policy/CloudWatchAPIKeyAccess
-#   aws iam delete-user --user-name cloudwatch-metrics-api-key-user
 ```
 
 ### 5. ECR repo

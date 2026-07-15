@@ -120,22 +120,19 @@ upstreams:
 telemetry:
   # Forwards straight to CloudWatch's native OTLP metrics endpoint — no collector
   # to run or maintain. Auth is a CloudWatch Metrics API key (bearer token; see
-  # docs/deployment.md "Telemetry"), NOT SigV4: the gateway signs no requests, it
-  # only attaches the static Authorization header below, and the metrics endpoint
-  # accepts that as an alternative to SigV4 for workloads outside the AWS SDK.
+  # Forwards to a CloudWatch Agent sidecar running in the same Fargate task.
+  # The agent receives OTLP on localhost:4318 and relays to CloudWatch using
+  # SigV4 via the task role — no bearer token to manage or rotate.
   # Telemetry turns on only when forward_to AND listen.public_url are both set;
   # the gateway then pushes OTEL_* env to clients (one-time client approval dialog).
   forward_to:
     # No /v1/metrics suffix: the gateway appends the OTLP-standard signal path
     # itself (like any OTLP HTTP exporter), so a base URL that already ends in
     # /v1/metrics gets it doubled and 404s — see gotchas.md.
-    - url: https://monitoring.us-east-1.amazonaws.com
-      headers:
-        Authorization: Bearer ${CW_METRICS_API_KEY}
+    - url: http://localhost:4318
       # Default is metrics-only. Metrics are aggregate counters (tokens, requests,
-      # latency). The CloudWatch metrics OTLP endpoint doesn't accept logs/traces —
-      # those need the separate logs (SigV4 or its own bearer token) or traces
-      # (SigV4-only) endpoints, out of scope for this bearer-token setup.
+      # latency, model, user identity). logs/traces carry sensitive data and should
+      # only be enabled on destinations with appropriate access controls.
       metrics: true
 
 # Explicit model catalog (see `models:` at the bottom) instead of the built-in
