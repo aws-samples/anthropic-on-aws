@@ -6,6 +6,6 @@
 # Architecture decision records are kept local to the maintainers' repo, not
 # shipped with the example. Rationale lives inline in the docs and comments.
 /docs/adr/
-claude-apps-gateway/local-test/
-claude-apps-gateway/test-direct-otlp/
-claude-apps-gateway/cdk/package-lock.json
+# Local-only telemetry test scratch — never shipped with the example.
+/local-test/
+/test-direct-otlp/

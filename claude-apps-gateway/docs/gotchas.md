@@ -56,7 +56,7 @@ SigV4-signed) or a PromQL-aware surface (Query Studio, Grafana), e.g. `{"claude_
 This example runs an **ADOT collector sidecar** in the same Fargate task.
 The gateway sends OTLP to `http://localhost:4318` (the ADOT container), which
 forwards metrics to CloudWatch using **SigV4 via the ECS task role** — no bearer
-The task role needs
+token or API key to manage or rotate. The task role needs
 `cloudwatch:PutMetricData` (already granted in the CDK stack / `setup.sh`).
 
 The ADOT sidecar is marked **non-essential**: if the agent crashes, the gateway
