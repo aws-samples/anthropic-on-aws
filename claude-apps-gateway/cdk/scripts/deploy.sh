@@ -158,7 +158,33 @@ else
   exit 1
 fi
 
-# Create build files
+# Stamp gateway.yaml from the COMMITTED template via stamp-config.sh — the SAME
+# path setup.sh uses (setup.sh Step 2a) — instead of maintaining a second inline
+# copy of the config here. This is what wires telemetry: the template's
+# `telemetry.forward_to: http://localhost:4318` block (the gateway's own ADOT
+# collector sidecar, which relays to CloudWatch via SigV4 on the task role) only
+# reaches the image through this stamp. The old inline heredoc omitted it, so
+# telemetry forwarding was silently off even though the CDK task runs the sidecar.
+# The sidecar + `CLAUDE_GATEWAY_ALLOW_LOOPBACK=1` (needed to push to localhost past
+# the SSRF guard) come from the CDK stack this script deploys, so no extra wiring is
+# needed here. Stamping also keeps the model catalog + store wiring in lockstep with
+# the template, so a template change can't skip this convenience path.
+# AWS_REGION here is the Bedrock endpoint region (the upstream `region:` the
+# template bakes); DB_NAME defaults inside stamp-config.sh to match the stack.
+echo "   Stamping gateway.yaml from gateway.yaml.template..."
+PUBLIC_URL="https://${GATEWAY_HOSTNAME}" \
+AWS_REGION="${BEDROCK_REGION}" \
+OIDC_ISSUER="${OIDC_ISSUER}" \
+OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
+ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
+TEMPLATE="${PROJECT_DIR}/gateway.yaml.template" \
+OUT="/tmp/gw-gateway.yaml" \
+  "${SCRIPT_DIR}/stamp-config.sh"
+
+# Build via the COMMITTED distroless Dockerfile (cdk/Dockerfile), not a second
+# inline copy. It expects ./claude and ./gateway.yaml in the build context and must
+# be built --platform=linux/amd64 --provenance=false (the binary is linux/amd64;
+# buildx OCI image indexes are rejected by some runtimes). Mirrors setup.sh's build.
 cat > /tmp/gw-buildspec.yml <<EOF
 version: 0.2
 phases:
@@ -167,89 +193,15 @@ phases:
       - aws ecr get-login-password --region ${DEPLOY_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
   build:
     commands:
-      - chmod +x claude
-      - docker build -t ${REPO_NAME} .
+      - docker build --platform=linux/amd64 --provenance=false -t ${REPO_NAME} .
       - docker tag ${REPO_NAME}:latest ${ECR_URI}:latest
   post_build:
     commands:
       - docker push ${ECR_URI}:latest
 EOF
 
-cat > /tmp/gw-Dockerfile <<EOF
-FROM public.ecr.aws/debian/debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY claude /usr/local/bin/claude
-COPY gateway.yaml /etc/claude/gateway.yaml
-RUN chmod +x /usr/local/bin/claude
-ENV CLAUDE_CONFIG_DIR=/tmp/.claude
-EXPOSE 8080
-ENTRYPOINT ["claude", "gateway", "--config", "/etc/claude/gateway.yaml"]
-EOF
-
-cat > /tmp/gw-gateway.yaml <<EOF
-listen:
-  host: 0.0.0.0
-  port: 8080
-  public_url: https://${GATEWAY_HOSTNAME}
-
-oidc:
-  issuer: ${OIDC_ISSUER}
-  client_id: ${OIDC_CLIENT_ID}
-  client_secret: \${OIDC_CLIENT_SECRET}
-  allowed_email_domains: [$(echo $ALLOWED_EMAIL_DOMAINS | tr ',' ', ')]
-  userinfo_fallback: true
-
-session:
-  jwt_secret: \${GATEWAY_JWT_SECRET}
-  ttl_hours: 1
-
-store:
-  # Compose the URL from the env vars the CDK task def actually injects (DB_HOST,
-  # DB_USER, DB_PASSWORD) — matches gateway.yaml.template. The CDK task def never
-  # sets GATEWAY_POSTGRES_URL, so referencing it here left the store unconfigured.
-  postgres_url: postgres://\${DB_HOST}:5432/claude_gateway?sslmode=require
-  username: \${DB_USER}
-  password: \${DB_PASSWORD}
-
-upstreams:
-  - provider: bedrock
-    region: ${BEDROCK_REGION}
-    auth: {}
-
-# Curated model list mapped to GLOBAL cross-region inference profiles
-# (global.anthropic.*). Global profiles are region-agnostic — the same IDs resolve
-# from any Bedrock region — so this config deploys unchanged regardless of
-# BEDROCK_REGION, and the built-in catalog's region-specific us.* defaults are not
-# used (auto_include_builtin_models: false). NOTE: global profiles route inference
-# to any commercial AWS region; if you need data residency, swap global. for a geo
-# profile (us./eu./apac.) and see cdk/README "Regions & data residency". Claude
-# Haiku 4.5 has no short profile alias — it must use the dated ID.
-#
-# Claude Fable 5 is intentionally omitted: on Bedrock it requires a non-default data
-# retention mode that isn't enabled in every region, so it 400s ("data retention mode
-# 'default' is not available for this model") where the default set works everywhere.
-# To add it, enable the retention prereq for your region and append:
-#   - id: claude-fable-5
-#     label: Claude Fable 5
-#     upstream_model: { bedrock: global.anthropic.claude-fable-5 }
-auto_include_builtin_models: false
-models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
-    upstream_model:
-      bedrock: global.anthropic.claude-opus-4-8
-  - id: claude-sonnet-5
-    label: Claude Sonnet 5
-    upstream_model:
-      bedrock: global.anthropic.claude-sonnet-5
-  - id: claude-haiku-4-5
-    label: Claude Haiku 4.5
-    upstream_model:
-      bedrock: global.anthropic.claude-haiku-4-5-20251001-v1:0
-EOF
-
 aws s3 cp /tmp/gw-buildspec.yml "s3://$BUCKET/buildspec.yml" --quiet
-aws s3 cp /tmp/gw-Dockerfile "s3://$BUCKET/Dockerfile" --quiet
+aws s3 cp "${PROJECT_DIR}/Dockerfile" "s3://$BUCKET/Dockerfile" --quiet
 aws s3 cp /tmp/gw-gateway.yaml "s3://$BUCKET/gateway.yaml" --quiet
 aws s3 cp "$LINUX_BINARY" "s3://$BUCKET/claude" --quiet
 
