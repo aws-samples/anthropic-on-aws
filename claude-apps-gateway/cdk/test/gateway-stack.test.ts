@@ -9,8 +9,8 @@ import { GatewayStack, GatewayStackProps } from '../lib/claude-gateway-stack';
  *
  * The focus is the non-obvious wiring that breaks the gateway if it regresses:
  * the dual-ARN Bedrock policy, the IPv4-only internal ALB, the raised idle
- * timeout, the /healthz target-group check, the HTTPS :4318 telemetry listener,
- * and the createVpcEndpoints opt-out added for VPC reuse.
+ * timeout, the /healthz target-group check, and the createVpcEndpoints opt-out
+ * added for VPC reuse.
  */
 
 const ACCOUNT = '111122223333';
@@ -127,11 +127,18 @@ describe('pass 2 (imageReady: true) — full stack', () => {
     });
   });
 
-  test('there is an HTTPS :4318 telemetry listener (TLS terminates at the ALB)', () => {
+  test('telemetry forwards via ADOT collector sidecar — no separate service or :4318 ALB listener', () => {
+    // The ADOT collector runs as a sidecar in the same task, receiving OTLP
+    // on localhost:4318 and forwarding to CW via SigV4 (task role). No separate
+    // collector service, no extra ALB listener needed.
+    template.resourceCountIs('AWS::ECS::Service', 1);
     template.hasResourceProperties('AWS::ElasticLoadBalancingV2::Listener', {
-      Port: 4318,
-      Protocol: 'HTTPS',
+      Port: 443,
     });
+    const listeners = template.findResources('AWS::ElasticLoadBalancingV2::Listener', {
+      Properties: { Port: 4318 },
+    });
+    expect(Object.keys(listeners)).toHaveLength(0);
   });
 
   test('gateway target group health check points at /healthz, not /readyz', () => {

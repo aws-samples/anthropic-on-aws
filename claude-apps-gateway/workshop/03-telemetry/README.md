@@ -32,38 +32,24 @@ telemetry:
 - Each destination independently opts into metrics, logs, and traces
 - Multiple destinations are supported (e.g., one for metrics, another for logs)
 
-### CloudWatch OTLP (AWS-native)
+### CloudWatch OTLP via ADOT collector sidecar (AWS-native)
 
-Amazon CloudWatch now supports native OTLP metrics ingestion. To send gateway telemetry to CloudWatch, you need an OTLP collector (such as the AWS Distro for OpenTelemetry) running in your VPC that forwards to CloudWatch. The collector authenticates to CloudWatch using its IAM role.
+This example runs an **AWS Distro for OpenTelemetry (ADOT) collector sidecar** in the same Fargate task as the gateway. The gateway sends OTLP to `http://localhost:4318` (the ADOT container), which forwards metrics to CloudWatch using **SigV4 via the task role**:
 
-Example collector setup (ADOT running as ECS sidecar or separate service):
-```yaml
-# ADOT collector config
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-exporters:
-  awsemf:
-    namespace: ClaudeGateway
-    region: us-east-1
-
-service:
-  pipelines:
-    metrics:
-      receivers: [otlp]
-      exporters: [awsemf]
-```
-
-Then point the gateway at the collector:
 ```yaml
 telemetry:
   forward_to:
-    - url: https://adot-collector.internal.company.com:4318
+    # No /v1/metrics suffix — the gateway appends the OTLP signal path itself.
+    - url: http://localhost:4318
       metrics: true
 ```
+
+The ADOT sidecar:
+- Authenticates to CloudWatch automatically using the ECS task role (needs `cloudwatch:PutMetricData`, already granted in the CDK stack)
+- Is marked **non-essential** — if the agent crashes, the gateway continues serving inference traffic
+- Requires `CLAUDE_GATEWAY_ALLOW_LOOPBACK=1` on the gateway container (already set) to permit forwarding to a localhost destination
+
+See [`docs/deployment.md`](../../docs/deployment.md#telemetry) for deployment details. This endpoint is metrics-only: logs and traces need a separate setup, so keep them `false` unless you add that separately.
 
 ### What gets stamped on each metric
 
@@ -131,8 +117,8 @@ The developer doesn't set any of these manually.
 ```
 ✅ Gateway boots with "telemetry relay: 1 destination(s), signals enabled: metrics,logs"
 ✅ Gateway rejects loopback OTLP destinations by default (SSRF guard)
-✅ CLAUDE_GATEWAY_ALLOW_LOOPBACK=1 overrides for local development
+✅ CLAUDE_GATEWAY_ALLOW_LOOPBACK=1 overrides for localhost ADOT sidecar forwarding
 ✅ Per-user attribution proven via /effective endpoint (email, name, spend per period)
-✅ CloudWatch integration documented (via ADOT collector pattern)
+✅ ADOT collector sidecar receives OTLP on localhost:4318, forwards to CW via SigV4 (task role)
 ⚠️ Actual OTLP data flow requires an interactive Claude Code session (CLI sends to gateway, gateway relays to collector)
 ```

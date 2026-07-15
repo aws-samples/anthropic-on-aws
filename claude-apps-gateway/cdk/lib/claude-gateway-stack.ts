@@ -171,20 +171,6 @@ export class GatewayStack extends cdk.Stack {
     // ALB -> task on 8080 is wired by the pattern; here we only add task -> endpoints.
     vpceSg.connections.allowFrom(taskSg, ec2.Port.tcp(443), 'tasks to VPC endpoints');
 
-    // Collector is reached over the gateway ALB's HTTPS :4318 listener (the gateway
-    // requires https:// for a non-loopback telemetry target, and there's no
-    // custom-CA/skip-verify option for forward_to — so it must be a publicly-trusted
-    // cert, which the ALB already has). Ingress rules for the ALB<->collector hop
-    // are wired after the ALB exists, below.
-    const otelSg = new ec2.SecurityGroup(this, 'OtelSg', {
-      vpc,
-      description: 'ADOT collector: 4318 (OTLP) + 13133 (health) from the ALB only',
-      allowAllOutbound: true,
-    });
-    // The collector also needs the VPC endpoints (CloudWatch logs + metrics) — it
-    // logs to the same group and exports metrics via the monitoring endpoint.
-    vpceSg.connections.allowFrom(otelSg, ec2.Port.tcp(443), 'collector to VPC endpoints');
-
     // ── RDS PostgreSQL 16 (private, not public, encrypted, managed master secret)─
     // Example posture: easy teardown. See README "Productionising" to harden
     // (deletion protection, multi-AZ, longer backups, RETAIN) the moment you
@@ -238,7 +224,6 @@ export class GatewayStack extends cdk.Stack {
         excludePunctuation: true,
       },
     });
-
     // ── Log group (gateway stderr: audit events + operational logs) ───────────
     const logGroup = new logs.LogGroup(this, 'GatewayLogGroup', {
       logGroupName: `/${gatewayName}/gateway`,
@@ -253,79 +238,13 @@ export class GatewayStack extends cdk.Stack {
     });
 
 
-    // ── ADOT collector — its own small Fargate service (metrics-only default) ─
-    // A SEPARATE service, not a sidecar: the gateway's SSRF guard blocks loopback
-    // by default, and a sidecar in the same awsvpc task is loopback. A separate
-    // service on a private IP passes the guard with no CLAUDE_GATEWAY_ALLOW_LOOPBACK.
-    // health_check extension on :13133 gives the ALB target group something to GET
-    // (raw OTLP/:4318 doesn't answer GET). TLS is terminated at the ALB, so the
-    // collector itself listens plain HTTP on 4318.
-    const adotConfig = [
-      'extensions:',
-      '  health_check:',
-      '    endpoint: 0.0.0.0:13133',
-      'receivers:',
-      '  otlp:',
-      '    protocols:',
-      '      http:',
-      '        endpoint: 0.0.0.0:4318',
-      'processors:',
-      '  batch: {}',
-      'exporters:',
-      '  awsemf:',
-      '    namespace: ClaudeGateway',
-      '    log_group_name: /claude-gateway/otel-metrics',
-      'service:',
-      '  extensions: [health_check]',
-      '  pipelines:',
-      '    metrics:',
-      '      receivers: [otlp]',
-      '      processors: [batch]',
-      '      exporters: [awsemf]',
-    ].join('\n');
-
-    const otelTaskDef = new ecs.FargateTaskDefinition(this, 'OtelTaskDef', {
-      cpu: 256,
-      memoryLimitMiB: 512,
-    });
-    otelTaskDef.taskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        actions: [
-          'cloudwatch:PutMetricData',
-          'logs:CreateLogGroup',
-          'logs:CreateLogStream',
-          'logs:PutLogEvents',
-          'logs:DescribeLogGroups',
-          'logs:DescribeLogStreams',
-        ],
-        resources: ['*'],
-      }),
-    );
-    otelTaskDef.addContainer('aws-otel-collector', {
-      image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/aws-otel-collector:latest'),
-      environment: { AOT_CONFIG_CONTENT: adotConfig },
-      portMappings: [{ containerPort: 4318 }, { containerPort: 13133 }],
-      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'otel', logGroup }),
-    });
-    const otelService = new ecs.FargateService(this, 'OtelService', {
-      cluster,
-      taskDefinition: otelTaskDef,
-      desiredCount: 1,
-      minHealthyPercent: 0, // single fire-and-forget collector; fine to replace in place
-      circuitBreaker: { rollback: true }, // fail a bad deploy fast instead of hanging for hours
-      securityGroups: [otelSg],
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-    });
-    // OTLP is fire-and-forget: if the collector is down, inference is unaffected.
-    // The collector is registered to the gateway ALB's :4318 listener below.
-
     // ── Gateway task role: dual-ARN Bedrock policy ────────────────────────────
     // BOTH inference-profile (global.anthropic.*) AND foundation-model (anthropic.*)
     // ARNs — missing either yields 403 on invoke. auth: {} in gateway.yaml picks
     // this up via the ECS container-credentials endpoint (no IMDS, no hop-limit trap).
     const taskRole = new iam.Role(this, 'TaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'Claude gateway task role: Bedrock invoke',
+      description: 'Claude gateway task role: Bedrock invoke + CloudWatch metrics',
     });
     taskRole.addToPolicy(
       new iam.PolicyStatement({
@@ -338,6 +257,12 @@ export class GatewayStack extends cdk.Stack {
           `arn:aws:bedrock:${bedrockRegion}:${this.account}:inference-profile/global.anthropic.*`,
           'arn:aws:bedrock:*::foundation-model/anthropic.*',
         ],
+      }),
+    );
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
       }),
     );
 
@@ -377,6 +302,7 @@ export class GatewayStack extends cdk.Stack {
           CLAUDE_GATEWAY_LOG_LEVEL: 'info',
           CLAUDE_CONFIG_DIR: '/tmp/.claude',
           DB_HOST: db.dbInstanceEndpointAddress,
+          CLAUDE_GATEWAY_ALLOW_LOOPBACK: '1', // ADOT sidecar is on localhost
         },
         secrets: {
           GATEWAY_JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
@@ -396,41 +322,51 @@ export class GatewayStack extends cdk.Stack {
       'developers to ALB (HTTPS)',
     );
 
+    // ── ADOT collector sidecar (OTLP receiver → CW native OTLP metrics) ─────
+    // Receives OTLP from the gateway on localhost:4318 and forwards to CloudWatch's
+    // native OTLP endpoint using SigV4 via the task role.
+    // Runs as a sidecar in the same task (no ALB listener, no extra SG).
+    const adotConfig = [
+      'extensions:',
+      '  sigv4auth:',
+      '    service: monitoring',
+      `    region: ${this.region}`,
+      'receivers:',
+      '  otlp:',
+      '    protocols:',
+      '      http:',
+      '        endpoint: 127.0.0.1:4318',
+      'processors:',
+      '  batch:',
+      '    send_batch_size: 200',
+      '    timeout: 10s',
+      'exporters:',
+      '  otlphttp:',
+      `    metrics_endpoint: https://monitoring.${this.region}.amazonaws.com/v1/metrics`,
+      '    auth:',
+      '      authenticator: sigv4auth',
+      '    compression: gzip',
+      'service:',
+      '  extensions: [sigv4auth]',
+      '  pipelines:',
+      '    metrics:',
+      '      receivers: [otlp]',
+      '      processors: [batch]',
+      '      exporters: [otlphttp]',
+    ].join('\n');
+    fargate.taskDefinition.addContainer('otel-collector', {
+      image: ecs.ContainerImage.fromRegistry('public.ecr.aws/aws-observability/aws-otel-collector:latest'),
+      essential: false, // gateway continues if the collector crashes; telemetry is non-critical
+      environment: { AOT_CONFIG_CONTENT: adotConfig },
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'otel', logGroup }),
+      memoryReservationMiB: 128,
+    });
+
     // Health check → /healthz (liveness). Keeps replicas in rotation during a
     // Postgres blip; pointing it at /readyz would drain all replicas at once.
     fargate.targetGroup.configureHealthCheck({
       path: '/healthz',
       healthyHttpCodes: '200',
-    });
-
-    // ── Telemetry: HTTPS :4318 listener on the gateway ALB → ADOT collector ────
-    // The gateway requires https:// for a non-loopback forward_to and offers no
-    // custom-CA/skip-verify for it, so the collector must sit behind the ALB's
-    // publicly-trusted ACM cert. TLS terminates at the ALB; the collector speaks
-    // plain OTLP/HTTP on 4318 behind it. The stamped gateway.yaml points
-    // telemetry.forward_to at https://<public_url host>:4318.
-    const otelListener = fargate.loadBalancer.addListener('OtelListener', {
-      port: 4318,
-      protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [certificate],
-      sslPolicy: elbv2.SslPolicy.TLS13_RES,
-    });
-    otelListener.addTargets('OtelTargets', {
-      port: 4318,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targets: [otelService.loadBalancerTarget({ containerName: 'aws-otel-collector', containerPort: 4318 })],
-      healthCheck: { port: '13133', path: '/', healthyHttpCodes: '200' },
-      deregistrationDelay: cdk.Duration.seconds(10),
-    });
-    // Only the gateway task SG may reach the ALB's :4318 listener (developers hit 443 only).
-    fargate.loadBalancer.connections.allowFrom(taskSg, ec2.Port.tcp(4318), 'gateway to ALB (OTLP/HTTPS)');
-    // ALB → collector on 4318 (OTLP) and 13133 (health).
-    otelSg.connections.allowFrom(fargate.loadBalancer, ec2.Port.tcp(4318), 'ALB to collector (OTLP)');
-    otelSg.connections.allowFrom(fargate.loadBalancer, ec2.Port.tcp(13133), 'ALB to collector (health)');
-
-    new cdk.CfnOutput(this, 'OtelForwardTo', {
-      value: `https://${recordHost}:4318`,
-      description: 'gateway.yaml telemetry.forward_to (ADOT collector via the gateway ALB)',
     });
 
     // ── Outputs ───────────────────────────────────────────────────────────────

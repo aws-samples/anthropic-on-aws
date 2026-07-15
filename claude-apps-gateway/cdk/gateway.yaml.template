@@ -44,6 +44,8 @@ oidc:
   client_id: @@OIDC_CLIENT_ID@@
   client_secret: ${OIDC_CLIENT_SECRET}   # the one secret in this block (env-injected)
   allowed_email_domains: [@@ALLOWED_EMAIL_DOMAINS@@]
+  # Cognito does not support offline_access; override default scopes here.
+  # scopes: [openid, email, profile]
   # Per-IdP notes — uncomment what your provider needs:
   #   Okta (org server https://example.okta.com): id_token omits email/groups →
   #     userinfo_fallback: true
@@ -123,22 +125,21 @@ upstreams:
   #  first-party model IDs; if you curate `models:`, key the entry `anthropicAws:`)
 
 telemetry:
-  # The ADOT collector is reached over the gateway ALB's HTTPS :4318 listener.
-  # The gateway REQUIRES https:// for any non-loopback forward_to target and
-  # offers no custom-CA/skip-verify option for it, so the collector sits behind
-  # the ALB's publicly-trusted ACM cert (TLS terminates at the ALB; the collector
-  # speaks plain OTLP/HTTP behind it). Telemetry turns on only when forward_to AND
-  # listen.public_url are both set; the gateway then pushes OTEL_* env to clients
-  # (one-time client approval dialog).
+  # Forwards to an ADOT collector sidecar running in the same Fargate task. The
+  # collector receives OTLP on localhost:4318 and relays to CloudWatch's native
+  # OTLP metrics endpoint using SigV4 via the task role — no bearer token or API
+  # key to manage or rotate.
+  # Telemetry turns on only when forward_to AND listen.public_url are both set;
+  # the gateway then pushes OTEL_* env to clients (one-time client approval dialog).
   forward_to:
-    - url: @@PUBLIC_URL@@:4318
+    # No /v1/metrics suffix: the gateway appends the OTLP-standard signal path
+    # itself (like any OTLP HTTP exporter), so a base URL that already ends in
+    # /v1/metrics gets it doubled and 404s — see gotchas.md.
+    - url: http://localhost:4318
       # Default is metrics-only. Metrics are aggregate counters (tokens, requests,
-      # latency). logs/traces can carry full bash commands, tool inputs, and file
-      # paths — enable them ONLY on a destination with the access controls and
-      # retention that data warrants.
+      # latency, model, user identity). logs/traces carry sensitive data and should
+      # only be enabled on destinations with appropriate access controls.
       metrics: true
-      # logs: false
-      # traces: false
 
 # Explicit model catalog (see `models:` at the bottom) instead of the built-in
 # one, so every model maps to a GLOBAL inference profile and no region-specific
@@ -155,6 +156,13 @@ managed:
     #     availableModels: [claude-haiku-4-5]
     #     enforceAvailableModels: true
     #     permissions: { allow: [Read, Grep] }
+    # Per-team cost attribution: OTEL_RESOURCE_ATTRIBUTES is stamped on every
+    # OTLP export, so CloudWatch's PromQL layer can group spend/usage by team
+    # (sum by ("@resource.team.id") (...)) same as user.id/user.email already are.
+    # - match: { groups: [team-platform] }
+    #   cli:
+    #     env:
+    #       OTEL_RESOURCE_ATTRIBUTES: "team.id=platform,department=engineering,cost_center=cc-1001"
     # Catch-all base: matches every authenticated user.
     - match: {}
       cli:

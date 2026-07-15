@@ -6,3 +6,6 @@
 # Architecture decision records are kept local to the maintainers' repo, not
 # shipped with the example. Rationale lives inline in the docs and comments.
 /docs/adr/
+# Local-only telemetry test scratch — never shipped with the example.
+/local-test/
+/test-direct-otlp/

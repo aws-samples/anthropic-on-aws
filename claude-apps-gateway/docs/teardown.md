@@ -54,14 +54,12 @@ export AWS_REGION=us-east-1
 P=claude-gateway            # PROJECT
 ```
 
-### 1. ECS services + cluster
+### 1. ECS service + cluster
 
 ```bash
-# scale to 0, delete both services, then the cluster
-for S in "$P" otel; do
-  aws ecs update-service --cluster "$P" --service "$S" --desired-count 0 --region "$AWS_REGION" 2>/dev/null
-  aws ecs delete-service  --cluster "$P" --service "$S" --force --region "$AWS_REGION" 2>/dev/null
-done
+# scale to 0, delete the service, then the cluster
+aws ecs update-service --cluster "$P" --service "$P" --desired-count 0 --region "$AWS_REGION" 2>/dev/null
+aws ecs delete-service  --cluster "$P" --service "$P" --force --region "$AWS_REGION" 2>/dev/null
 aws ecs delete-cluster --cluster "$P" --region "$AWS_REGION"
 ```
 
@@ -75,12 +73,10 @@ for L in $(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --region 
   aws elbv2 delete-listener --listener-arn "$L" --region "$AWS_REGION"
 done
 aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" --region "$AWS_REGION"
-sleep 30   # let the ALB finish deleting before removing its target groups
-for TG in "$P-tg" "$P-otel-tg"; do
-  ARN=$(aws elbv2 describe-target-groups --names "$TG" --region "$AWS_REGION" \
-    --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null)
-  [ -n "$ARN" ] && [ "$ARN" != "None" ] && aws elbv2 delete-target-group --target-group-arn "$ARN" --region "$AWS_REGION"
-done
+sleep 30   # let the ALB finish deleting before removing its target group
+ARN=$(aws elbv2 describe-target-groups --names "$P-tg" --region "$AWS_REGION" \
+  --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null)
+[ -n "$ARN" ] && [ "$ARN" != "None" ] && aws elbv2 delete-target-group --target-group-arn "$ARN" --region "$AWS_REGION"
 ```
 
 ### 3. RDS (no final snapshot — example posture)
@@ -100,7 +96,7 @@ for SEC in "$P-jwt-secret" "$P-oidc-client-secret"; do
   aws secretsmanager delete-secret --secret-id "$SEC" --force-delete-without-recovery --region "$AWS_REGION"
 done
 # IAM roles: delete inline policies + detach managed, then the role
-for R in "$P-exec-role" "$P-task-role" "$P-otel-task-role"; do
+for R in "$P-exec-role" "$P-task-role"; do
   for P_INLINE in $(aws iam list-role-policies --role-name "$R" --query 'PolicyNames[]' --output text 2>/dev/null); do
     aws iam delete-role-policy --role-name "$R" --policy-name "$P_INLINE"
   done
@@ -109,10 +105,8 @@ for R in "$P-exec-role" "$P-task-role" "$P-otel-task-role"; do
   done
   aws iam delete-role --role-name "$R" 2>/dev/null
 done
-# log groups
-for LG in /claude-gateway/gateway /claude-gateway/otel-metrics; do
-  aws logs delete-log-group --log-group-name "$LG" --region "$AWS_REGION" 2>/dev/null
-done
+# log group
+aws logs delete-log-group --log-group-name /claude-gateway/gateway --region "$AWS_REGION" 2>/dev/null
 ```
 
 ### 5. ECR repo

@@ -2,8 +2,8 @@
 
 The canonical install walkthrough for this example: prerequisites, then one of two
 deployment tracks, then verification. Both tracks provision the **same** ECS Fargate
-deployment (internal ALB, RDS PostgreSQL, ECR, Secrets Manager, IAM task role,
-ADOT telemetry collector); pick by what you want:
+deployment (internal ALB, RDS PostgreSQL, ECR, Secrets Manager, IAM task role);
+pick by what you want:
 
 | Track | Tool | Best when | Teardown |
 |---|---|---|---|
@@ -113,8 +113,8 @@ What it does, in order: stamps `gateway.yaml` from the template (refusing to
 continue if any placeholder is unresolved), downloads the pinned `claude` binary and
 verifies its SHA-256 against the GPG-signed release manifest, builds and pushes the
 distroless image, then provisions VPC + endpoints, RDS, Secrets Manager, the
-internal IPv4 ALB (idle timeout 3600s, `/healthz` health check), the ECS services
-(gateway + ADOT collector), DNS, and IAM.
+internal IPv4 ALB (idle timeout 3600s, `/healthz` health check), the gateway ECS
+service, DNS, and IAM.
 
 It is **idempotent** — re-run it any time to roll a new image or reconcile drift.
 It finishes by printing the ALB hostname, the OAuth redirect URI to register, and
@@ -239,12 +239,38 @@ Publish the cert's SHA-256 fingerprint (printed by `setup.sh`, or the
 `CertFingerprintHint` stack output) so developers can confirm the prompt on first
 `/login`. (A public, browser-trusted ACM cert shows no prompt — see prerequisite 2.)
 
+## Telemetry
+
+`gateway.yaml`'s `telemetry.forward_to` sends OTLP metrics to an **ADOT collector
+sidecar** running in the same Fargate task. The gateway pushes to
+`http://localhost:4318` (the ADOT collector's OTLP receiver), and the collector
+forwards to CloudWatch's native OTLP endpoint using **SigV4 via the ECS task
+role** — no bearer token or API key, so no key rotation or expiration concerns.
+
+The ADOT sidecar:
+- Authenticates automatically using the task role (needs `cloudwatch:PutMetricData`,
+  already granted in the CDK stack / `setup.sh` IAM policy)
+- Is marked **non-essential** — if the agent crashes, the gateway continues serving
+  inference traffic uninterrupted
+- Requires `CLAUDE_GATEWAY_ALLOW_LOOPBACK=1` on the gateway container (already set)
+  to permit forwarding to a localhost destination (the gateway's SSRF guard blocks
+  loopback by default)
+
+Both tracks provision this automatically — no manual credential setup required for
+telemetry. The task role's `cloudwatch:PutMetricData` permission is the only
+prerequisite.
+
+Metrics only: the ADOT sidecar in this example is configured for metrics. Logs and
+traces need additional ADOT pipeline configuration and are out of scope here. See
+[`workshop/03-telemetry/README.md`](../workshop/03-telemetry/README.md) and
+[`gotchas.md`](gotchas.md) §1 for more.
+
 ## Cost expectations
 
-A live deploy of this example idles at roughly **US$6–8/day** (us-east-1,
-defaults). The two biggest line items are easy to miss: the **five interface VPC
-endpoints × two AZs (~$2.40/day)** and the **NAT gateway (~$1.15/day + data)**;
-Fargate (2× gateway + 1× collector) is ~$1.50/day, the ALB ~$0.60/day, RDS
+A live deploy of this example idles at roughly **US$5–7/day** (us-east-1,
+defaults). The two biggest line items are easy to miss: the **six interface VPC
+endpoints × two AZs (~$2.90/day)** and the **NAT gateway (~$1.15/day + data)**;
+Fargate (2× gateway) is ~$1/day, the ALB ~$0.60/day, RDS
 `db.t4g.micro` ~$0.45/day. If you build the Client VPN sketch from
 [`connectivity.md`](connectivity.md), add ~$2.40/day per subnet association plus
 $0.05/h per connected client. Tear down when idle ([`teardown.md`](teardown.md)).
