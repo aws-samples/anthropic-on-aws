@@ -178,7 +178,7 @@ outputs; then pass 2 brings up the full stack (the service starts automatically
 at `desiredCount 2` — no manual scale-up):
 
 ```bash
-npx cdk bootstrap    # first time only
+npx cdk bootstrap -c imageReady=false    # first time only
 
 # Pass 1: ECR repo only
 npx cdk deploy -c imageReady=false \

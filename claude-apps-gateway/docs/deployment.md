@@ -134,7 +134,7 @@ ECS service needs the image to exist first.
 ```bash
 cd cdk
 npm install
-npx cdk bootstrap        # first time in the account/region only
+npx cdk bootstrap -c imageReady=false    # first time in the account/region only
 npx cdk deploy -c imageReady=false
 ```
 
