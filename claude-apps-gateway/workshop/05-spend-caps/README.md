@@ -16,6 +16,10 @@ The gateway can set daily, weekly, or monthly spend limits per user, group, or o
 
 ### Enable the admin API in gateway.yaml
 
+> **Prerequisite:** the admin API is off by default. Mint `GATEWAY_ADMIN_WRITE_KEY`
+> / `GATEWAY_ADMIN_READ_KEY` as secrets and inject them into the task definition
+> first — see the "How to enable it" steps in the main [README §5](../../README.md#5-spend-caps-per-user-budget-enforcement).
+
 ```yaml
 admin:
   write_keys:
