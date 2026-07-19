@@ -84,6 +84,7 @@ You need an AWS account where they can create the following resources:
 - **Database**: An RDS PostgreSQL instance (db.t4g.micro is sufficient; the gateway stores only a few KB of sign-in state)
 - **Networking**: A VPC with private subnets, an internal ALB, and an imported ACM TLS certificate (use a public ACM cert to skip the first-login fingerprint prompt — see [`cdk/README.md`](cdk/README.md))
 - **IAM role**: The gateway's task role needs `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` permissions on inference-profile and foundation-model ARNs
+- **Model access**: A **one-time, account-level** enablement of each Claude model you list — a Bedrock *console/admin* action, **not** an IAM grant or a gateway responsibility. On Bedrock, Anthropic's models are AWS Marketplace offerings, so first use requires a subscription. Until it's done, invokes return a `403` (often naming `aws-marketplace:ViewSubscriptions` / `aws-marketplace:Subscribe`) even though the IAM policy above is correct. Enable it once as an admin; **do not** add Marketplace permissions to the task role (see [`docs/gotchas.md`](docs/gotchas.md) §8 for why). This is the single most common Bedrock-through-gateway failure.
 
 The IAM policy for the task role looks like:
 ```json

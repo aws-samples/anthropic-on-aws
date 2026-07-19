@@ -183,17 +183,33 @@ deploy: the internal IPv4 ALB resolved to `10.0.x.x` only, with **no AAAA record
 
 ## 8. Bedrock model access is a separate, non-IAM prerequisite
 
-**Symptom:** invoke returns `AccessDeniedException` even though the IAM policy is
-correct.
+**Symptom:** invoke returns `AccessDeniedException` — or a `403` naming
+`aws-marketplace:ViewSubscriptions` / `aws-marketplace:Subscribe` — even though the
+`bedrock:InvokeModel*` IAM policy is correct.
 
-**Why:** Bedrock model access is an **account/console-level** grant, separate from
-IAM. And for cross-region inference profiles (`global.anthropic.*`), it must be enabled
-in the source region and any region the profile may route to (global spans all
-commercial regions), not just your endpoint region.
+**Why:** on Bedrock, Anthropic's models are AWS Marketplace offerings, so the first
+use of a model in an account requires a one-time, **account/console-level**
+model-access grant (a subscription), separate from IAM. For cross-region inference
+profiles (`global.anthropic.*`) it must be enabled in the source region and any
+region the profile may route to (global spans all commercial regions), not just your
+endpoint region.
 
-**Fix:** in the Bedrock console, per region, request + enable access for each Claude
-model you list in `availableModels`. This is the **#1 Bedrock-through-gateway
-failure** and it's easy to miss because IAM looks correct.
+**Fix:** as an account admin, enable model access **once** — Bedrock console →
+*Model access* (or the API) — for each Claude model you list in `availableModels`,
+per region global may route to. After that the 403 is gone permanently and the task
+role only ever needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream`.
+This is the **#1 Bedrock-through-gateway failure** and it's easy to miss because IAM
+looks correct.
+
+> **Do NOT fix this by adding `aws-marketplace:Subscribe` to the task role.** It makes
+> the error disappear — the task self-subscribes on first call — but it's the wrong
+> posture: (1) it grants a *one-time provisioning* action as a **standing** permission
+> on a long-lived, network-exposed runtime identity; (2) `Subscribe` is account-wide,
+> so a compromised container could subscribe the account to arbitrary paid Marketplace
+> products and accept their EULAs — well outside an inference proxy's blast radius;
+> (3) procuring models is an account-governance decision, not a data-plane one. Enable
+> access out-of-band as an admin instead — which is exactly why the CDK doesn't
+> provision these permissions.
 
 ---
 
