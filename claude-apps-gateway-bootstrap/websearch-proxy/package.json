@@ -1,0 +1,18 @@
+{
+  "name": "claude-websearch-oauth-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Resource-stripping OAuth proxy that fronts an Amazon Bedrock AgentCore gateway so Claude Desktop's MCP OAuth flow works with Microsoft Entra ID (removes the RFC 8707 resource parameter Entra rejects with AADSTS9010010).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

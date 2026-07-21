@@ -37,6 +37,20 @@
       }
     },
     {
+      "name": "agentcore-websearch-entra-via-proxy",
+      "transport": "http",
+      "url": "https://claude-gateway.example.com/websearch/mcp",
+      "oauth": {
+        "clientId": "<entra-public-client-id>",
+        "authorizationServer": [
+          "https://claude-gateway.example.com/websearch"
+        ],
+        "scope": "openid offline_access api://<entra-public-client-id>/mcp.invoke",
+        "callbackHost": "localhost",
+        "callbackPort": 8990
+      }
+    },
+    {
       "name": "example-oauth-server",
       "transport": "http",
       "url": "https://<your-mcp-server>/mcp",

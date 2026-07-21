@@ -1,7 +1,13 @@
 # Deployment-specific — copy the .example files
 .env
 bootstrap/config/bootstrap-config.json
+# Live top-level config edited per deployment (real hostnames/tenant/client ids);
+# the committed template is bootstrap/config/bootstrap-config.example.json.
+bootstrap-config.json
 cdk/cdk.context.json
+
+# Local, throwaway smoke-test scratch (not part of the deployable component)
+websearch-proxy/local-test/
 
 # Build artifacts & dependencies
 node_modules/
