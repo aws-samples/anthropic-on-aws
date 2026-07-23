@@ -10,8 +10,8 @@ Run it **before each version bump** and **when a gateway release ships**.
 
 ## Current pin
 
-- **Pinned version:** `2.1.199` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
-- **Validated on:** `2.1.199`
+- **Pinned version:** `2.1.218` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
+- **Validated on:** `2.1.218` (live end-to-end: deploy + SSO sign-in + Bedrock inference)
 - **Floor:** `2.1.195` (the `gateway` subcommand floor)
 
 Update the "Pinned version" line here whenever `CLAUDE_VERSION` changes.

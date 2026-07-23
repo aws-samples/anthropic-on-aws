@@ -33,7 +33,7 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *     imageReady      "false" for pass 1 (repo only), "true"/unset for pass 2
  *   BUILD-TIME (stamped into the image by stamp-config.sh; shown here for parity,
  *   not passed to the running task — changing them means a new image, by design):
- *     claudeVersion   default 2.1.199
+ *     claudeVersion   default 2.1.218
  *     oidcIssuer, oidcClientId, allowedEmailDomains
  */
 const app = new cdk.App();
@@ -45,7 +45,7 @@ const region = ctx('region') ?? process.env.CDK_DEFAULT_REGION ?? 'us-east-1';
 // the inference-profile IAM ARN at a different region. NOTE: cross-region Bedrock
 // also needs the VPC Bedrock interface endpoint reworked — see the stack.
 const bedrockRegion = ctx('bedrockRegion') ?? region;
-const claudeVersion = ctx('claudeVersion') ?? '2.1.199';
+const claudeVersion = ctx('claudeVersion') ?? '2.1.218';
 
 new GatewayStack(app, 'ClaudeGatewayStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region },

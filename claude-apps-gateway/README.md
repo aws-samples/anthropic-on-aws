@@ -108,7 +108,7 @@ Both the gateway server (Linux binary) and each developer's Claude Code CLI must
 
 Developers can update with `claude update`. The gateway server uses the same binary, downloaded from the Claude Code release page and packaged into a container image.
 
-Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot. The worked example in this repo pins **2.1.199** to get both. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
+Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot. The worked example in this repo pins **2.1.218**, which also fixes gateway spend metering to price Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates — directly relevant to this example's `global.anthropic.*` inference profiles. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
 
 ### 5. Device management (for pushing settings to developers)
 

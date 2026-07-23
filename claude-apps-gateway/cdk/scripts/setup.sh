@@ -121,7 +121,7 @@ PROJECT="${PROJECT:-claude-gateway}"
 # anthropicAws (Claude Platform on AWS) provider, both referenced in
 # gateway.yaml.template; keep this >= 2.1.198 if you rely on either. See the README
 # "Version coupling" note.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.199}"
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.218}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).
