@@ -253,13 +253,24 @@ echo "✅ OIDC client secret seeded and service redeployed"
 echo ""
 
 # --- Step 5: Verify ---
+# The gateway sits behind an INTERNAL ALB (private IPs by design), so this probe
+# only succeeds from a host with a private network path to the VPC (in-VPC, VPN,
+# Direct Connect, peering, Transit Gateway, etc.). Bound the curl with an explicit
+# --connect-timeout/--max-time: without them it hangs on the TCP connect when run
+# from a host that can't route to the private ALB, making an already-finished
+# deploy look stuck. A failure here is EXPECTED when there is no network path and
+# does NOT mean the deploy failed — the stack/service are already up by this point.
 echo "Step 5/5: Verifying the gateway..."
-RESPONSE=$(curl -s "https://${GATEWAY_HOSTNAME}/.well-known/oauth-authorization-server" 2>/dev/null || echo "")
+RESPONSE=$(curl -s --connect-timeout 5 --max-time 15 \
+  "https://${GATEWAY_HOSTNAME}/.well-known/oauth-authorization-server" 2>/dev/null || echo "")
 if echo "$RESPONSE" | grep -q "device_authorization_endpoint"; then
   echo "✅ Gateway is live at https://${GATEWAY_HOSTNAME}"
 else
-  echo "⚠️  Gateway may still be starting (or unreachable without VPN). Check with:"
-  echo "   curl https://${GATEWAY_HOSTNAME}/.well-known/oauth-authorization-server"
+  echo "ℹ️  Could not reach the gateway from here within the timeout — this is EXPECTED"
+  echo "    when this host has no private network path to the VPC (VPN, Direct Connect,"
+  echo "    in-VPC, etc.); the ALB is internal (private IPs only). The deploy itself is"
+  echo "    complete. Verify from a host with a network path to the VPC with:"
+  echo "      curl https://${GATEWAY_HOSTNAME}/.well-known/oauth-authorization-server"
 fi
 
 echo ""
