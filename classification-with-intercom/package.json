@@ -6,8 +6,6 @@
     "destroy": "cdk destroy",
     "diff": "cdk diff",
     "eslint": "ESLINT_USE_FLAT_CONFIG=false NODE_NO_WARNINGS=1 eslint --ext .ts,.tsx --fix --no-error-on-unmatched-pattern src test build-tools",
-    "install": "yarn install --check-files",
-    "install:ci": "yarn install --check-files --frozen-lockfile",
     "launch": "yarn cdk deploy --require-approval never && ./update-intercom-secret.sh",
     "synth": "cdk synth",
     "synth:silent": "cdk synth -q",

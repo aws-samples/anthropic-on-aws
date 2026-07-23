@@ -8,8 +8,6 @@
     "diff": "cdk diff",
     "eslint": "ESLINT_USE_FLAT_CONFIG=false NODE_NO_WARNINGS=1 eslint --ext .ts,.tsx --fix --no-error-on-unmatched-pattern src test build-tools",
     "getBucket": "aws cloudformation describe-stacks --stack-name AnthropicMetaPromptGenerator --region us-east-1 --query 'Stacks[0].Outputs[?OutputKey==`siteBucket`].OutputValue' --output text",
-    "install": "yarn install --check-files",
-    "install:ci": "yarn install --check-files --frozen-lockfile",
     "launch": "yarn cdk bootstrap && yarn cdk deploy --require-approval never && yarn configLocal",
     "synth": "cdk synth",
     "synth:silent": "cdk synth -q",

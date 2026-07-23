@@ -4,8 +4,6 @@
     "build": "tsc --build && next build",
     "dev": "next dev",
     "export": "next export",
-    "install": "yarn install --check-files",
-    "install:ci": "yarn install --check-files --frozen-lockfile",
     "server": "next start",
     "telemetry": "next telemetry",
     "watch": "tsc --build -w"

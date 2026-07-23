@@ -7,8 +7,6 @@
     "destroy": "cdk destroy",
     "diff": "cdk diff",
     "eslint": "eslint --ext .ts,.tsx --fix --no-error-on-unmatched-pattern src test build-tools",
-    "install": "yarn install --check-files",
-    "install:ci": "yarn install --check-files --frozen-lockfile",
     "launch": "yarn cdk deploy --require-approval never",
     "synth": "cdk synth",
     "synth:silent": "cdk synth -q",
