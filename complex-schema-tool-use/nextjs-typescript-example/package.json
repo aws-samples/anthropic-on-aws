@@ -1,17 +1,12 @@
 {
   "name": "nextjs-chatbot",
   "scripts": {
-    "build": "scripts/run-task.cjs build",
-    "compile": "scripts/run-task.cjs compile",
-    "dev": "scripts/run-task.cjs dev",
-    "export": "scripts/run-task.cjs export",
-    "package": "scripts/run-task.cjs package",
-    "post-compile": "scripts/run-task.cjs post-compile",
-    "pre-compile": "scripts/run-task.cjs pre-compile",
-    "server": "scripts/run-task.cjs server",
-    "telemetry": "scripts/run-task.cjs telemetry",
-    "test": "scripts/run-task.cjs test",
-    "watch": "scripts/run-task.cjs watch"
+    "build": "tsc --build && next build",
+    "dev": "next dev",
+    "export": "next export",
+    "server": "next start",
+    "telemetry": "next telemetry",
+    "watch": "tsc --build -w"
   },
   "devDependencies": {
     "@types/node": "^16",

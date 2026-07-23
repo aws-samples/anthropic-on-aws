@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: yarn install --check-files
       - name: build
-        run: scripts/run-task.cjs build
+        run: yarn build
       - name: Find mutations
         id: self_mutation
         run: |-

@@ -22,7 +22,7 @@ jobs:
         run: yarn install --check-files
         working-directory: complex-schema-tool-use/nextjs-typescript-example
       - name: Build
-        run: scripts/run-task.cjs build
+        run: yarn build
         working-directory: complex-schema-tool-use/nextjs-typescript-example
       - name: Find mutations
         id: self_mutation

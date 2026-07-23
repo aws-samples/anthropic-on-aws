@@ -1,15 +1,9 @@
 {
   "name": "anthropic-on-aws",
   "scripts": {
-    "build": "scripts/run-task.cjs build",
-    "clobber": "scripts/run-task.cjs clobber",
-    "compile": "scripts/run-task.cjs compile",
-    "package": "scripts/run-task.cjs package",
-    "post-compile": "scripts/run-task.cjs post-compile",
-    "post-upgrade": "scripts/run-task.cjs post-upgrade",
-    "pre-compile": "scripts/run-task.cjs pre-compile",
-    "test": "scripts/run-task.cjs test",
-    "upgrade": "scripts/run-task.cjs upgrade"
+    "build": "mkdir -p dist/js && npm pack --pack-destination dist/js",
+    "clobber": "BRANCH=$(git branch --show-current) && git checkout -b scratch && git checkout $BRANCH && git fetch origin && git reset --hard origin/$BRANCH && git clean -fdx",
+    "upgrade": "yarn install --check-files && yarn upgrade commit-and-tag-version"
   },
   "devDependencies": {
     "commit-and-tag-version": "^12"
