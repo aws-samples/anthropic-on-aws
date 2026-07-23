@@ -53,10 +53,47 @@ See [`docs/deployment.md`](../../docs/deployment.md#telemetry) for deployment de
 
 ### What gets stamped on each metric
 
-The CLI automatically includes these attributes on every OTLP export:
+The CLI automatically includes these attributes on every OTLP export, in the OTel
+**resource block** (and, by default, mirrored as datapoint labels):
 - `user.id`: the OIDC `sub` claim (stable user identifier)
 - `user.email`: the user's email from the id_token
-- `user.groups`: the user's IdP groups
+- `user.groups`: the user's IdP groups (only when your IdP emits them)
+- `identity.source`: `gateway-oidc` on gateway sessions
+
+Placing identity in the resource block is what lets CloudWatch **Coding Agent
+Insights** (below) slice usage by developer.
+
+### CloudWatch Coding Agent Insights
+
+When the CloudWatch destination is used, these metrics land in the console's **GenAI
+Observability → Coding Agent Insights** dashboards (Claude Code tab) — no dashboards
+to build. Out of the box you get **per-user** (`user.email`), **per-model**, and
+**per-token-type** breakdowns for adoption and spend.
+
+The dashboards also segment by `team.id`, `department`, `cost_center`, and
+`organization`, but the gateway does **not** emit those — they're not part of its
+identity stamping. (`user.groups` *is* stamped when your IdP sends it, but it's a
+comma-separated string of all groups, not a dashboard grouping dimension, so it doesn't
+segment usage on its own.) To populate the team/department segments, push them as
+resource attributes via
+[`OTEL_RESOURCE_ATTRIBUTES`](https://code.claude.com/docs/en/monitoring-usage) from a
+group-scoped managed policy's `env` block:
+
+```yaml
+managed:
+  policies:
+    - match: { groups: [team-payments] }
+      cli:
+        env:
+          OTEL_RESOURCE_ATTRIBUTES: "team.id=payments,department=engineering,cost_center=CC-1234"
+```
+
+The CLI stamps those as resource attributes, the gateway relays them verbatim, and
+CloudWatch retains them so the by-team/department/cost-center views populate. Values
+are static per policy — one policy per group. See
+[`docs/deployment.md`](../../docs/deployment.md#cloudwatch-coding-agent-insights) for
+the full write-up, and note Coding Agent Insights isn't available in every region
+(excludes UAE, Bahrain, Tel Aviv).
 
 ### Sensitivity levels
 

@@ -265,6 +265,57 @@ traces need additional ADOT pipeline configuration and are out of scope here. Se
 [`workshop/03-telemetry/README.md`](../workshop/03-telemetry/README.md) and
 [`gotchas.md`](gotchas.md) §1 for more.
 
+### CloudWatch Coding Agent Insights
+
+Because the sidecar forwards to CloudWatch's **native OTLP metrics endpoint**
+(`monitoring.<region>.amazonaws.com/v1/metrics`), these metrics also populate
+**[Coding Agent Insights](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/coding-agents-insights.html)** —
+ready-made dashboards under the console's **GenAI Observability → Coding Agent
+Insights** (Claude Code tab). No extra wiring beyond the telemetry setup above; the
+dashboards appear automatically and populate from metrics in the expected OTel shape.
+AWS's [gateway setup guide](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/coding-agents-claude-code-gateway.html)
+describes this path, and our ADOT config mirrors AWS's recommended metrics-collector
+config (same `otlphttp`→`monitoring/v1/metrics` exporter, `sigv4auth` service
+`monitoring`, `cloudwatch:PutMetricData` via the task role). These native-OTLP metrics
+are queryable with PromQL and live in the GenAI Observability store — they do **not**
+appear under classic CloudWatch `list-metrics`.
+
+**What populates automatically.** The gateway stamps each export with the signed-in
+developer's identity as OTel *resource* attributes — `user.email`, `user.id`,
+`identity.source` — and Claude Code adds `model` and token `type`. So the per-user,
+per-model, and per-token-type views work with no developer- or admin-side config.
+
+**By team / department / cost center is *not* automatic.** The gateway's identity
+stamping is user-level only; it does not emit `team.id`, `department`, `cost_center`,
+or `organization`. It does stamp `user.groups` when your IdP emits them, but that lands
+as a *comma-separated string* of all group memberships — it is not one of the
+dashboards' grouping dimensions and does not become `team.id`/`department` on its own.
+To drive the team/department/cost-center segments, push them as resource attributes via
+[`OTEL_RESOURCE_ATTRIBUTES`](https://code.claude.com/docs/en/monitoring-usage) (a
+standard OpenTelemetry variable the CLI honors) through a group-scoped
+[managed policy](https://code.claude.com/docs/en/claude-apps-gateway-config#managed)'s
+`env` block:
+
+```yaml
+managed:
+  policies:
+    - match: { groups: [team-payments] }
+      cli:
+        env:
+          OTEL_RESOURCE_ATTRIBUTES: "team.id=payments,department=engineering,cost_center=CC-1234"
+```
+
+The CLI stamps these into the OTLP resource block, the gateway relays them verbatim,
+and CloudWatch retains them so the by-team/department/cost-center dashboard segments
+populate. The values are static per policy, so you map one policy per team/group rather
+than deriving attributes from a directory. `OTEL_RESOURCE_ATTRIBUTES` isn't on the CLI's `env` safe list, so it rides
+the same one-time managed-settings approval dialog the pushed OTLP endpoint already
+triggers.
+
+**Availability.** Coding Agent Insights is in all commercial regions except Middle
+East (UAE), Middle East (Bahrain), and Israel (Tel Aviv). Standard CloudWatch OTLP
+metric-ingestion pricing applies.
+
 ## Cost expectations
 
 A live deploy of this example idles at roughly **US$5–7/day** (us-east-1,
