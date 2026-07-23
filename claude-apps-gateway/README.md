@@ -296,9 +296,37 @@ models:
 
 **What it does:** Set daily, weekly, or monthly spend limits per user, group, or organization. When a developer exceeds their cap, the gateway returns 429 and blocks further requests until the period resets or an admin raises the limit.
 
-**How it's configured:**
+**Why it's off by default:** the admin API is disabled in the shipped config
+because enabling it turns Postgres into the durable system of record for spend
+counters, an audit log, and per-developer PII. The example's RDS is deliberately
+disposable (`removalPolicy: DESTROY`, `deletionProtection: false`, 1-day backups,
+single-AZ), so turning this on is a conscious opt-in, not a default.
 
-First, enable the admin API in `gateway.yaml`:
+**How to enable it** — three steps:
+
+**1. Mint the admin keys as secrets** (≥32 chars each), the same way the JWT/OIDC
+secrets are created:
+
+```bash
+aws secretsmanager create-secret --name claude-gateway-admin-write-key \
+  --secret-string "$(openssl rand -base64 32)" --region "$AWS_REGION"
+aws secretsmanager create-secret --name claude-gateway-admin-read-key \
+  --secret-string "$(openssl rand -base64 32)" --region "$AWS_REGION"
+```
+
+**2. Inject them into the container**, alongside `GATEWAY_JWT_SECRET` /
+`OIDC_CLIENT_SECRET`:
+
+- **CDK** — add to the `secrets:` map in `cdk/lib/claude-gateway-stack.ts` and grant
+  the task role `secretsmanager:GetSecretValue` on the two new ARNs:
+  ```ts
+  GATEWAY_ADMIN_WRITE_KEY: ecs.Secret.fromSecretsManager(adminWriteSecret),
+  GATEWAY_ADMIN_READ_KEY:  ecs.Secret.fromSecretsManager(adminReadSecret),
+  ```
+- **setup.sh** — add matching entries to the container `secrets` array and the IAM
+  secrets policy.
+
+**3. Uncomment the `admin:` block** in `gateway.yaml` and redeploy:
 
 ```yaml
 admin:
@@ -308,6 +336,11 @@ admin:
     - { id: reporting, key: "${GATEWAY_ADMIN_READ_KEY}" }
   blocked_message: "Contact platform-team@company.com to request a higher limit."
 ```
+
+> ⚠️ **Harden RDS before relying on this.** Enabling admin makes Postgres hold
+> durable spend + audit + PII. The shipped database is disposable — enable deletion
+> protection, a longer backup window, and multi-AZ first. See
+> [cdk/README.md → "Before going to production"](cdk/README.md#before-going-to-production).
 
 Then set caps via the admin API (not in YAML):
 

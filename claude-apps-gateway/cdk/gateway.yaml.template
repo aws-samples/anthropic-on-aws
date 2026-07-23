@@ -177,7 +177,9 @@ managed:
 #
 # admin:        # enables /v1/organizations/spend_limits + per-developer spend caps
 #   write_keys:
-#     - { id: terraform, key: "${GATEWAY_ADMIN_WRITE_KEY_TF}" }
+#     - { id: terraform, key: "${GATEWAY_ADMIN_WRITE_KEY}" }
+#   read_keys:
+#     - { id: reporting, key: "${GATEWAY_ADMIN_READ_KEY}" }
 #   admin_groups: [platform-finops]
 #   # NOTE: enabling admin makes Postgres hold durable spend + audit + PII. Harden
 #   # RDS (backups, deletion protection, multi-AZ) — see the README "Productionising".
