@@ -34,7 +34,7 @@
     "@types/fs-extra": "^11.0.4",
     "@types/jest": "^29.5.12",
     "@types/mocha": "^10.0.7",
-    "aws-cdk-lib": "^2.246.0",
+    "aws-cdk-lib": "^2.260.0",
     "constructs": "^10.5.1",
     "dotenv": "^16.4.5",
     "fs-extra": "^11.2.0"
