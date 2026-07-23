@@ -353,9 +353,9 @@ easy teardown is data durability. Before using it with real workloads, edit
   internal ALB (its hostname must resolve to private IPs only, which is why the ALB is
   internal in the first place).
 
-## Testing without a VPN (local workaround)
+## Testing without VPC network access (local workaround)
 
-In production, the gateway runs behind an internal ALB and developers access it through VPN. But for testing on your own laptop without VPN access to the VPC, you can run the gateway locally.
+In production, the gateway runs behind an internal ALB and developers reach it over a private network path to the VPC (VPN, Direct Connect, Transit Gateway, etc.). But for testing on your own laptop without that access, you can run the gateway locally.
 
 This works because the Claude Code CLI accepts `127.0.0.1` (loopback) as a valid private address.
 
@@ -465,7 +465,7 @@ You should see the Cloud gateway screen. Press Enter, complete browser SSO, and 
 - Your local machine needs AWS credentials configured (`~/.aws/credentials` or env vars) for Amazon Bedrock access
 - `.dev` domains have HSTS preloaded in browsers, so avoid them for the hostname (self-signed certs won't work in the browser)
 - The Claude Code binary must be v2.1.195+. If your standard install is older, replace it with the gateway binary
-- This is for testing only. Customers with VPN access do not need any of this.
+- This is for testing only. Customers with a private network path to the VPC (VPN, Direct Connect, etc.) do not need any of this.
 
 ---
 
