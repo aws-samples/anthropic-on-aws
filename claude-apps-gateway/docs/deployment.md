@@ -152,7 +152,7 @@ ALLOWED_EMAIL_DOMAINS=example.com \
 # Download the pinned linux-x64 binary and verify it (versions must match the
 # claudeVersion pin in bin/app.ts). setup.sh's phase 2 shows the full
 # GPG-signed-manifest verification; the abbreviated form:
-CLAUDE_VERSION=2.1.199
+CLAUDE_VERSION=2.1.218
 curl -fL -o claude "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude"
 curl -fsSL "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/manifest.json" \
   | jq -r '.platforms["linux-x64"].checksum' | xargs -I{} sh -c 'echo "{}  claude" | shasum -a 256 -c'
