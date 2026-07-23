@@ -1,5 +1,4 @@
 !/.gitattributes
-!/.projen/tasks.json
 !/.github/workflows/pull-request-lint.yml
 !/package.json
 !/LICENSE
