@@ -312,7 +312,7 @@ inference confined to a specific geography, switch the catalog off global:
 - A geo (or in-region) profile only routes within that geography, so pick a
   `BEDROCK_REGION` the profile actually spans.
 
-**Default model set.** The shipped catalog is Claude Opus 4.8, Sonnet 5, and Haiku 4.5
+**Default model set.** The shipped catalog is Claude Opus 5, Sonnet 5, and Haiku 4.5
 — all three invoke via their global profiles from any region. **Claude Fable 5 is
 opt-in**: on Bedrock it requires a non-default data-retention mode that isn't enabled
 in every region, so it returns `ValidationException: data retention mode 'default' is
@@ -422,9 +422,9 @@ upstreams:
 # Global inference profiles → region-agnostic (see "Regions & data residency")
 auto_include_builtin_models: false
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
-    upstream_model: { bedrock: global.anthropic.claude-opus-4-8 }
+  - id: claude-opus-5
+    label: Claude Opus 5
+    upstream_model: { bedrock: global.anthropic.claude-opus-5 }
 ```
 
 **5. Trust the self-signed cert:**

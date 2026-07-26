@@ -160,7 +160,7 @@ managed:
     - match: {}
       cli:
         availableModels:
-          - claude-opus-4-8
+          - claude-opus-5
           - claude-sonnet-5
           - claude-haiku-4-5
           # - claude-fable-5   # opt-in — see the models: block note below
@@ -190,10 +190,10 @@ managed:
 # enable the retention prereq for your region, uncomment it in availableModels above,
 # and uncomment the entry below.
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
+  - id: claude-opus-5
+    label: Claude Opus 5
     upstream_model:
-      bedrock: global.anthropic.claude-opus-4-8
+      bedrock: global.anthropic.claude-opus-5
   - id: claude-sonnet-5
     label: Claude Sonnet 5
     upstream_model:

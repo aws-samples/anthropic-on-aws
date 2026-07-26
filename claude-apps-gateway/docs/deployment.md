@@ -34,7 +34,7 @@ a common failure:
      --inference-config '{"maxTokens":5}' >/dev/null && echo model access OK
    ```
 
-   Not every model has a short-alias inference profile. `claude-opus-4-8`,
+   Not every model has a short-alias inference profile. `claude-opus-5`,
    `claude-sonnet-5`, and `claude-fable-5` do, but **Haiku 4.5 exists only as the
    dated profile** `global.anthropic.claude-haiku-4-5-20251001-v1:0` — the short
    `global.anthropic.claude-haiku-4-5` is rejected as `ValidationException: invalid`.
