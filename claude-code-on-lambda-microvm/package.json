@@ -1,0 +1,58 @@
+{
+  "name": "claude-code-on-lambda-microvm",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Private, governed Claude Code development environments on AWS Lambda MicroVMs",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "cleanup": "tsx scripts/cleanup.ts",
+    "client": "tsx client/src/cli.ts",
+    "deploy": "tsx scripts/deploy.ts",
+    "test": "vitest run && npm run test:python",
+    "test:python": "python3 -m unittest discover -s microvm/tests -p 'test_*.py'",
+    "test:watch": "vitest",
+    "synth": "cdk synth",
+    "validate:runtime": "node scripts/validate-runtime-egress.mjs",
+    "lint": "tsc --noEmit",
+    "provision": "tsx scripts/provision-microvm.ts",
+    "destroy:microvm": "tsx scripts/provision-microvm.ts delete"
+  },
+  "dependencies": {
+    "@aws-crypto/sha256-js": "5.2.0",
+    "@aws-sdk/client-acm": "^3.1088.0",
+    "@aws-sdk/client-cloudformation": "3.1088.0",
+    "@aws-sdk/client-dynamodb": "3.1088.0",
+    "@aws-sdk/client-ec2": "^3.1088.0",
+    "@aws-sdk/client-lambda": "3.1088.0",
+    "@aws-sdk/client-lambda-core": "3.1088.0",
+    "@aws-sdk/client-lambda-microvms": "3.1088.0",
+    "@aws-sdk/client-s3": "3.1088.0",
+    "@aws-sdk/client-ssm": "3.1088.0",
+    "@aws-sdk/credential-provider-node": "3.972.69",
+    "@aws-sdk/lib-dynamodb": "3.1088.0",
+    "@aws-sdk/s3-request-presigner": "3.1088.0",
+    "@smithy/protocol-http": "5.5.9",
+    "@smithy/signature-v4": "5.6.5",
+    "archiver": "8.0.0",
+    "aws-cdk-lib": "2.260.0",
+    "constructs": "10.7.0",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "8.0.0",
+    "@types/aws-lambda": "8.10.152",
+    "@types/node": "22.15.3",
+    "@types/ws": "8.18.1",
+    "aws-cdk": "2.1131.0",
+    "cdk-nag": "^3.0.1",
+    "esbuild": "0.25.3",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3",
+    "vitest": "3.2.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
