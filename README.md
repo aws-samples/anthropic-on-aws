@@ -5,7 +5,8 @@
 > New customers are blocked from creating Bedrock Agents resources from Jul 30, 2026.
 > The successor service is **Amazon Bedrock AgentCore** (GA since Oct 2025).
 > Please migrate existing agent workloads.
-> See the [AgentCore documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html)
+> See the [maintenance mode announcement](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-maintenance-mode.html),
+> [AgentCore documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html),
 > and the [migration guide](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-classic-migration.html).
 
 This repo contains a collection of examples and notebooks for using Anthropic on AWS.
