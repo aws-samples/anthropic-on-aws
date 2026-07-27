@@ -366,13 +366,16 @@ metric-ingestion pricing applies.
 
 ## Cost expectations
 
-A live deploy of this example idles at roughly **US$5–7/day** (us-east-1,
-defaults). The two biggest line items are easy to miss: the **six interface VPC
-endpoints × two AZs (~$2.90/day)** and the **NAT gateway (~$1.15/day + data)**;
-Fargate (2× gateway) is ~$1/day, the ALB ~$0.60/day, RDS
-`db.t4g.micro` ~$0.45/day. If you build the Client VPN sketch from
+A live deploy of this example idles at roughly **US$6/day** (us-east-1,
+defaults). The biggest line item is easy to miss: the **six interface VPC
+endpoints × two AZs (~$2.88/day)**, then Fargate (2× gateway) at ~$1.19/day and the
+**NAT gateway (~$1.08/day + data)**; the ALB is ~$0.54/day and RDS
+`db.t4g.micro` ~$0.46/day. If you build the Client VPN sketch from
 [`connectivity.md`](connectivity.md), add ~$2.40/day per subnet association plus
 $0.05/h per connected client. Tear down when idle ([`teardown.md`](teardown.md)).
+
+For the full monthly breakdown and the posture trade-offs that reduce it, see
+[`costs.md`](costs.md).
 
 ## Removing a deployment
 
