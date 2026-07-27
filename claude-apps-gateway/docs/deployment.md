@@ -326,6 +326,9 @@ Fargate (2× gateway) is ~$1/day, the ALB ~$0.60/day, RDS
 [`connectivity.md`](connectivity.md), add ~$2.40/day per subnet association plus
 $0.05/h per connected client. Tear down when idle ([`teardown.md`](teardown.md)).
 
+For the full monthly breakdown and the posture trade-offs that reduce it, see
+[`costs.md`](costs.md).
+
 ## Removing a deployment
 
 CDK: `npx cdk destroy`. `setup.sh`: by hand, in reverse dependency order — follow
