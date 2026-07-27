@@ -120,17 +120,53 @@ aws ecr delete-repository --repository-name "$P" --force --region "$AWS_REGION"
 Deleting the VPC last requires every dependency gone first. The NAT gateway takes
 a few minutes to delete; its Elastic IP is only releasable afterward.
 
-```bash
-VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=$P" \
-  --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION")
+> [!WARNING]
+> **The block below is for a VPC `setup.sh` created. If you deployed into a reused
+> VPC (`VPC_ID=...`), don't run it — delete that VPC's resources by hand instead
+> (see [Reused VPC](#reused-vpc) below).**
+>
+> The loops are scoped to the `Project=$P` tag `setup.sh` stamps on what it creates,
+> which is enough to protect a shared VPC only if nothing pre-existing carries that
+> tag — and `setup.sh` can't guarantee that. It adopts a matching subnet, IGW, NAT,
+> or SG when it finds one and tags only what it creates, so an adopted resource keeps
+> whatever tags *you* gave it. Tag a subnet `Project=claude-gateway` yourself and the
+> loops can't tell it from one `setup.sh` made. Ownership isn't inferable, so for a
+> reused VPC we don't pretend otherwise.
+>
+> The final `delete-vpc` is gated twice regardless — it skips whenever you supplied
+> `VPC_ID`, and skips anything not tagged `Project=$P` — so a stray paste can't take
+> the VPC itself.
+>
+> (Endpoint tagging is recent: if you are tearing down a **dedicated** VPC from an
+> older `setup.sh` and `delete-vpc` fails with `DependencyViolation`, that deployment
+> left untagged endpoints — re-run the endpoint loop filtering on `vpc-id` alone,
+> then retry.)
 
-# VPC endpoints (interface + gateway)
-for E in $(aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=$VPC_ID" \
+```bash
+# Record reuse intent BEFORE the lookup fills VPC_ID in: if you set VPC_ID yourself,
+# the VPC is yours to keep, whatever tags it carries. (A pre-existing VPC can legally
+# be tagged Project=claude-gateway — e.g. you built it for this project and put the
+# Client VPN in it — so the tag alone does NOT prove setup.sh created it.)
+VPC_REUSED=0
+[ -n "${VPC_ID:-}" ] && VPC_REUSED=1
+# For a setup.sh-created VPC this finds it by tag. For a REUSED VPC, export
+# VPC_ID=vpc-... yourself first (setup.sh doesn't tag a VPC it didn't create) —
+# the ${VPC_ID:-...} keeps a value you set instead of clobbering it with the lookup.
+VPC_ID="${VPC_ID:-$(aws ec2 describe-vpcs --filters "Name=tag:Project,Values=$P" \
+  --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION")}"
+if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+  echo "⚠  No VPC_ID set and none tagged Project=$P — set VPC_ID=vpc-... and re-run this block."
+fi
+
+# VPC endpoints (interface + gateway) — project-tagged only
+for E in $(aws ec2 describe-vpc-endpoints \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Project,Values=$P" \
     --query 'VpcEndpoints[].VpcEndpointId' --output text --region "$AWS_REGION"); do
   aws ec2 delete-vpc-endpoints --vpc-endpoint-ids "$E" --region "$AWS_REGION"
 done
-# NAT gateway, then release its EIP
-NAT=$(aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" \
+# NAT gateway, then release its EIP — project-tagged only
+NAT=$(aws ec2 describe-nat-gateways \
+  --filter "Name=vpc-id,Values=$VPC_ID" "Name=tag:Project,Values=$P" "Name=state,Values=available" \
   --query 'NatGateways[0].NatGatewayId' --output text --region "$AWS_REGION")
 if [ -n "$NAT" ] && [ "$NAT" != "None" ]; then
   EIP=$(aws ec2 describe-nat-gateways --nat-gateway-ids "$NAT" --region "$AWS_REGION" \
@@ -139,35 +175,77 @@ if [ -n "$NAT" ] && [ "$NAT" != "None" ]; then
   aws ec2 wait nat-gateway-deleted --nat-gateway-ids "$NAT" --region "$AWS_REGION"
   [ -n "$EIP" ] && [ "$EIP" != "None" ] && aws ec2 release-address --allocation-id "$EIP" --region "$AWS_REGION"
 fi
-# detach + delete IGW
-IGW=$(aws ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
+# detach + delete IGW — project-tagged only (a reused VPC's pre-existing IGW is
+# untagged, so it is spared; setup.sh only tags an IGW it created itself)
+IGW=$(aws ec2 describe-internet-gateways \
+  --filters "Name=attachment.vpc-id,Values=$VPC_ID" "Name=tag:Project,Values=$P" \
   --query 'InternetGateways[0].InternetGatewayId' --output text --region "$AWS_REGION")
 if [ -n "$IGW" ] && [ "$IGW" != "None" ]; then
   aws ec2 detach-internet-gateway --internet-gateway-id "$IGW" --vpc-id "$VPC_ID" --region "$AWS_REGION"
   aws ec2 delete-internet-gateway --internet-gateway-id "$IGW" --region "$AWS_REGION"
 fi
-# subnets
-for SN in $(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" \
+# subnets — project-tagged only
+for SN in $(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Project,Values=$P" \
     --query 'Subnets[].SubnetId' --output text --region "$AWS_REGION"); do
   aws ec2 delete-subnet --subnet-id "$SN" --region "$AWS_REGION"
 done
-# non-default security groups
-for SG in $(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$VPC_ID" \
+# non-default security groups — project-tagged only
+for SG in $(aws ec2 describe-security-groups \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Project,Values=$P" \
     --query "SecurityGroups[?GroupName!='default'].GroupId" --output text --region "$AWS_REGION"); do
   aws ec2 delete-security-group --group-id "$SG" --region "$AWS_REGION" 2>/dev/null
 done
-# non-main route tables
-for RT in $(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" \
+# non-main route tables — project-tagged only
+for RT in $(aws ec2 describe-route-tables \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:Project,Values=$P" \
     --query 'RouteTables[?Associations[0].Main!=`true`].RouteTableId' --output text --region "$AWS_REGION"); do
   aws ec2 delete-route-table --route-table-id "$RT" --region "$AWS_REGION" 2>/dev/null
 done
-# finally the VPC (only if setup.sh created it — skip if you passed an existing VPC_ID)
-aws ec2 delete-vpc --vpc-id "$VPC_ID" --region "$AWS_REGION"
+# finally the VPC — deletes ONLY a VPC setup.sh created. Two gates, either of which
+# skips it: you supplied VPC_ID (reuse — deleting it would take shared resources with
+# it), or it isn't tagged Project=$P. No need to hand-edit or remove this line.
+if [ "$VPC_REUSED" = 1 ]; then
+  echo "VPC $VPC_ID was supplied for reuse — skipping delete-vpc (yours to keep)."
+elif [ "$(aws ec2 describe-vpcs --vpc-ids "$VPC_ID" --filters "Name=tag:Project,Values=$P" \
+      --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION" 2>/dev/null)" = "$VPC_ID" ]; then
+  aws ec2 delete-vpc --vpc-id "$VPC_ID" --region "$AWS_REGION"
+else
+  echo "VPC $VPC_ID is not tagged Project=$P — skipping delete-vpc."
+fi
 ```
 
 > SGs reference each other (three-tier chain), so a `delete-security-group` may fail
 > until the SGs that reference it are gone. Re-run the SG loop once if the first pass
 > leaves stragglers, or revoke the cross-SG rules first.
+
+#### Reused VPC
+
+Keep the VPC and delete only what this deployment added. List the candidates, then
+delete the ones you recognise — `setup.sh` names everything it creates after `$P`,
+so the `Name` tags tell you which are yours:
+
+```bash
+export VPC_ID=vpc-...   # the VPC you passed to setup.sh / the CDK
+aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --output table --region "$AWS_REGION" \
+  --query "Subnets[].[SubnetId,CidrBlock,Tags[?Key=='Name']|[0].Value,Tags[?Key=='Project']|[0].Value]"
+aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$VPC_ID" --output table --region "$AWS_REGION" \
+  --query "SecurityGroups[].[GroupId,GroupName,Tags[?Key=='Project']|[0].Value]"
+aws ec2 describe-route-tables --filters "Name=vpc-id,Values=$VPC_ID" --output table --region "$AWS_REGION" \
+  --query "RouteTables[].[RouteTableId,Tags[?Key=='Name']|[0].Value,Tags[?Key=='Project']|[0].Value]"
+aws ec2 describe-vpc-endpoints --filters "Name=vpc-id,Values=$VPC_ID" --output table --region "$AWS_REGION" \
+  --query "VpcEndpoints[].[VpcEndpointId,ServiceName,Tags[?Key=='Project']|[0].Value]"
+# note: describe-nat-gateways takes --filter, singular
+aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=$VPC_ID" --output table --region "$AWS_REGION" \
+  --query "NatGateways[].[NatGatewayId,State,Tags[?Key=='Project']|[0].Value]"
+```
+
+A `Project=$P` tag is a hint, not proof: `setup.sh` adopts a pre-existing subnet,
+IGW, NAT, or SG that matches what it wants rather than creating one, and tags only
+resources it creates — so anything it adopted still carries your tags. Delete what
+you know you added; leave the rest. The four subnets `setup.sh` creates are
+`$P-public-a/b` and `$P-private-a/b`; its SGs are `$P-alb-sg`, `$P-task-sg`, and
+`$P-rds-sg`.
 
 ---
 
