@@ -440,6 +440,7 @@ ensure_interface_endpoint() {
   aws ec2 create-vpc-endpoint --vpc-id "${VPC_ID}" --vpc-endpoint-type Interface \
     --service-name "${sname}" --subnet-ids ${PRIVATE_SUBNETS} \
     --security-group-ids "${VPCE_SG}" --private-dns-enabled \
+    --tag-specifications "ResourceType=vpc-endpoint,Tags=[{Key=Project,Value=${PROJECT}}]" \
     --region "${AWS_REGION}" >/dev/null
   info "created vpc endpoint ${svc}"
 }
@@ -454,6 +455,7 @@ if [[ "$(aws_q ec2 describe-vpc-endpoints \
 else
   aws ec2 create-vpc-endpoint --vpc-id "${VPC_ID}" --vpc-endpoint-type Gateway \
     --service-name "com.amazonaws.${AWS_REGION}.s3" --route-table-ids "${PRI_RT}" \
+    --tag-specifications "ResourceType=vpc-endpoint,Tags=[{Key=Project,Value=${PROJECT}}]" \
     --region "${AWS_REGION}" >/dev/null
   info "created vpc endpoint s3 (gateway)"
 fi
