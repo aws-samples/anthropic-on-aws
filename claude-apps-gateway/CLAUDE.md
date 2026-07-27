@@ -40,7 +40,8 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways �
   `foundation-model/anthropic.*`. Missing either yields 403s. The gateway uses **global**
   cross-region inference profiles (`global.anthropic.*`) so any Bedrock region works; the
   inference-profile ARN prefix must match the profile prefix in `gateway.yaml`'s `models:`
-  block (swap both to `us.`/`eu.`/`apac.` together if you switch off global for data residency).
+  block (swap both to `us.`/`eu.`/`au.` together if you switch off global for data residency —
+  `jp.` also exists for Opus 4.8 and Haiku 4.5, but not Sonnet 5).
 - **Fargate, not EC2, is the primary track for a reason.** On EC2-backed compute the default IMDSv2
   hop limit of 1 blocks the in-container metadata call → every Bedrock request 502s with
   `Could not load credentials from any providers`. Fargate task roles avoid this (ECS

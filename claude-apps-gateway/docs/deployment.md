@@ -40,7 +40,8 @@ a common failure:
    `global.anthropic.claude-haiku-4-5` is rejected as `ValidationException: invalid`.
    Run `aws bedrock list-inference-profiles` for the exact IDs. In `gateway.yaml`'s
    `models:` block the friendly name (`claude-haiku-4-5`) maps to the dated profile;
-   for data residency, swap the `global.` prefix for a geo profile (`us.`/`eu.`/`apac.`).
+   for data residency, swap the `global.` prefix for a geo profile (`us.`/`eu.`/`au.`, plus
+   `jp.` for Opus 4.8 and Haiku 4.5 — Sonnet 5 has no `jp.` profile).
 2. **An ACM cert** for your gateway hostname, passed as `CERT_ARN` / `-c certArn`.
    On first `/login` the CLI pins the cert's SHA-256 fingerprint and prompts the
    developer to confirm it — intended behavior (the CLI pinning the authentic
