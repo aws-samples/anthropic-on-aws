@@ -194,6 +194,29 @@ aws ecs update-service --cluster claude-gateway --service claude-gateway --force
 To roll a new image later: push a new tag, then re-run pass 2 with
 `-c imageTag=<tag>`.
 
+> [!IMPORTANT]
+> **A config change needs a new image tag.** `gateway.yaml` is baked into the image,
+> not mounted (ECS `secrets:` injects env vars only, never files — see
+> [`gotchas.md` §13](gotchas.md#13-config-is-baked--the-image-is-per-environment)), so
+> editing `gateway.yaml.template` has no effect until you rebuild **and** point the
+> service at the new image. The tag above is the bare `CLAUDE_VERSION`, which does not
+> change when only the config does — so re-running the build would overwrite
+> `:2.1.218` in place, and re-running pass 2 with the same `-c imageTag` leaves the
+> task definition unchanged, meaning ECS may not redeploy at all. Either symptom looks
+> like a successful deploy that silently kept the old config.
+>
+> Include the config in the tag so this can't happen (this is what `setup.sh` does by
+> default):
+>
+> ```bash
+> CONFIG_HASH=$(shasum -a 256 gateway.yaml | cut -c1-12)
+> IMAGE_TAG="${CLAUDE_VERSION}-${CONFIG_HASH}"
+> docker build --platform=linux/amd64 --provenance=false -t "${ECR_URI}:${IMAGE_TAG}" .
+> docker push "${ECR_URI}:${IMAGE_TAG}"
+> # then pass 2 with the matching tag:
+> npx cdk deploy -c imageTag="${IMAGE_TAG}" ...
+> ```
+
 > [!NOTE]
 > `cdk/scripts/deploy.sh` is a separate convenience script that builds the image
 > via CodeBuild using its own inline Dockerfile and config. It does **not** use the

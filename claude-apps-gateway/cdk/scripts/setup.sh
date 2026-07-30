@@ -17,7 +17,9 @@
 # (it's claude-gateway.<ZONE_NAME>), so there is no "deploy to learn the URL" pass.
 # The only ordering constraint is image-before-service. A single run handles it:
 # the image is built and pushed (phase 3) before the service is created (phase 6).
-# Re-run any time to roll a new image.
+# Re-run any time to roll a new image: because the default image tag hashes the
+# stamped config, editing gateway.yaml.template yields a new tag and a genuine
+# rebuild — a config change can't be silently skipped as "already in ECR".
 #
 # ── Prerequisites you must satisfy out of band ────────────────────────────────
 #     * Bedrock MODEL ACCESS enabled for each Claude model you list in
@@ -60,6 +62,22 @@ aws_q() { aws "$@" --output text --region "${AWS_REGION}" 2>/dev/null; }
 sha_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
   else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+
+# config_image_tag — derive the image tag from BOTH things baked into the image:
+# the pinned binary version AND the stamped config. Config is baked, not mounted
+# (see gateway.yaml.template's header), so the image is binary+config — a tag keyed
+# on the version alone stays identical when only the config changes. The existing
+# "tag already in ECR" check then skips the rebuild while the service still gets
+# redeployed, so the config edit silently never ships. That is the trap behind
+# a reported admin-API failure: uncommenting `admin:` and re-running looked like a
+# successful deploy but served the previous image, whose config had no admin block,
+# so the request fell through to session auth (auth.denied / missing_token).
+# Keying the tag on the config hash makes any config change a new tag by
+# construction, with no operator discipline required.
+config_image_tag() {
+  local version="$1" config="$2"
+  printf '%s-%s\n' "${version}" "$(sha_of "${config}" | cut -c1-12)"
 }
 
 # resolve_container_tool — honor CONTAINER_TOOL if set (and fail if it isn't on
@@ -114,8 +132,9 @@ if [[ "${SETUP_SH_LIB_ONLY:-}" == "1" ]]; then return 0 2>/dev/null || exit 0; f
 AWS_REGION="${AWS_REGION:-us-east-1}"
 PROJECT="${PROJECT:-claude-gateway}"
 
-# Pin the Claude Code version. Drives BOTH the download URL and the image tag, so
-# the artifact is self-describing. The gateway subcommand floor is 2.1.195; the
+# Pin the Claude Code version. Drives the download URL and the image-tag PREFIX
+# (the tag is <version>-<config-hash>, so the artifact names both of its inputs —
+# see config_image_tag). The gateway subcommand floor is 2.1.195; the
 # version must also be >= the newest managed-settings key you use (we ship a live
 # managed.policies block). 2.1.198 added 404-failover across upstreams and the
 # anthropicAws (Claude Platform on AWS) provider, both referenced in
@@ -131,7 +150,11 @@ CLAUDE_SHA256="${CLAUDE_SHA256:-}"
 CLAUDE_BINARY="${CLAUDE_BINARY:-./claude}"
 
 ECR_REPO="${ECR_REPO:-${PROJECT}}"
-IMAGE_TAG="${IMAGE_TAG:-${CLAUDE_VERSION}}"
+# IMAGE_TAG is deliberately NOT defaulted here: the default is derived in phase 2
+# from CLAUDE_VERSION + the hash of the stamped gateway.yaml (see config_image_tag),
+# which cannot be computed until the config has been stamped. Set IMAGE_TAG to pin
+# an explicit tag and opt out of the content-derived default.
+IMAGE_TAG="${IMAGE_TAG:-}"
 
 DB_INSTANCE="${DB_INSTANCE:-${PROJECT}-db}"
 DB_NAME="${DB_NAME:-claude_gateway}"
@@ -190,7 +213,8 @@ info "caller $(aws_q sts get-caller-identity --query Arn)"
 # Fail fast on the OIDC client secret BEFORE the slow phases (RDS alone is ~9 min).
 preflight_oidc_secret
 REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-IMAGE_URI="${REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+# IMAGE_URI is assembled in phase 2, once the config is stamped and IMAGE_TAG is
+# known (the default tag hashes the stamped config — see config_image_tag).
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 1 — ECR
@@ -211,20 +235,35 @@ aws ecr get-login-password --region "${AWS_REGION}" \
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 2 — Image: stamp config, download + verify binary, build, push
 # ──────────────────────────────────────────────────────────────────────────────
-log "Phase 2: build and push image ${IMAGE_URI}"
+log "Phase 2: build and push image"
+
+# 2a. Stamp gateway.yaml from the committed template. This runs BEFORE the
+# "already in ECR" check on purpose: the stamped config feeds the default image
+# tag, so the tag can only be known once the config exists. (Stamping is local,
+# cheap and idempotent — safe to redo on every run.)
+info "stamping gateway.yaml from template"
+PUBLIC_URL="${PUBLIC_URL}" AWS_REGION="${AWS_REGION}" \
+OIDC_ISSUER="${OIDC_ISSUER}" OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
+ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
+DB_NAME="${DB_NAME}" \
+"${SCRIPT_DIR}/stamp-config.sh"
+
+# Default the tag from binary version + stamped-config hash, so editing
+# gateway.yaml.template always yields a new tag and a real rebuild.
+if [[ -z "${IMAGE_TAG}" ]]; then
+  IMAGE_TAG="$(config_image_tag "${CLAUDE_VERSION}" ./gateway.yaml)"
+  info "image tag (derived from version + config hash): ${IMAGE_TAG}"
+else
+  info "image tag (pinned via IMAGE_TAG): ${IMAGE_TAG}"
+fi
+IMAGE_URI="${REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
 
 if aws_q ecr describe-images --repository-name "${ECR_REPO}" \
      --image-ids imageTag="${IMAGE_TAG}" >/dev/null; then
-  skip "image tag ${IMAGE_TAG} already in ECR — re-run with a new IMAGE_TAG to rebuild"
+  # With the derived tag this now means the binary AND the config are unchanged,
+  # so there is genuinely nothing to rebuild.
+  skip "image ${IMAGE_URI} already in ECR (same binary + config) — nothing to rebuild"
 else
-  # 2a. Stamp gateway.yaml from the committed template.
-  info "stamping gateway.yaml from template"
-  PUBLIC_URL="${PUBLIC_URL}" AWS_REGION="${AWS_REGION}" \
-  OIDC_ISSUER="${OIDC_ISSUER}" OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
-  ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
-  DB_NAME="${DB_NAME}" \
-  "${SCRIPT_DIR}/stamp-config.sh"
-
   # 2b. Import + verify the GPG signing key.
   info "importing Claude Code release signing key"
   curl -fsSL "${KEYS_URL}" | gpg --import 2>/dev/null || die "failed to import signing key"
