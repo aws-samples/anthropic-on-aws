@@ -1,0 +1,14 @@
+{
+  "region": "us-east-1",
+  "vpcCidr": "10.42.0.0/16",
+  "projectName": "claude-microvm",
+  "trustedClientCidr": "10.100.0.0/22",
+  "inferenceMode": "bedrock",
+  "bedrockModelId": "anthropic.claude-sonnet-5",
+  "allowClaudeAiSubscription": false,
+  "enablePortal": false,
+  "idleAfterSeconds": 900,
+  "suspendedRetentionSeconds": 3600,
+  "microvmMemoryMib": 4096,
+  "provisionTimeoutMinutes": 60
+}

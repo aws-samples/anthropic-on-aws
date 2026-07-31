@@ -1,0 +1,134 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/27.0.9 Chrome/134.0.6998.205 Electron/35.4.0 Safari/537.36" version="27.0.9">
+  <diagram id="claude-microvm-dataflow" name="architecture">
+    <mxGraphModel dx="3185" dy="1219" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1650" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="Claude Code workspaces on AWS Lambda MicroVMs" style="text;html=1;fontSize=16;fontStyle=1;fontColor=#232F3E;align=left;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="40" y="16" width="900" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="aws" value="AWS Account" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=14;fontStyle=1;container=0;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=40;fontColor=#232F3E;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="460" y="60" width="1150" height="930" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc" value="VPC — Network Connector ENIs, private endpoints, and NAT Gateway" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;fontStyle=1;container=0;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc2;strokeColor=#8C4FFF;fillColor=none;verticalAlign=top;align=left;spacingLeft=40;fontColor=#8C4FFF;dashed=0;" parent="1" vertex="1">
+          <mxGeometry x="500" y="330" width="569" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="laptop" value="User interfaces&#xa;browser + VS Code Desktop&#xa;operator CLI (IAM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#232F3E;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="400" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="tunnels" value="Microsoft dev tunnels relay&#xa;(Microsoft or GitHub identity)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#232F3E;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="790" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="cognito" value="Amazon Cognito&#xa;user pool + hosted UI&#xa;browser app client" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F54749;gradientDirection=north;fillColor=#BD0816;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.cognito;" parent="1" vertex="1">
+          <mxGeometry x="560" y="140" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="apigw" value="Private REST API&#xa;execute-api VPC endpoint" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F34482;gradientDirection=north;fillColor=#B0084D;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.api_gateway;" parent="1" vertex="1">
+          <mxGeometry x="624" y="387" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="natgw" value="NAT Gateway&#xa;public HTTPS egress" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#945DF2;gradientDirection=north;fillColor=#5A30B5;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.nat_gateway;" parent="1" vertex="1">
+          <mxGeometry x="850" y="400" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="control" value="Control-plane Lambdas&#xa;lifecycle + portal + tunnel auth" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#C8511B;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" parent="1" vertex="1">
+          <mxGeometry x="661" y="620" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="sessions" value="DynamoDB&#xa;session + workspace state" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#527FFF;gradientDirection=north;fillColor=#2E27AD;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.dynamodb;" parent="1" vertex="1">
+          <mxGeometry x="850" y="640" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="microvm" value="&lt;b&gt;AWS Lambda MicroVM (Linux ARM64)&lt;/b&gt;&#xa;service-managed — not inside the VPC&#xa;&#xa;• Claude Code (terminal)&#xa;• VS Code Server + tunnel host&#xa;• /workspace&#xa;&#xa;egress only via the scoped VPC connector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E6;strokeColor=#ED7100;fontSize=12;align=left;spacingLeft=14;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1160" y="340" width="400" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="bedrock" value="Amazon Bedrock&#xa;Runtime / Messages API" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#56C0A7;gradientDirection=north;fillColor=#055F4E;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.bedrock;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="800" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" value="Amazon S3&#xa;workspace checkpoints&#xa;KMS-encrypted, versioned" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" parent="1" vertex="1">
+          <mxGeometry x="1430" y="800" width="78" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="1. browser hosted UI sign-in&#xa;(authorization code + PKCE)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#0972D3;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="laptop" target="cognito" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="380" y="418" />
+              <mxPoint x="380" y="179" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" value="2. ID token (browser) or SigV4 (operator CLI)&#xa;over organization-managed private connectivity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#0972D3;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=1;exitY=0.55;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="laptop" target="apigw" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="3. Cognito authorizer / IAM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#0972D3;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="apigw" target="control" edge="1">
+          <mxGeometry x="0.637" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="765" y="426" />
+              <mxPoint x="765" y="528" />
+              <mxPoint x="700" y="528" />
+            </Array>
+            <mxPoint y="18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ejwks" value="token validation (JWKS)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#7f7f7f;dashed=1;fontSize=10;fontColor=#555555;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" parent="1" source="apigw" target="cognito" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="663" y="303" />
+              <mxPoint x="738" y="303" />
+              <mxPoint x="738" y="179" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" value="4. RunMicrovm + suspend / resume / terminate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#0972D3;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="control" target="microvm" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="765" y="640" />
+              <mxPoint x="765" y="590" />
+              <mxPoint x="1090" y="590" />
+              <mxPoint x="1090" y="528" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" value="session state" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#7f7f7f;fontSize=10;fontColor=#555555;labelBackgroundColor=#ffffff;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="control" target="sessions" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="5. browser terminal — direct WebSocket + short-lived shell token" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#ED7100;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="laptop" target="microvm" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="100" />
+              <mxPoint x="1360" y="100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="6a. outbound tunnel host — TLS via connector + NAT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#067F68;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=0;exitY=0.85;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="microvm" target="tunnels" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="553" />
+              <mxPoint x="1110" y="950" />
+              <mxPoint x="380" y="950" />
+              <mxPoint x="380" y="830" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" value="6b. VS Code Desktop connects&#xa;(Microsoft / GitHub device login)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#067F68;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="laptop" target="tunnels" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="7. inference&#xa;via Bedrock private VPCE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#ED7100;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="microvm" target="bedrock" edge="1">
+          <mxGeometry x="-0.35" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" value="8. /workspace checkpoints&#xa;via S3 gateway VPCE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#ED7100;fontSize=11;fontColor=#232F3E;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="microvm" target="s3" edge="1">
+          <mxGeometry x="0.35" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" value="public HTTPS egress&#xa;(tunnels, packages, opt. Claude.ai)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1.5;strokeColor=#7f7f7f;dashed=1;fontSize=10;fontColor=#555555;labelBackgroundColor=#ffffff;exitX=0;exitY=0.25;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="microvm" target="natgw" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="403" />
+              <mxPoint x="1110" y="439" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" value="&lt;b&gt;Flows&lt;/b&gt;  1–4 create and control an environment (blue) • 5 terminal session • 6 VS Code session (teal) • 7–8 model and workspace traffic (orange) • dashed = supporting path&#xa;Only connector ENIs, VPC endpoints, and the NAT Gateway reside in the VPC; the API icon combines the execute-api endpoint with its private REST API. Other service icons are outside customer subnets.&#xa;All MicroVM traffic leaves through the scoped VPC connector: private AWS destinations use VPC endpoints; Microsoft tunnels and public HTTPS exit through the NAT Gateway." style="text;html=1;fontSize=11;fontColor=#232F3E;align=left;verticalAlign=top;spacing=4;" parent="1" vertex="1">
+          <mxGeometry x="40" y="1010" width="1560" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

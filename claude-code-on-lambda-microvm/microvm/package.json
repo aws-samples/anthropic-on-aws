@@ -1,0 +1,27 @@
+{
+  "name": "claude-microvm-agentcore-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "SigV4 stdio bridge from Claude Code to an AgentCore MCP Gateway",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-crypto/sha256-js": "5.2.0",
+    "@aws-sdk/credential-provider-node": "3.972.69",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@smithy/protocol-http": "5.5.9",
+    "@smithy/signature-v4": "5.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "typescript": "5.8.3",
+    "vitest": "3.2.7"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

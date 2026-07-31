@@ -45,6 +45,8 @@ cdk-nag-output.txt
 **/lib/
 **/node_modules/
 **/test/
+!claude-code-on-lambda-microvm/**/test/
+!claude-code-on-lambda-microvm/**/test/**
 **/.next/
 **/__pycache__/
 mkdocs-env/*

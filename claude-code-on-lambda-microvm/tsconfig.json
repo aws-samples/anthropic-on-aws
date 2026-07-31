@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["ES2023", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "client/**/*.ts",
+    "control-plane/**/*.ts",
+    "infra/**/*.ts",
+    "portal/**/*.ts",
+    "shared/**/*.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "cdk.out",
+    "node_modules",
+    "microvm"
+  ]
+}
