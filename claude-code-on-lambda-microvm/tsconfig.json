@@ -21,6 +21,7 @@
     "control-plane/**/*.ts",
     "infra/**/*.ts",
     "portal/**/*.ts",
+    "shared/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [

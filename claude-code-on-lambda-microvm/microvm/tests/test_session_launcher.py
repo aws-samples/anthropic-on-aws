@@ -103,6 +103,36 @@ class SessionLauncherTests(unittest.TestCase):
             self.environment,
         )
 
+    def test_developer_shell_loads_the_managed_session_environment(
+        self,
+    ) -> None:
+        with (
+            mock.patch.object(agent, "WORKSPACE", self.workspace),
+            mock.patch.object(
+                agent,
+                "SESSION_CONFIGURATION",
+                self.configuration,
+            ),
+            mock.patch.object(
+                agent.pwd,
+                "getpwnam",
+                return_value=self.developer,
+            ),
+            mock.patch.object(agent.os, "geteuid", return_value=1000),
+            mock.patch.object(agent.os, "chdir") as chdir,
+            mock.patch.object(agent.os, "umask") as umask,
+            mock.patch.object(agent.os, "execve") as execve,
+        ):
+            agent.launch_shell()
+
+        chdir.assert_called_once_with(self.workspace)
+        umask.assert_called_once_with(0o027)
+        execve.assert_called_once_with(
+            "/bin/bash",
+            ["/bin/bash", "--login"],
+            self.environment,
+        )
+
     def test_first_gateway_login_restarts_into_clean_tui(self) -> None:
         patches = self.launcher_patches()
         with (

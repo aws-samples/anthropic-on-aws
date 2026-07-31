@@ -40,6 +40,10 @@ describe('portal configuration', () => {
 });
 
 describe('portal tunnel authentication UI', () => {
+  it('ships syntactically valid browser JavaScript', () => {
+    expect(() => new Function(PORTAL_JS)).not.toThrow();
+  });
+
   it('defaults new environments to VS Code access', () => {
     expect(PORTAL_HTML).toContain(
       'name="access-mode" value="vscode" checked',
@@ -48,7 +52,7 @@ describe('portal tunnel authentication UI', () => {
       "var accessMode = selected ? selected.value : 'vscode'",
     );
     expect(PORTAL_HTML).toContain(
-      'name="new-tunnel-provider"\n                     value="github" checked',
+      'name="new-tunnel-provider"\n                     value="microsoft" checked',
     );
   });
 
@@ -81,7 +85,119 @@ describe('portal tunnel authentication UI', () => {
       "'Image ' + session.imageVersion",
     );
     expect(PORTAL_JS).toContain(
-      "providerSelect.value = session.tunnelProvider || 'github'",
+      "providerSelect.value = session.tunnelProvider || 'microsoft'",
+    );
+  });
+
+  it('provides a mode-aware Connect action for running environments', () => {
+    for (const id of [
+      'terminal-dialog',
+      'terminal-workspace',
+      'terminal-session',
+      'terminal-screen',
+      'terminal-status-text',
+      'terminal-reconnect',
+    ]) {
+      expect(PORTAL_HTML).toContain(`id="${id}"`);
+    }
+    expect(PORTAL_HTML).toContain('value="terminal"');
+    expect(PORTAL_JS).toContain(
+      "actions.append(actionButton('Connect'",
+    );
+    expect(PORTAL_JS).not.toContain(
+      "actions.append(actionButton('Authenticate'",
+    );
+    expect(PORTAL_JS).toContain('openTerminalDialog(session)');
+    expect(PORTAL_JS).toContain(
+      "'/sessions/' + terminalSession.sessionId + '/connect'",
+    );
+    expect(PORTAL_JS).toContain(
+      "'lambda-microvms.authentication.' + connection.shellToken",
+    );
+    expect(PORTAL_JS).toContain(
+      '/usr/local/bin/developer-shell',
+    );
+    expect(PORTAL_JS).toContain('new ResizeObserver');
+    expect(PORTAL_HTML).toContain(
+      'src="portal/terminal-vendor.js?v=6.0.0"',
+    );
+    expect(PORTAL_HTML).toContain(
+      'href="portal/xterm.css?v=6.0.0"',
+    );
+    expect(PORTAL_HTML).not.toContain('microvm connect');
+    expect(PORTAL_JS).not.toContain('microvm connect');
+    expect(PORTAL_JS).not.toMatch(
+      /(?:sessionStorage|localStorage)\.setItem\([^)]*shellToken/,
+    );
+  });
+
+  it('serves pinned terminal assets from the portal origin', async () => {
+    const requestContext = { apiId: 'api-123', stage: 'v1' };
+    const script = await handler({
+      httpMethod: 'GET',
+      resource: '/portal/terminal-vendor.js',
+      requestContext,
+    } as APIGatewayProxyEvent);
+    const stylesheet = await handler({
+      httpMethod: 'GET',
+      resource: '/portal/xterm.css',
+      requestContext,
+    } as APIGatewayProxyEvent);
+
+    expect(script.statusCode).toBe(200);
+    expect(script.body).toContain('@xterm/xterm 6.0.0');
+    expect(script.body).toContain('FitAddon');
+    expect(script.headers).toMatchObject({
+      'cache-control': 'public, max-age=31536000, immutable',
+      'content-type': 'application/javascript; charset=utf-8',
+    });
+    expect(stylesheet.statusCode).toBe(200);
+    expect(stylesheet.body).toContain('.xterm');
+    expect(stylesheet.headers).toMatchObject({
+      'cache-control': 'public, max-age=31536000, immutable',
+      'content-type': 'text/css; charset=utf-8',
+    });
+  });
+
+  it('provides an in-place restart workflow', () => {
+    expect(PORTAL_JS).toContain(
+      "actionButton('Restart'",
+    );
+    expect(PORTAL_JS).toContain(
+      "await api('DELETE', '/sessions/' + session.sessionId)",
+    );
+    expect(PORTAL_JS).toContain(
+      "await api('POST', '/sessions'",
+    );
+    expect(PORTAL_JS).toContain(
+      "button.textContent = 'Restarting...'",
+    );
+  });
+
+  it('performs explicit live refresh with visible progress', () => {
+    expect(PORTAL_HTML).toContain('id="refresh-status"');
+    expect(PORTAL_HTML).toContain('aria-live="polite"');
+    expect(PORTAL_JS).toContain(
+      "useLiveState ? '/sessions?refresh=true' : '/sessions'",
+    );
+    expect(PORTAL_JS).toContain(
+      "button.textContent = 'Refreshing...'",
+    );
+    expect(PORTAL_JS).toContain(
+      "'Updated ' + new Date().toLocaleTimeString()",
+    );
+  });
+
+  it('hides tunnel identity controls for Terminal creation', () => {
+    expect(PORTAL_JS).toContain(
+      "el('new-provider-field').hidden = terminalAccess",
+    );
+    expect(PORTAL_JS).toContain(
+      "el('new').classList.toggle('terminal-access', terminalAccess)",
+    );
+    expect(PORTAL_HTML).toContain(
+      '#new, #new.terminal-access {\n' +
+        '      grid-template-columns: 1fr;',
     );
   });
 

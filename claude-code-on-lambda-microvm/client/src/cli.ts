@@ -3,6 +3,7 @@ import process from 'node:process';
 import {
   ApiError,
   type ClaudeInferenceMode,
+  type ControlApi,
   ControlApiClient,
   type SessionView,
 } from './api.js';
@@ -11,27 +12,34 @@ import {
   type TunnelIdentityProvider,
   vscodeTunnelLoginCommand,
 } from './terminal.js';
+import { restartSession } from './lifecycle.js';
 import { launchVsCodeTunnel } from './vscode.js';
+import { VSCODE_TUNNEL_READY_OUTPUT_PATTERN } from '../../shared/tunnel-output.js';
 
-const args = process.argv.slice(2);
-const region =
-  takeOption(args, '--region') ??
-  'us-east-1';
-const profile = takeOption(args, '--profile') ?? 'default';
-const stackName = takeOption(args, '--stack') ?? 'ClaudeMicrovmStack';
-const apiUrl =
-  takeOption(args, '--api-url') ?? process.env.CLAUDE_MICROVM_API_URL;
-const jsonOutput = takeFlag(args, '--json');
-const command = args.shift() ?? 'help';
+let region = 'us-east-1';
+let profile = 'default';
+let stackName = 'ClaudeMicrovmStack';
+let apiUrl: string | undefined;
+let jsonOutput = false;
 
-const client = new ControlApiClient({
-  region,
-  profile,
-  stackName,
-  apiUrl,
-});
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  region = takeOption(args, '--region') ?? 'us-east-1';
+  profile = takeOption(args, '--profile') ?? 'default';
+  stackName = takeOption(args, '--stack') ?? 'ClaudeMicrovmStack';
+  apiUrl =
+    takeOption(args, '--api-url') ??
+    process.env.CLAUDE_MICROVM_API_URL;
+  jsonOutput = takeFlag(args, '--json');
+  const command = args.shift() ?? 'help';
 
-try {
+  const client = new ControlApiClient({
+    region,
+    profile,
+    stackName,
+    apiUrl,
+  });
+
   switch (command) {
     case 'start': {
       const noConnect = takeFlag(args, '--no-connect');
@@ -42,15 +50,7 @@ try {
         accessMode: 'terminal',
         inferenceMode,
       });
-      if (jsonOutput) {
-        printJson(result);
-      } else {
-        process.stdout.write(
-          `${result.created ? 'Started' : 'Using'} session ` +
-            `${result.session.sessionId} for workspace ` +
-            `${result.session.workspaceId} (${result.session.state})\n`,
-        );
-      }
+      printStartResult(result, 'terminal');
       if (!noConnect) {
         await attachTerminal(
           await client.connect(result.session.sessionId),
@@ -71,17 +71,10 @@ try {
         tunnelProvider,
       });
       const tunnelName = requireVsCodeTunnel(result.session);
-      if (jsonOutput) {
-        printJson(result);
-      } else {
-        process.stdout.write(
-          `${result.created ? 'Started' : 'Using'} VS Code session ` +
-            `${result.session.sessionId} for workspace ` +
-            `${result.session.workspaceId} (${result.session.state})\n`,
-        );
-      }
+      printStartResult(result, 'VS Code');
       if (!noLogin) {
         await loginToTunnel(
+          client,
           result.session.sessionId,
           tunnelProvider,
         );
@@ -104,13 +97,34 @@ try {
       const sessionId = requiredArgument(args, 'session ID');
       assertNoArguments(args);
       requireVsCodeTunnel(await client.get(sessionId));
-      await loginToTunnel(sessionId, tunnelProvider, true);
+      await loginToTunnel(client, sessionId, tunnelProvider, true);
       break;
     }
     case 'connect': {
       const sessionId = requiredArgument(args, 'session ID');
       assertNoArguments(args);
       await attachTerminal(await client.connect(sessionId));
+      break;
+    }
+    case 'restart': {
+      const noConnect = takeFlag(args, '--no-connect');
+      const sessionId = requiredArgument(args, 'session ID');
+      assertNoArguments(args);
+      const result = await restartSession(client, sessionId);
+      printStartResult(
+        result,
+        result.session.accessMode === 'vscode'
+          ? 'VS Code'
+          : 'terminal',
+      );
+      if (
+        !noConnect &&
+        result.session.accessMode !== 'vscode'
+      ) {
+        await attachTerminal(
+          await client.connect(result.session.sessionId),
+        );
+      }
       break;
     }
     case 'list': {
@@ -124,7 +138,9 @@ try {
       break;
     }
     case 'status': {
-      const session = await client.get(requiredArgument(args, 'session ID'));
+      const session = await client.get(
+        requiredArgument(args, 'session ID'),
+      );
       assertNoArguments(args);
       if (jsonOutput) {
         printJson(session);
@@ -151,7 +167,9 @@ try {
     default:
       throw new Error(`Unknown command: ${command}`);
   }
-} catch (error) {
+}
+
+main().catch((error: unknown) => {
   if (error instanceof ApiError) {
     process.stderr.write(
       `Control API error (${error.statusCode}): ${error.message}\n`,
@@ -162,7 +180,7 @@ try {
     );
   }
   process.exitCode = 1;
-}
+});
 
 async function lifecycleCommand(
   values: string[],
@@ -176,6 +194,21 @@ async function lifecycleCommand(
   } else {
     printSession(session);
   }
+}
+
+function printStartResult(
+  result: { created: boolean; session: SessionView },
+  label: string,
+): void {
+  if (jsonOutput) {
+    printJson(result);
+    return;
+  }
+  process.stdout.write(
+    `${result.created ? 'Started' : 'Using'} ${label} session ` +
+      `${result.session.sessionId} for workspace ` +
+      `${result.session.workspaceId} (${result.session.state})\n`,
+  );
 }
 
 function printSessions(sessions: SessionView[]): void {
@@ -237,6 +270,7 @@ Commands:
   vscode [workspace] [options]      Start/reuse and open a VS Code tunnel
   tunnel-login <session-id>         Authenticate an existing VS Code tunnel
   connect <session-id>              Attach the local terminal
+  restart <session-id>              Replace and reconnect a session
   list                              List sessions owned by this IAM principal
   status <session-id>               Show one session
   suspend <session-id>              Checkpoint and suspend
@@ -258,18 +292,21 @@ Global options:
   --stack <name>                    CloudFormation stack name
   --api-url <url>                   Skip stack-output discovery
   --json                            Emit JSON for non-terminal commands
+
+This source-tree CLI is intended for IAM-authorized operator automation.
+Developers use the browser portal for lifecycle and terminal access.
 `);
 }
 
 async function loginToTunnel(
+  client: ControlApi,
   sessionId: string,
   provider: TunnelIdentityProvider,
   force = false,
 ): Promise<void> {
   await attachTerminal(await client.connect(sessionId), {
     bootstrapCommand: vscodeTunnelLoginCommand(provider, force),
-    completionPattern:
-      /VS Code tunnel [A-Za-z0-9-]+ is ready\./,
+    completionPattern: VSCODE_TUNNEL_READY_OUTPUT_PATTERN,
     connectedMessage:
       `Connected to authenticate the VS Code tunnel with ${provider}.`,
   });

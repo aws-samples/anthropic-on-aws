@@ -17,6 +17,7 @@ import type {
 import {
   isPortalRoute,
   portalCaller,
+  portalRequestsLiveRefresh,
   portalRoutePath,
 } from '../src/portal.js';
 import { ControlError, ControlService } from '../src/service.js';
@@ -58,6 +59,31 @@ describe('portal route detection', () => {
     expect(
       portalRoutePath('/portal/sessions/{sessionId}/suspend'),
     ).toBe('/sessions/{sessionId}/suspend');
+  });
+
+  it('allows live list refresh only on an explicit portal request', () => {
+    expect(
+      portalRequestsLiveRefresh({
+        resource: '/portal/sessions',
+        queryStringParameters: { refresh: 'true' },
+      }),
+    ).toBe(true);
+    for (const event of [
+      {
+        resource: '/portal/sessions',
+        queryStringParameters: null,
+      },
+      {
+        resource: '/portal/sessions',
+        queryStringParameters: { refresh: 'false' },
+      },
+      {
+        resource: '/sessions',
+        queryStringParameters: { refresh: 'true' },
+      },
+    ]) {
+      expect(portalRequestsLiveRefresh(event)).toBe(false);
+    }
   });
 });
 
@@ -134,7 +160,7 @@ const CONFIGURATION: StartConfiguration = {
   executionRoleArn: 'arn:aws:iam::111122223333:role/microvm',
   logGroup: '/claude-microvm/microvms',
   inferenceMode: 'bedrock',
-  bedrockModelId: 'us.anthropic.claude-sonnet-4-6',
+  bedrockModelId: 'anthropic.claude-sonnet-5',
   idleAfterSeconds: 900,
   suspendedRetentionSeconds: 3_600,
 };

@@ -3,11 +3,6 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  ensureClientVpnPki,
-  exportClientVpnProfile,
-  type ClientVpnPki,
-} from './client-vpn.js';
 
 const PLATFORM_STACK = 'ClaudeMicrovmStack';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -17,9 +12,7 @@ interface DeploymentConfiguration {
   region?: string;
   vpcCidr?: string;
   projectName?: string;
-  vpnClientCidr: string;
-  createClientVpn?: boolean;
-  vpnClientName?: string;
+  trustedClientCidr: string;
   inferenceMode?: 'claude-gateway' | 'bedrock';
   allowClaudeAiSubscription?: boolean;
   claudeGatewayUrl?: string;
@@ -60,7 +53,6 @@ const region = configuration.region ?? 'us-east-1';
 const vpcCidr = configuration.vpcCidr ?? '10.42.0.0/16';
 const inferenceMode =
   configuration.inferenceMode ?? 'bedrock';
-const createClientVpn = configuration.createClientVpn ?? false;
 const enableAgentCore = Boolean(configuration.agentCoreGatewayUrl);
 const enablePortal = configuration.enablePortal ?? false;
 const contextArguments = [
@@ -70,8 +62,6 @@ const contextArguments = [
   `vpcCidr=${vpcCidr}`,
   '-c',
   `inferenceMode=${inferenceMode}`,
-  '-c',
-  `createClientVpn=${String(createClientVpn)}`,
   '-c',
   `enableAgentCore=${String(enableAgentCore)}`,
   '-c',
@@ -84,17 +74,6 @@ const contextArguments = [
     ? ['-c', `bedrockModelId=${configuration.bedrockModelId}`]
     : []),
 ];
-const clientVpnPki = createClientVpn
-  ? await ensureClientVpnPki({
-      region,
-      profile,
-      projectName:
-        configuration.projectName ?? 'claude-microvm',
-      clientName: configuration.vpnClientName ?? 'developer',
-      repositoryRoot,
-    })
-  : undefined;
-
 await run('npx', [
   'cdk',
   'deploy',
@@ -105,7 +84,7 @@ await run('npx', [
   '--require-approval',
   approval,
   ...contextArguments,
-  ...platformParameterArguments(configuration, clientVpnPki),
+  ...platformParameterArguments(configuration),
 ]);
 
 if (!skipMicrovm) {
@@ -133,25 +112,17 @@ if (!skipMicrovm) {
   await run('npx', provisionArguments);
 }
 
-const vpnProfile = clientVpnPki
-  ? await exportClientVpnProfile({
-      region,
-      profile,
-      projectName:
-        configuration.projectName ?? 'claude-microvm',
-      stackName: PLATFORM_STACK,
-      pki: clientVpnPki,
-    })
-  : undefined;
 process.stdout.write(
   [
     `Deployment complete in ${region}.`,
-    ...(vpnProfile
-      ? [`AWS Client VPN profile: ${vpnProfile}`]
-      : []),
-    `Run from ${repositoryRoot}:`,
-    `npm run client -- --region ${region} --profile ${profile} start my-workspace`,
-    `npm run client -- --region ${region} --profile ${profile} vscode my-workspace`,
+    ...(enablePortal
+      ? [
+          'Developer access: open the PortalUrl stack output.',
+          'Terminal environments connect directly in the browser.',
+        ]
+      : ['The browser portal is disabled for this deployment.']),
+    'IAM operator CLI (from this source tree):',
+    `npm run client -- --region ${region} --profile ${profile} list`,
     '',
   ].join('\n'),
 );
@@ -174,8 +145,8 @@ async function loadConfiguration(
   const configuration =
     value as unknown as DeploymentConfiguration;
   requiredConfiguredString(
-    configuration.vpnClientCidr,
-    'vpnClientCidr',
+    configuration.trustedClientCidr,
+    'trustedClientCidr',
   );
   const inferenceMode =
     configuration.inferenceMode ?? 'bedrock';
@@ -203,34 +174,12 @@ async function loadConfiguration(
     );
   }
   if (
-    configuration.createClientVpn !== undefined &&
-    typeof configuration.createClientVpn !== 'boolean'
-  ) {
-    throw new Error('createClientVpn must be a boolean');
-  }
-  if (
     configuration.allowClaudeAiSubscription !== undefined &&
     typeof configuration.allowClaudeAiSubscription !== 'boolean'
   ) {
     throw new Error(
       'allowClaudeAiSubscription must be a boolean',
     );
-  }
-  if (configuration.createClientVpn) {
-    const prefix = Number(
-      configuration.vpnClientCidr.split('/')[1],
-    );
-    if (!Number.isInteger(prefix) || prefix < 12 || prefix > 22) {
-      throw new Error(
-        'vpnClientCidr must use a /12 through /22 prefix for AWS Client VPN',
-      );
-    }
-    if (configuration.vpnClientName !== undefined) {
-      requiredConfiguredString(
-        configuration.vpnClientName,
-        'vpnClientName',
-      );
-    }
   }
   if (
     Boolean(configuration.agentCoreGatewayUrl) !==
@@ -288,7 +237,6 @@ async function loadConfiguration(
 
 function platformParameterArguments(
   configuration: DeploymentConfiguration,
-  clientVpnPki?: ClientVpnPki,
 ): string[] {
   const gatewayMode =
     configuration.inferenceMode === 'claude-gateway';
@@ -297,17 +245,13 @@ function platformParameterArguments(
     string | number | undefined
   > = {
     ProjectName: configuration.projectName,
-    VpnClientCidr: configuration.vpnClientCidr,
+    TrustedClientCidr: configuration.trustedClientCidr,
     ClaudeGatewayUrl: gatewayMode
       ? configuration.claudeGatewayUrl
       : undefined,
     ClaudeGatewayCidr: gatewayMode
       ? configuration.claudeGatewayCidr
       : undefined,
-    ClientVpnServerCertificateArn:
-      clientVpnPki?.serverCertificateArn,
-    ClientVpnRootCertificateArn:
-      clientVpnPki?.clientRootCertificateArn,
     AgentCoreGatewayUrl: configuration.agentCoreGatewayUrl,
     AgentCoreGatewayArn: configuration.agentCoreGatewayArn,
     IdleAfterSeconds: configuration.idleAfterSeconds,

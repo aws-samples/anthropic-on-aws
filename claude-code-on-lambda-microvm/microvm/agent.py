@@ -74,7 +74,11 @@ OWNER_HASH_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}(?:-gov)?-[a-z]+-\d$")
 TUNNEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,20}$")
 BEDROCK_MODEL_PATTERN = re.compile(
-    r"^(?:us|global)\.anthropic\.claude-[A-Za-z0-9._:-]{1,180}$"
+    r"^(?:(?:us|eu|au|global)\.)?"
+    r"anthropic\.claude-[A-Za-z0-9._:-]{1,180}$"
+)
+BEDROCK_MODEL_ALIAS_PATTERN = re.compile(
+    r"(?:^|[-.])(opus|sonnet|haiku|fable)(?=[-.:]|$)"
 )
 
 MAX_HOOK_BODY_BYTES = 24 * 1024
@@ -800,8 +804,7 @@ def parse_run_request(request: dict[str, Any]) -> Session:
         raise ValueError("runHookPayload is not valid JSON") from error
     if not isinstance(payload, dict):
         raise ValueError("Unsupported run hook payload")
-    payload_version = payload.get("version")
-    if payload_version not in (2, 3):
+    if payload.get("version") != 3:
         raise ValueError("Unsupported run hook payload")
 
     session_id = required_string(payload, "sessionId", 128)
@@ -871,7 +874,7 @@ def parse_run_request(request: dict[str, Any]) -> Session:
         hostname = urlsplit(agentcore_gateway_url).hostname or ""
         if ".gateway.bedrock-agentcore." not in hostname:
             raise ValueError("Unexpected AgentCore Gateway hostname")
-    access_mode_value = payload.get("accessMode", "terminal")
+    access_mode_value = required_string(payload, "accessMode", 32)
     if access_mode_value not in ("terminal", "vscode"):
         raise ValueError("Unsupported accessMode")
     tunnel_name_value = payload.get("tunnelName")
@@ -888,15 +891,6 @@ def parse_run_request(request: dict[str, Any]) -> Session:
             raise ValueError("Invalid tunnelName")
     elif tunnel_name is not None:
         raise ValueError("tunnelName requires vscode accessMode")
-    if payload_version == 2 and (
-        access_mode_value != "terminal"
-        or inference_mode == "claude-ai"
-        or tunnel_name is not None
-    ):
-        raise ValueError(
-            "Run hook payload version 3 is required for this session"
-        )
-
     return Session(
         session_id=session_id,
         owner_hash=owner_hash,
@@ -1028,7 +1022,16 @@ def write_managed_configuration(session: Session) -> None:
         else [],
         "env": claude_managed_environment(session),
     }
-    if session.inference_mode == "claude-gateway":
+    if session.inference_mode == "bedrock" and session.bedrock_model_id:
+        model = bedrock_model_selection(session.bedrock_model_id)
+        managed_settings.update(
+            {
+                "model": model,
+                "availableModels": [model],
+                "enforceAvailableModels": True,
+            }
+        )
+    elif session.inference_mode == "claude-gateway":
         managed_settings.update(
             {
                 "forceLoginMethod": "gateway",
@@ -1139,16 +1142,30 @@ def session_environment(session: Session) -> dict[str, str]:
 
 def claude_provider_environment(session: Session) -> dict[str, str]:
     if session.inference_mode == "bedrock":
-        return {
+        model_id = session.bedrock_model_id or ""
+        model = bedrock_model_selection(model_id)
+        environment = {
             "CLAUDE_CODE_USE_BEDROCK": "1",
-            "ANTHROPIC_MODEL": session.bedrock_model_id or "",
+            "ANTHROPIC_MODEL": model,
         }
+        if model != model_id:
+            environment[
+                f"ANTHROPIC_DEFAULT_{model.upper()}_MODEL"
+            ] = model_id
+        if model_id.startswith("anthropic."):
+            environment["CLAUDE_CODE_USE_MANTLE"] = "1"
+        return environment
     if (
         session.inference_mode == "claude-gateway"
         and session.claude_gateway_url
     ):
         return {"ANTHROPIC_BASE_URL": session.claude_gateway_url}
     return {}
+
+
+def bedrock_model_selection(model_id: str) -> str:
+    match = BEDROCK_MODEL_ALIAS_PATTERN.search(model_id.lower())
+    return match.group(1) if match else model_id
 
 
 def claude_managed_environment(session: Session) -> dict[str, str]:
@@ -1184,10 +1201,7 @@ def write_session_configuration(session: Session) -> None:
     )
 
 
-def launch_claude() -> None:
-    developer = pwd.getpwnam("developer")
-    if os.geteuid() != developer.pw_uid:
-        raise RuntimeError("claude-session must run as the developer user")
+def load_session_environment() -> dict[str, str]:
     try:
         value = json.loads(SESSION_CONFIGURATION.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -1198,6 +1212,30 @@ def launch_claude() -> None:
         for key, item in environment.items()
     ):
         raise RuntimeError("Session environment is invalid")
+    return environment
+
+
+def require_developer_user(launcher: str) -> None:
+    developer = pwd.getpwnam("developer")
+    if os.geteuid() != developer.pw_uid:
+        raise RuntimeError(f"{launcher} must run as the developer user")
+
+
+def launch_shell() -> None:
+    require_developer_user("developer-shell")
+    environment = load_session_environment()
+    os.chdir(WORKSPACE)
+    os.umask(0o027)
+    os.execve(
+        "/bin/bash",
+        ["/bin/bash", "--login"],
+        environment,
+    )
+
+
+def launch_claude() -> None:
+    require_developer_user("claude-session")
+    environment = load_session_environment()
     os.chdir(WORKSPACE)
     os.umask(0o027)
     if (
@@ -1544,7 +1582,10 @@ def serve_hooks() -> None:
 
 
 if __name__ == "__main__":
-    if Path(sys.argv[0]).name == "claude-session" or sys.argv[1:] == [
+    launcher = Path(sys.argv[0]).name
+    if launcher == "developer-shell" or sys.argv[1:] == ["--shell"]:
+        launch_shell()
+    elif launcher == "claude-session" or sys.argv[1:] == [
         "--launch"
     ]:
         launch_claude()

@@ -272,13 +272,13 @@ export async function attachTerminal(
     pingTimer.unref();
 
     socket.send(
-      options.bootstrapCommand ?? claudeBootstrapCommand(),
+      options.bootstrapCommand ?? developerShellBootstrapCommand(),
       { binary: true },
     );
     process.stderr.write(
       '\r\n' +
         (options.connectedMessage ??
-          'Connected directly to the Lambda MicroVM.') +
+          'Connected to the Lambda MicroVM shell.') +
         ' Press Ctrl-] to detach.\r\n',
     );
 
@@ -420,10 +420,10 @@ function isControlMessage(text: string): boolean {
   }
 }
 
-export function claudeBootstrapCommand(): Buffer {
+export function developerShellBootstrapCommand(): Buffer {
   const command =
     'exec setpriv --reuid=1000 --regid=1000 --init-groups ' +
-    '/usr/local/bin/claude-session\n';
+    '/usr/local/bin/developer-shell\n';
   return Buffer.from(command, 'utf8');
 }
 

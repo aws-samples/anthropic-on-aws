@@ -30,7 +30,7 @@ def session(control_api: str | None = None) -> agent.Session:
         aws_region="us-east-1",
         inference_mode="bedrock",
         claude_gateway_url=None,
-        bedrock_model_id="us.anthropic.claude-sonnet-4-6",
+        bedrock_model_id="anthropic.claude-sonnet-5",
         agentcore_gateway_url=None,
         checkpoint_download_url=checkpoint_url("download.tar.gz"),
         checkpoint_upload_url=checkpoint_url("upload.tar.gz"),
@@ -182,13 +182,14 @@ class ControlApiUrlValidationTests(unittest.TestCase):
 
     def test_run_payload_parses_optional_control_api_url(self) -> None:
         payload = {
-            "version": 2,
+            "version": 3,
             "sessionId": "session-1",
             "ownerHash": "a" * 64,
             "workspaceId": "default",
             "awsRegion": "us-east-1",
             "inferenceMode": "bedrock",
-            "bedrockModelId": "us.anthropic.claude-sonnet-4-6",
+            "accessMode": "terminal",
+            "bedrockModelId": "anthropic.claude-sonnet-5",
             "checkpoint": {"uploadUrl": checkpoint_url("upload")},
         }
         parsed = agent.parse_run_request(

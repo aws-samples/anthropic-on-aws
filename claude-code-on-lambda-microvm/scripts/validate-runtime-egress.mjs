@@ -106,12 +106,13 @@ const uploadUrl = await getSignedUrl(
   { expiresIn: 3_600 },
 );
 const runHookPayload = JSON.stringify({
-  version: 2,
+  version: 3,
   sessionId,
   ownerHash,
   workspaceId: sessionId,
   awsRegion: region,
   inferenceMode: 'claude-gateway',
+  accessMode: 'terminal',
   claudeGatewayUrl,
   ...(agentCoreGatewayUrl ? { agentCoreGatewayUrl } : {}),
   checkpoint: { uploadUrl },

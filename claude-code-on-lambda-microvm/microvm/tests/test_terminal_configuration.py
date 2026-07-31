@@ -164,17 +164,22 @@ class TerminalConfigurationTests(unittest.TestCase):
             "https://claude.internal.example.com",
         )
         self.assertNotIn("CLAUDE_CODE_USE_BEDROCK", environment)
+        self.assertNotIn("CLAUDE_CODE_USE_MANTLE", environment)
 
-    def test_provider_environments_are_mutually_exclusive(self) -> None:
+    def test_provider_environments_route_each_bedrock_id_family(self) -> None:
         bedrock = session()
         bedrock = agent.Session(
             **{
                 **bedrock.__dict__,
                 "inference_mode": "bedrock",
                 "claude_gateway_url": None,
-                "bedrock_model_id": (
-                    "us.anthropic.claude-sonnet-4-6"
-                ),
+                "bedrock_model_id": "anthropic.claude-sonnet-5",
+            }
+        )
+        profile = agent.Session(
+            **{
+                **bedrock.__dict__,
+                "bedrock_model_id": "us.anthropic.claude-sonnet-5",
             }
         )
         direct = agent.Session(
@@ -188,19 +193,69 @@ class TerminalConfigurationTests(unittest.TestCase):
         bedrock_environment = agent.claude_provider_environment(
             bedrock
         )
+        profile_environment = agent.claude_provider_environment(profile)
         direct_environment = agent.claude_provider_environment(direct)
 
         self.assertEqual(
             bedrock_environment,
             {
-                "ANTHROPIC_MODEL": (
-                    "us.anthropic.claude-sonnet-4-6"
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": (
+                    "anthropic.claude-sonnet-5"
                 ),
+                "ANTHROPIC_MODEL": "sonnet",
+                "CLAUDE_CODE_USE_BEDROCK": "1",
+                "CLAUDE_CODE_USE_MANTLE": "1",
+            },
+        )
+        self.assertEqual(
+            profile_environment,
+            {
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": (
+                    "us.anthropic.claude-sonnet-5"
+                ),
+                "ANTHROPIC_MODEL": "sonnet",
                 "CLAUDE_CODE_USE_BEDROCK": "1",
             },
         )
         self.assertEqual(direct_environment, {})
         self.assertNotIn("ANTHROPIC_BASE_URL", bedrock_environment)
+
+    def test_managed_settings_enforce_the_configured_bedrock_model(
+        self,
+    ) -> None:
+        managed_directory = self.root / "managed"
+        bedrock = agent.Session(
+            **{
+                **session().__dict__,
+                "inference_mode": "bedrock",
+                "claude_gateway_url": None,
+                "bedrock_model_id": "anthropic.claude-sonnet-5",
+            }
+        )
+
+        with (
+            mock.patch.object(
+                agent, "MANAGED_DIRECTORY", managed_directory
+            ),
+            mock.patch.object(agent.os, "chown"),
+        ):
+            agent.write_managed_configuration(bedrock)
+
+        settings = json.loads(
+            (managed_directory / "managed-settings.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            settings["availableModels"],
+            ["sonnet"],
+        )
+        self.assertEqual(settings["model"], "sonnet")
+        self.assertEqual(
+            settings["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"],
+            "anthropic.claude-sonnet-5",
+        )
+        self.assertTrue(settings["enforceAvailableModels"])
 
 
 if __name__ == "__main__":

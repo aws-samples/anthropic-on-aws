@@ -23,6 +23,7 @@ import type {
 import {
   isPortalRoute,
   portalCaller,
+  portalRequestsLiveRefresh,
   portalRoutePath,
 } from './portal.js';
 import { ControlError, ControlService } from './service.js';
@@ -83,9 +84,9 @@ export async function handler(
   observeApiUrl(event);
 
   try {
-    // Portal routes are Cognito-authorized copies of the IAM
-    // session routes; the owner is oidc:<sub> rather than the
-    // caller ARN, so the two namespaces never collide.
+    // Portal routes accept Cognito browser tokens. Their owner is
+    // oidc:<sub> rather than an IAM caller ARN, so the two identity
+    // namespaces never collide.
     const portal = isPortalRoute(event);
     const ownerPrincipal = portal
       ? portalCaller(event)
@@ -118,7 +119,10 @@ export async function handler(
     }
 
     if (method === 'GET' && path === '/sessions') {
-      const sessions = await service.list(ownerPrincipal);
+      const sessions = await service.list(
+        ownerPrincipal,
+        portalRequestsLiveRefresh(event),
+      );
       return response(200, {
         sessions: sessions.map(publicSession),
       });
@@ -155,7 +159,7 @@ export async function handler(
         const provider =
           optionalTunnelIdentityProvider(body.provider) ??
           session.tunnelProvider ??
-          'github';
+          'microsoft';
         const job = await tunnelAuthService.start(
           session,
           provider,

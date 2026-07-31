@@ -20,6 +20,7 @@ import {
   type TunnelAuthStatus,
   type TunnelAuthWorkerEvent,
 } from './tunnel-auth.js';
+import { VSCODE_TUNNEL_READY_OUTPUT_PATTERN } from '../../shared/tunnel-output.js';
 
 const SHELL_TOKEN_TTL_MINUTES = 5;
 const WORKER_WAIT_LIMIT_MILLISECONDS = 13 * 60 * 1_000;
@@ -58,18 +59,14 @@ export interface TunnelOutputObservation {
 
 export class TunnelOutputParser {
   private tail = '';
-  private readonly readyPattern: RegExp;
 
   public constructor(
     private readonly provider: TunnelIdentityProvider,
-    tunnelName: string,
+    private readonly tunnelName: string,
   ) {
     if (!/^[A-Za-z0-9-]{1,20}$/.test(tunnelName)) {
       throw new Error('Invalid VS Code tunnel name');
     }
-    this.readyPattern = new RegExp(
-      `VS Code tunnel ${escapeRegularExpression(tunnelName)} is ready[.]`,
-    );
   }
 
   public observe(chunk: Uint8Array): TunnelOutputObservation {
@@ -86,6 +83,9 @@ export class TunnelOutputParser {
     const exitMatch = this.tail.match(
       /__CM_TUNNEL_LOGIN_EXIT_([0-9]{1,3})__/,
     );
+    const readyMatch = this.tail.match(
+      VSCODE_TUNNEL_READY_OUTPUT_PATTERN,
+    );
     return {
       device:
         verificationUri && codeMatch?.[1]
@@ -97,7 +97,7 @@ export class TunnelOutputParser {
       starting: /Starting VS Code tunnel [A-Za-z0-9-]+[.]{3}/.test(
         this.tail,
       ),
-      ready: this.readyPattern.test(this.tail),
+      ready: readyMatch?.[1] === this.tunnelName,
       exitCode: exitMatch?.[1]
         ? Number.parseInt(exitMatch[1], 10)
         : undefined,
@@ -636,10 +636,6 @@ function assertWorkerEvent(
   ) {
     throw new Error('Invalid tunnel authentication worker event');
   }
-}
-
-function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function requiredEnvironment(name: string): string {

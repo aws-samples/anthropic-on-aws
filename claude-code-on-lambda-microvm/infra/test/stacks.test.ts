@@ -1,10 +1,14 @@
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PlatformStack } from '../lib/platform-stack.js';
+import {
+  isApprovedBedrockModelId,
+  PlatformStack,
+} from '../lib/platform-stack.js';
 
 let gatewayTemplate: Template;
-let bedrockVpnTemplate: Template;
+let bedrockTemplate: Template;
+let bedrockProfileTemplate: Template;
 let agentCoreTemplate: Template;
 let portalTemplate: Template;
 let claudeAiTemplate: Template;
@@ -28,20 +32,33 @@ beforeAll(() => {
       { env },
     ),
   );
-  bedrockVpnTemplate = Template.fromStack(
+  bedrockTemplate = Template.fromStack(
+    new PlatformStack(
+      new cdk.App({
+        context: {
+          '@aws-cdk/aws-ec2:restrictDefaultSecurityGroup':
+            true,
+          inferenceMode: 'bedrock',
+          vpcCidr: '10.42.0.0/16',
+        },
+      }),
+      'BedrockPlatform',
+      { env },
+    ),
+  );
+  bedrockProfileTemplate = Template.fromStack(
     new PlatformStack(
       new cdk.App({
         context: {
           '@aws-cdk/aws-ec2:restrictDefaultSecurityGroup':
             true,
           bedrockModelId:
-            'us.anthropic.claude-sonnet-4-6',
-          createClientVpn: true,
+            'eu.anthropic.claude-sonnet-5',
           inferenceMode: 'bedrock',
           vpcCidr: '10.42.0.0/16',
         },
       }),
-      'BedrockPlatform',
+      'BedrockProfilePlatform',
       { env },
     ),
   );
@@ -91,6 +108,69 @@ beforeAll(() => {
   );
 }, 60_000);
 
+describe('regional synthesis', () => {
+  it('uses the stack region in CDK-Nag acknowledgement IDs', () => {
+    const region = 'eu-west-1';
+    const app = new cdk.App({
+      context: {
+        '@aws-cdk/aws-ec2:restrictDefaultSecurityGroup':
+          true,
+      },
+    });
+    const stack = new PlatformStack(app, 'RegionalPlatform', {
+      env: {
+        account: '111122223333',
+        region,
+      },
+    });
+    const acknowledgementIds: string[] = [];
+    const collectAcknowledgements = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        value.forEach(collectAcknowledgements);
+        return;
+      }
+      if (!value || typeof value !== 'object') return;
+
+      const record = value as Record<string, unknown>;
+      const cdkNag = record.cdk_nag as
+        | { rules_to_suppress?: unknown[] }
+        | undefined;
+      for (const rule of cdkNag?.rules_to_suppress ?? []) {
+        if (!rule || typeof rule !== 'object') continue;
+        const suppression = rule as {
+          id?: unknown;
+          applies_to?: unknown;
+        };
+        if (typeof suppression.id === 'string')
+          acknowledgementIds.push(suppression.id);
+        if (Array.isArray(suppression.applies_to)) {
+          acknowledgementIds.push(
+            ...suppression.applies_to.filter(
+              (finding): finding is string =>
+                typeof finding === 'string',
+            ),
+          );
+        }
+      }
+      Object.values(record).forEach(collectAcknowledgements);
+    };
+    collectAcknowledgements(
+      Template.fromStack(stack).toJSON(),
+    );
+
+    expect(
+      acknowledgementIds.filter((id) =>
+        id.includes(`:${region}:`),
+      ),
+    ).toHaveLength(5);
+    expect(
+      acknowledgementIds.some((id) =>
+        id.includes(':us-east-1:'),
+      ),
+    ).toBe(false);
+  }, 60_000);
+});
+
 describe('simplified architecture', () => {
   it.each([
     'AWS::ECS::Cluster',
@@ -106,6 +186,10 @@ describe('simplified architecture', () => {
     'AWS::Route53::HostedZone',
     'AWS::Route53::RecordSet',
     'AWS::CertificateManager::Certificate',
+    'AWS::EC2::ClientVpnAuthorizationRule',
+    'AWS::EC2::ClientVpnEndpoint',
+    'AWS::EC2::ClientVpnRoute',
+    'AWS::EC2::ClientVpnTargetNetworkAssociation',
     'AWS::SecretsManager::Secret',
   ])('contains no %s resources', (resourceType) => {
     gatewayTemplate.resourceCountIs(resourceType, 0);
@@ -245,29 +329,17 @@ describe('network boundaries', () => {
     expect(endpointRouteTables).not.toContain('publicegress');
   });
 
-  it('routes and authorizes VPN access to the Claude gateway', () => {
-    const vpnGatewayApp = new cdk.App({
-      context: {
-        region: 'us-east-1',
-        inferenceMode: 'claude-gateway',
-        createClientVpn: 'true',
-      },
-    });
-    const vpnGatewayTemplate = Template.fromStack(
-      new PlatformStack(vpnGatewayApp, 'GatewayVpnPlatform', {
-        env: { region: 'us-east-1', account: '111122223333' },
-      }),
-    );
-    vpnGatewayTemplate.hasResourceProperties(
-      'AWS::EC2::ClientVpnAuthorizationRule',
+  it('allows a routed private client CIDR to reach the control API', () => {
+    gatewayTemplate.hasParameter(
+      'TrustedClientCidr',
       Match.objectLike({
-        Description: 'Claude Apps Gateway sign-in',
+        Default: '10.100.0.0/22',
+        Type: 'String',
       }),
     );
-    vpnGatewayTemplate.resourceCountIs(
-      'AWS::EC2::ClientVpnRoute',
-      2,
-    );
+    expect(
+      JSON.stringify(gatewayTemplate.toJSON()),
+    ).toContain('"Ref":"TrustedClientCidr"');
   });
 
   it('keeps only the endpoints required by each runtime mode', () => {
@@ -300,7 +372,7 @@ describe('network boundaries', () => {
       },
     );
 
-    bedrockVpnTemplate.hasResourceProperties(
+    bedrockTemplate.hasResourceProperties(
       'AWS::EC2::VPCEndpoint',
       {
         ServiceName:
@@ -308,6 +380,17 @@ describe('network boundaries', () => {
         VpcEndpointType: 'Interface',
       },
     );
+    bedrockTemplate.hasResourceProperties(
+      'AWS::EC2::VPCEndpoint',
+      {
+        ServiceName:
+          'com.amazonaws.us-east-1.bedrock-mantle',
+        VpcEndpointType: 'Interface',
+      },
+    );
+    expect(
+      JSON.stringify(bedrockProfileTemplate.toJSON()),
+    ).not.toContain('bedrock-mantle');
     agentCoreTemplate.hasResourceProperties(
       'AWS::EC2::VPCEndpoint',
       {
@@ -315,34 +398,6 @@ describe('network boundaries', () => {
           'com.amazonaws.us-east-1.bedrock-agentcore.gateway',
         VpcEndpointType: 'Interface',
       },
-    );
-  });
-
-  it('creates an optional mutual-TLS split-tunnel Client VPN', () => {
-    bedrockVpnTemplate.hasResourceProperties(
-      'AWS::EC2::ClientVpnEndpoint',
-      Match.objectLike({
-        AuthenticationOptions: [
-          Match.objectLike({
-            Type: 'certificate-authentication',
-          }),
-        ],
-        ClientCidrBlock: { Ref: 'VpnClientCidr' },
-        DnsServers: ['10.42.0.2'],
-        SelfServicePortal: 'disabled',
-        SessionTimeoutHours: 8,
-        SplitTunnel: true,
-        TransportProtocol: 'udp',
-        VpnPort: 443,
-      }),
-    );
-    bedrockVpnTemplate.resourceCountIs(
-      'AWS::EC2::ClientVpnTargetNetworkAssociation',
-      2,
-    );
-    bedrockVpnTemplate.resourceCountIs(
-      'AWS::EC2::ClientVpnAuthorizationRule',
-      1,
     );
   });
 });
@@ -406,6 +461,69 @@ describe('control and runtime permissions', () => {
         },
       }),
     );
+    bedrockTemplate.hasResourceProperties(
+      'AWS::Lambda::Function',
+      Match.objectLike({
+        Environment: {
+          Variables: Match.objectLike({
+            BEDROCK_MODEL_ID: 'anthropic.claude-sonnet-5',
+            INFERENCE_MODE: 'bedrock',
+          }),
+        },
+      }),
+    );
+  });
+
+  it('routes direct and inference-profile IDs to their required permissions', () => {
+    const direct = JSON.stringify(bedrockTemplate.toJSON());
+    expect(direct).toContain(
+      ':bedrock:us-east-1::foundation-model/' +
+        'anthropic.claude-sonnet-5',
+    );
+    expect(direct).toContain(
+      ':bedrock-mantle:us-east-1:111122223333:' +
+        'project/default',
+    );
+    expect(direct).toContain(
+      'bedrock-mantle:CreateInference',
+    );
+    expect(direct).not.toContain(
+      'inference-profile/anthropic.claude-sonnet-5',
+    );
+
+    const profile = JSON.stringify(
+      bedrockProfileTemplate.toJSON(),
+    );
+    expect(profile).toContain(
+      ':bedrock:us-east-1:111122223333:' +
+        'inference-profile/eu.anthropic.claude-sonnet-5',
+    );
+    expect(profile).toContain(
+      ':bedrock:*::foundation-model/' +
+        'anthropic.claude-sonnet-5',
+    );
+    expect(profile).not.toContain(
+      'bedrock-mantle:CreateInference',
+    );
+  });
+
+  it.each([
+    'anthropic.claude-sonnet-5',
+    'us.anthropic.claude-sonnet-5',
+    'eu.anthropic.claude-opus-5',
+    'au.anthropic.claude-fable-5',
+    'global.anthropic.claude-sonnet-5',
+  ])('accepts supported Bedrock model ID %s', (modelId) => {
+    expect(isApprovedBedrockModelId(modelId)).toBe(true);
+  });
+
+  it.each([
+    'amazon.nova-pro',
+    'apac.anthropic.claude-sonnet-5',
+    'anthropic.not-claude-sonnet-5',
+    'anthropic.claude-',
+  ])('rejects unsupported Bedrock model ID %s', (modelId) => {
+    expect(isApprovedBedrockModelId(modelId)).toBe(false);
   });
 
   it('keeps direct workspace S3 access out of the MicroVM role', () => {
@@ -518,7 +636,7 @@ describe('optional browser portal', () => {
     );
   });
 
-  it('creates a secretless PKCE app client and hosted UI domain', () => {
+  it('creates a secretless browser PKCE client', () => {
     portalTemplate.hasResourceProperties(
       'AWS::Cognito::UserPool',
       Match.objectLike({
@@ -546,6 +664,10 @@ describe('optional browser portal', () => {
         GenerateSecret: false,
         PreventUserExistenceErrors: 'ENABLED',
       }),
+    );
+    portalTemplate.resourceCountIs(
+      'AWS::Cognito::UserPoolClient',
+      1,
     );
     portalTemplate.resourceCountIs(
       'AWS::Cognito::UserPoolDomain',
@@ -576,6 +698,8 @@ describe('optional browser portal', () => {
     for (const part of [
       'portal',
       'app.js',
+      'terminal-vendor.js',
+      'xterm.css',
       'config.json',
       'sessions',
       '{sessionId}',
@@ -599,9 +723,9 @@ describe('optional browser portal', () => {
       counts[type] = (counts[type] ?? 0) + 1;
       return counts;
     }, {});
-    // Static assets (GET /portal, app.js, config.json) are open;
-    // session routes require Cognito user pool tokens.
-    expect(byAuthorization['NONE']).toBe(3);
+    // Static portal assets are open; session routes require Cognito
+    // user pool tokens.
+    expect(byAuthorization['NONE']).toBe(5);
     expect(byAuthorization['COGNITO_USER_POOLS']).toBe(10);
   });
 

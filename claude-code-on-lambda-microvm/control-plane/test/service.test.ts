@@ -38,7 +38,7 @@ const CONFIGURATION: StartConfiguration = {
     'arn:aws:iam::111122223333:role/microvm',
   logGroup: '/claude-microvm/microvms',
   inferenceMode: 'bedrock',
-  bedrockModelId: 'us.anthropic.claude-sonnet-4-6',
+  bedrockModelId: 'anthropic.claude-sonnet-5',
   idleAfterSeconds: 900,
   suspendedRetentionSeconds: 3_600,
 };
@@ -132,6 +132,7 @@ class MemoryRepository implements SessionRepository {
 class FakeMicrovms implements MicrovmService {
   public readonly runInputs:
     Parameters<MicrovmService['run']>[0][] = [];
+  public readonly getInputs: string[] = [];
   public readonly suspended: string[] = [];
   public readonly resumed: string[] = [];
   public readonly terminated: string[] = [];
@@ -169,6 +170,7 @@ class FakeMicrovms implements MicrovmService {
   public async get(
     microvmId: string,
   ): Promise<MicrovmDescription> {
+    this.getInputs.push(microvmId);
     const sequence = this.descriptionSequences.get(microvmId);
     const next = sequence?.shift();
     const description =
@@ -316,15 +318,14 @@ describe('ControlService', () => {
       unknown
     >;
     expect(payload).toMatchObject({
-      version: 2,
+      version: 3,
       ownerHash: ownerHash(),
       workspaceId: 'payments',
       inferenceMode: 'bedrock',
-      bedrockModelId:
-        'us.anthropic.claude-sonnet-4-6',
+      accessMode: 'terminal',
+      bedrockModelId: 'anthropic.claude-sonnet-5',
       checkpoint: checkpoints.access,
     });
-    expect(payload).not.toHaveProperty('accessMode');
     expect(payload).not.toHaveProperty('tunnelName');
     expect(input.payload).not.toContain(OWNER);
     expect(repository.records.get('session-new')).toMatchObject({
@@ -365,23 +366,23 @@ describe('ControlService', () => {
     expect(result.record).toMatchObject({
       accessMode: 'vscode',
       tunnelName: expectedTunnelName,
-      tunnelProvider: 'github',
+      tunnelProvider: 'microsoft',
     });
     expect(repository.records.get('session-new')).toMatchObject({
       accessMode: 'vscode',
       tunnelName: expectedTunnelName,
-      tunnelProvider: 'github',
+      tunnelProvider: 'microsoft',
     });
 
     const switched = await service.setTunnelProvider(
       OWNER,
       result.record.sessionId,
-      'microsoft',
+      'github',
     );
-    expect(switched.tunnelProvider).toBe('microsoft');
+    expect(switched.tunnelProvider).toBe('github');
     expect(
       repository.records.get('session-new')?.tunnelProvider,
-    ).toBe('microsoft');
+    ).toBe('github');
   });
 
   it('records an explicit Microsoft tunnel provider at launch', async () => {
@@ -583,6 +584,44 @@ describe('ControlService', () => {
       statusCode: 404,
       message: 'Session not found',
     });
+  });
+
+  it('only reconciles live MicroVM state when list refresh is explicit', async () => {
+    const { repository, microvms, service } = fixture();
+    repository.records.set(
+      'session-1',
+      session({ state: 'STARTING' }),
+    );
+    repository.records.set(
+      'session-2',
+      session({
+        sessionId: 'session-2',
+        workspaceId: 'finished',
+        state: 'TERMINATED',
+        microvmId: 'microvm-2',
+      }),
+    );
+    microvms.descriptions.set('microvm-1', {
+      microvmId: 'microvm-1',
+      state: 'RUNNING',
+      endpoint: 'microvm.example.aws',
+    });
+
+    const stored = await service.list(OWNER);
+    expect(
+      stored.find((record) => record.sessionId === 'session-1'),
+    ).toMatchObject({ state: 'STARTING' });
+    expect(microvms.getInputs).toEqual([]);
+
+    const refreshed = await service.list(OWNER, true);
+    expect(
+      refreshed.find((record) => record.sessionId === 'session-1'),
+    ).toMatchObject({
+      state: 'RUNNING',
+      updatedAt: NOW,
+      microvmEndpoint: 'microvm.example.aws',
+    });
+    expect(microvms.getInputs).toEqual(['microvm-1']);
   });
 
   it('releases a workspace claim after a launch failure', async () => {

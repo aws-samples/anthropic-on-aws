@@ -44,7 +44,10 @@ import {
   SSMClient,
 } from '@aws-sdk/client-ssm';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
-import { imageBuildConfiguration } from './microvm-image-config.js';
+import {
+  imageBuildConfiguration,
+  microvmToolVersionTags,
+} from './microvm-image-config.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(here, '..');
@@ -53,8 +56,7 @@ const UNPROVISIONED = 'UNPROVISIONED';
 const IMAGE_TAGS = {
   Project: 'claude-microvm',
   ManagedBy: 'claude-microvm-provisioner',
-  ClaudeCodeVersion: '2.1.215',
-  VscodeCliVersion: '1.129.1',
+  ...microvmToolVersionTags(),
 };
 
 const args = process.argv.slice(2);

@@ -53,6 +53,19 @@ export interface ControlApiOptions {
   stackName: string;
 }
 
+export interface ControlApi {
+  start(
+    workspaceId?: string,
+    options?: StartSessionOptions,
+  ): Promise<{ created: boolean; session: SessionView }>;
+  list(): Promise<SessionView[]>;
+  get(sessionId: string): Promise<SessionView>;
+  connect(sessionId: string): Promise<ConnectResponse>;
+  suspend(sessionId: string): Promise<SessionView>;
+  resume(sessionId: string): Promise<SessionView>;
+  terminate(sessionId: string): Promise<SessionView>;
+}
+
 export class ApiError extends Error {
   public constructor(
     public readonly statusCode: number,
@@ -62,7 +75,7 @@ export class ApiError extends Error {
   }
 }
 
-export class ControlApiClient {
+export class ControlApiClient implements ControlApi {
   private readonly credentials;
   private readonly signer;
   private apiUrl?: URL;
@@ -176,27 +189,7 @@ export class ControlApiClient {
       body: encodedBody,
       redirect: 'error',
     });
-    const responseText = await response.text();
-    let responseBody: unknown = {};
-    if (responseText) {
-      try {
-        responseBody = JSON.parse(responseText);
-      } catch {
-        throw new ApiError(
-          response.status,
-          `Control API returned non-JSON HTTP ${response.status}`,
-        );
-      }
-    }
-    if (!response.ok) {
-      const message =
-        isRecord(responseBody) &&
-        typeof responseBody.message === 'string'
-          ? responseBody.message
-          : `Control API returned HTTP ${response.status}`;
-      throw new ApiError(response.status, message);
-    }
-    return responseBody as T;
+    return parseControlApiResponse<T>(response);
   }
 
   private async resolveApiUrl(): Promise<URL> {
@@ -221,6 +214,30 @@ export class ControlApiClient {
     this.apiUrl = validateApiUrl(output);
     return this.apiUrl;
   }
+}
+
+async function parseControlApiResponse<T>(response: Response): Promise<T> {
+  const responseText = await response.text();
+  let responseBody: unknown = {};
+  if (responseText) {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      throw new ApiError(
+        response.status,
+        `Control API returned non-JSON HTTP ${response.status}`,
+      );
+    }
+  }
+  if (!response.ok) {
+    const message =
+      isRecord(responseBody) &&
+      typeof responseBody.message === 'string'
+        ? responseBody.message
+        : `Control API returned HTTP ${response.status}`;
+    throw new ApiError(response.status, message);
+  }
+  return responseBody as T;
 }
 
 function validateApiUrl(value: string): URL {

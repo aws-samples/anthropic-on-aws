@@ -6,13 +6,17 @@ import { ackNag } from './nag.js';
  * cdk-nag acknowledgements for ClaudeMicrovmStack, kept in one file so the
  * full risk-acceptance record is reviewable at a glance. Each entry names the
  * offending construct by path and carries the evidence for why the finding is
- * accepted in this sample. Constructs that exist only when a feature is
- * enabled (portal, VPN) are looked up defensively.
+ * accepted in this sample. Constructs that exist only when the portal is
+ * enabled are looked up defensively.
  */
 export function applyNagAcknowledgements(
   stack: cdk.Stack,
-  options: { bedrockModelId: string },
+  options: {
+    bedrockFoundationModelId: string;
+    bedrockUsesInferenceProfile: boolean;
+  },
 ): void {
+  const region = cdk.Stack.of(stack).region;
   const at = (path: string): IConstruct | undefined => {
     let node: IConstruct | undefined = stack;
     for (const part of path.split('/')) {
@@ -112,9 +116,9 @@ export function applyNagAcknowledgements(
   ack('ApiEndpointSecurityGroup/Resource', {
     id: 'AwsSolutions::AwsSolutions-EC23',
     reason:
-      'The rule cannot resolve the CfnParameter-driven VPN client CIDR. ' +
-      'The ingress source is the deployment-scoped VPN client CIDR and the ' +
-      'MicroVM connector security group, never 0.0.0.0/0.',
+      'The rule cannot resolve the CfnParameter-driven trusted client ' +
+      'CIDR. The ingress source is the deployment-scoped routed private ' +
+      'CIDR and the MicroVM connector security group, never 0.0.0.0/0.',
   });
 
   // --- S3 ------------------------------------------------------------------
@@ -154,30 +158,30 @@ export function applyNagAcknowledgements(
   // --- MicroVM execution role ---------------------------------------------
 
   ack('MicrovmExecutionRole/DefaultPolicy/Resource', {
-    id: 'AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:us-east-1:<AWS::AccountId>:log-group:/<ProjectName>/microvms:*]',
+    id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:${region}:<AWS::AccountId>:log-group:/<ProjectName>/microvms:*]`,
     reason:
       'Log-stream wildcard beneath the single dedicated MicroVM log group; ' +
       'stream names are runtime-generated.',
   });
   ack('MicrovmExecutionRole/DefaultPolicy/Resource', {
-    id: 'AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:execute-api:us-east-1:<AWS::AccountId>:<ControlApiAC3A38A3>/<ControlApiDeploymentStagev10C21D0B1>/POST/sessions/*/checkpoint-urls]',
+    id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:execute-api:${region}:<AWS::AccountId>:<ControlApiAC3A38A3>/<ControlApiDeploymentStagev10C21D0B1>/POST/sessions/*/checkpoint-urls]`,
     reason:
       'Session-id path wildcard on exactly one route (checkpoint URL ' +
       'refresh); the handler additionally verifies the caller is the ' +
       'execution role and owns the session.',
   });
 
-  // Bedrock model wildcard: region segment wildcard for inference profiles
-  // that fan out to per-region foundation-model ARNs. The model id itself is
-  // pinned to the single approved model; grant is bedrock:InvokeModel* only.
-  ack('MicrovmExecutionRole/DefaultPolicy/Resource', {
-    id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:bedrock:*::foundation-model/${options.bedrockModelId.replace(/^(?:us|global)\./, '')}]`,
-    reason:
-      'Cross-region inference profiles require the foundation-model ARN in ' +
-      'every fan-out region (region segment wildcard); the model identifier ' +
-      'itself is pinned to the one approved Claude model and the grant is ' +
-      'limited to bedrock:InvokeModel and InvokeModelWithResponseStream.',
-  });
+  if (options.bedrockUsesInferenceProfile) {
+    // Cross-region profiles fan out to foundation models in multiple Regions.
+    ack('MicrovmExecutionRole/DefaultPolicy/Resource', {
+      id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:bedrock:*::foundation-model/${options.bedrockFoundationModelId}]`,
+      reason:
+        'Cross-region inference profiles require the foundation-model ARN in ' +
+        'every fan-out region (region segment wildcard); the model identifier ' +
+        'itself is pinned to the one approved Claude model and the grant is ' +
+        'limited to bedrock:InvokeModel and InvokeModelWithResponseStream.',
+    });
+  }
 
   // --- Image build role ----------------------------------------------------
 
@@ -194,12 +198,12 @@ export function applyNagAcknowledgements(
       reason: grantReadReason,
     },
     {
-      id: 'AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:us-east-1:<AWS::AccountId>:log-group:/<ProjectName>/microvms:*]',
+      id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:${region}:<AWS::AccountId>:log-group:/<ProjectName>/microvms:*]`,
       reason:
         'Log-stream wildcard beneath the dedicated MicroVM build log group.',
     },
     {
-      id: 'AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:us-east-1:<AWS::AccountId>:log-group:/aws/lambda/microvms/*]',
+      id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:${region}:<AWS::AccountId>:log-group:/aws/lambda/microvms/*]`,
       reason:
         'Log-stream wildcard beneath the AWS-managed MicroVM service build ' +
         'log prefix.',
@@ -267,7 +271,7 @@ export function applyNagAcknowledgements(
         'role is assumable only by the Lambda MicroVMs service principal.',
     },
     {
-      id: 'AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:ec2:us-east-1:<AWS::AccountId>:network-interface/*]',
+      id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:ec2:${region}:<AWS::AccountId>:network-interface/*]`,
       reason:
         'Connector ENI ids are service-generated; create/delete are ' +
         'constrained to network-interface/* with the managed-operator tag ' +

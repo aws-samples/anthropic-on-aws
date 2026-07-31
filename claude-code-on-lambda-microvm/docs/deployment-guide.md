@@ -5,115 +5,67 @@
 This guide describes how to deploy a private remote development environment
 in AWS where:
 
-- developers create and manage disposable development environments through a
-  private browser portal or command-line client;
+- developers create and manage disposable environments through a private
+  browser control plane with an embedded terminal;
+- operators can automate IAM-owned environments with a source-tree CLI;
 - Visual Studio Code connects to a Linux ARM64 AWS Lambda MicroVM through
   Microsoft Remote Tunnels;
 - Claude Code runs inside the MicroVM rather than on the developer device;
-- portal users authenticate with an Amazon Cognito user pool created by the
+- browser users authenticate with an Amazon Cognito user pool created by the
   platform stack;
-- Claude inference uses Amazon Bedrock directly through a private Bedrock
-  Runtime endpoint by default; a legacy mode that routes inference through a
-  separately deployed private Claude Apps Gateway remains available;
+- Claude inference uses Amazon Bedrock directly through a private endpoint by
+  default, with an optional integration for a separately deployed private
+  gateway;
 - workspace state is checkpointed to encrypted Amazon S3 storage; and
-- approved MCP tools are exposed separately through Amazon Bedrock AgentCore
-  Gateway.
+- approved MCP tools can be exposed through Amazon Bedrock AgentCore Gateway.
 
-The document is written for cloud, identity, network, security, and
-operations teams. Replace all values in angle brackets with values approved
-for the target environment. Sections marked **legacy gateway mode** apply
-only when `inferenceMode` is `claude-gateway`; skip them for the default
-Bedrock mode.
+The document is written for cloud, identity, network, security, and operations
+teams. Replace values in angle brackets with values approved for the target
+environment.
 
-**Deployment path (default Bedrock mode):** work through
-[Prerequisites](#prerequisites), the
-[deployment value worksheet](#deployment-value-worksheet),
-[network preparation](#network-dns-and-tls-preparation), then
-[deploy the remote development platform](#deploy-the-remote-development-platform),
-[create portal users](#configure-portal-identity-amazon-cognito) if the
-portal is enabled, [configure developer devices](#configure-developer-devices),
-and finish with [acceptance](#acceptance-and-verification). That is the
-entire path — every skipped section is gateway-only.
+The package [README](../README.md) is the canonical developer quickstart,
+including the cross-platform Terminal and VS Code connection workflows. This
+guide remains the source of truth for architecture, deployment, identity,
+networking, security boundaries, acceptance, operations, and teardown. It
+adds operator detail without requiring developers to follow the deployment
+procedure.
 
-**Deployment path (legacy gateway mode):** the same path, plus — before the
-platform deployment — [Entra configuration](#configure-microsoft-entra-id-legacy-gateway-mode),
-[gateway deployment](#deploy-claude-apps-gateway-legacy-gateway-mode), and
-[connecting the platform and gateway VPCs](#connect-the-platform-and-gateway-vpcs-legacy-gateway-mode).
+For the default Bedrock mode, work through [Prerequisites](#prerequisites),
+[Network preparation](#network-preparation),
+[Deploy the platform](#deploy-the-platform),
+[Configure portal identity](#configure-portal-identity-amazon-cognito), and
+[Acceptance](#acceptance-and-verification).
 
-The design uses two separate identity clients:
-
-1. **Portal Cognito app client** - a public browser client using
-   authorization code with PKCE against the Cognito hosted UI. It has no
-   client secret and is created by the platform stack.
-2. **Claude Apps Gateway web application** - a confidential Microsoft Entra
-   web client used by the optional legacy gateway for OIDC
-   authorization-code exchange. Its client secret is stored only in AWS
-   Secrets Manager.
-
-Microsoft Entra ID is required only when the legacy Claude Apps Gateway
-mode is deployed; the portal itself needs no external identity provider.
+For `claude-gateway` mode, first deploy and approve that component using its
+own documentation, then complete
+[Optional private gateway integration](#optional-private-gateway-integration).
+This guide intentionally does not duplicate the gateway's identity,
+deployment, operations, or teardown procedures.
 
 ## What will be deployed
 
-The default Bedrock deployment is one AWS stack (the remote development
-platform) plus supporting network configuration. The legacy gateway mode
-adds a second, separately deployed Claude Apps Gateway stack and its
-identity configuration.
-
-### Remote development platform
-
-The platform stack deploys:
+The `ClaudeMicrovmStack` deploys:
 
 - a VPC spanning two Availability Zones;
 - two private subnets for Lambda Network Connector ENIs and VPC endpoints;
 - two public subnets for approved public egress through a NAT Gateway;
 - a private API Gateway REST API;
 - an optional Amazon Cognito user pool, hosted UI domain, and secretless
-  PKCE app client authorizing browser portal calls;
+  browser PKCE app client;
 - a control Lambda for environment lifecycle operations;
 - DynamoDB tables for session and ownership state;
 - an encrypted, versioned S3 bucket for workspace checkpoints;
-- KMS keys, CloudWatch log groups, IAM roles, and SSM parameters;
-- optional AWS Client VPN connectivity; and
+- KMS keys, CloudWatch log groups, IAM roles, and SSM parameters; and
 - optional AgentCore Gateway private connectivity.
 
-The Lambda MicroVM itself is in the AWS-managed service plane. It is not an
+The Lambda MicroVM itself runs in the AWS-managed service plane. It is not an
 EC2 instance and is not placed in a subnet you manage. The platform VPC
-contains only the Network Connector ENIs through which the MicroVM reaches
-your network resources.
+contains Network Connector ENIs through which the MicroVM reaches approved
+private and public destinations.
 
-### Claude Apps Gateway (legacy gateway mode)
-
-The gateway stack deploys:
-
-- a separate VPC spanning two Availability Zones;
-- public subnets for NAT egress to Microsoft Entra ID;
-- private subnets for the internal load balancer and workloads;
-- an IPv4-only internal Application Load Balancer;
-- two Claude Apps Gateway Fargate tasks;
-- an encrypted private RDS PostgreSQL 16 database;
-- one ADOT collector service for aggregate metrics;
-- an ECR repository for immutable gateway images;
-- interface endpoints for Bedrock Runtime, ECR, Secrets Manager, CloudWatch
-  Logs, and CloudWatch Monitoring;
-- an S3 gateway endpoint;
-- task and execution IAM roles;
-- AWS Secrets Manager secrets for the gateway JWT, OIDC client, and database
-  credentials; and
-- private Route 53 DNS for the gateway hostname.
-
-### What you configure
-
-You configure:
-
-- private connectivity from developer devices to the platform;
-- DNS resolution for the private API;
-- Bedrock model access in the selected Region or Regions;
-- developer and operator access policies; and
-- for legacy gateway mode only: a Microsoft Entra application registration,
-  DNS and trusted TLS for the gateway hostname, VPC peering or an
-  equivalent routed private connection between the platform and gateway
-  VPCs, and CI or CodeBuild permissions for the gateway image.
+The platform does not deploy private developer connectivity, corporate DNS,
+or the optional inference gateway. Those remain separately managed
+prerequisites.
 
 ## Architecture
 
@@ -126,53 +78,33 @@ The editable source is
 
 | Flow | Description |
 | --- | --- |
-| Portal control | Browser signs in through the Cognito hosted UI with authorization code and PKCE, sends the ID token to the private API, and the API Gateway Cognito authorizer validates the signature, issuer, audience, and expiry before the control Lambda manages a MicroVM. |
-| Remote editor | Local VS Code and the remote VS Code Server each establish outbound connections to Microsoft dev tunnels. No SSH listener or inbound application endpoint is created. |
-| Inference (default) | Claude Code uses the MicroVM execution role's temporary AWS credentials to invoke approved Amazon Bedrock models through the Bedrock Runtime VPC endpoint. No additional sign-in is required. |
-| Gateway sign-in (legacy) | Claude Code obtains a device code from the gateway. The browser authenticates through the gateway Entra web app and returns to the gateway callback. The gateway completes the code exchange and records the device state in PostgreSQL. |
-| Inference (legacy gateway) | Claude Code sends model requests through Network Connector ENIs, private routing, the internal gateway ALB, and the gateway tasks. The gateway uses its ECS task role to invoke Amazon Bedrock through a private endpoint. |
-| MCP tools | The MicroVM uses execution-role SigV4 credentials to call the approved AgentCore Gateway through PrivateLink. AgentCore policy governs tools only, not Claude inference. |
-| Persistence | `/workspace` is checkpointed to versioned, KMS-encrypted S3. Remote Tunnel credentials and server binaries are intentionally excluded. |
+| Cognito control | The browser signs in through the Cognito hosted UI with authorization code and PKCE, sends an ID token to the private API, and the Cognito authorizer validates it before the control Lambda manages a MicroVM for the `oidc:<sub>` owner. |
+| IAM control | The CLI signs requests to the private API with SigV4, and the control Lambda derives a separate owner from the IAM caller ARN. |
+| Browser terminal | The portal requests a five-minute native shell credential for one running environment, then connects directly to that MicroVM's `SHELL_INGRESS` WebSocket. |
+| Remote editor | Local VS Code and the remote VS Code Server connect outbound through Microsoft dev tunnels. No SSH listener or inbound application endpoint is created. |
+| Inference, default | Claude Code uses the MicroVM execution role to invoke the approved Amazon Bedrock model through the private Runtime or Messages endpoint selected by its model ID. |
+| Inference, optional gateway | Claude Code reaches a separately deployed private HTTPS gateway through the platform VPC connector and private routing. |
+| MCP tools | The MicroVM uses execution-role SigV4 credentials to call the approved AgentCore Gateway through PrivateLink. |
+| Persistence | `/workspace` is checkpointed to versioned, KMS-encrypted S3. Tunnel credentials and server binaries are intentionally excluded. |
 
 ## Design rationale
 
-### Cognito portal authentication
+### Cognito browser authentication
 
-The platform stack creates its own Amazon Cognito user pool, hosted UI
-domain, and app client, so the portal deploys without any external identity
-provider, tenant approval, or app registration. Operators create portal
-users directly in the pool; self-service sign-up is disabled.
+The platform stack creates its own Amazon Cognito user pool, hosted UI domain,
+and public browser app client. Operators create users directly in the pool;
+self-service sign-up is disabled. The callback is the private portal URL, and
+the client has no secret because it uses authorization code with PKCE. The
+portal derives ownership from the Cognito `sub`.
 
-The portal and gateway must not share one identity client:
-
-- the portal is a public SPA client and must never possess a secret;
-- the gateway is a server-side confidential client and requires a secret;
-- the redirect URI types differ; and
-- separate clients allow different assignment and access policies.
-
-### Private gateway endpoint (legacy gateway mode)
-
-The gateway is intentionally behind an internal IPv4-only ALB. Claude Code
-validates that a managed gateway resolves only to private addresses because
-the gateway can deliver managed settings to the client.
-
-Do not replace the internal ALB with a public ALB, CloudFront distribution,
-public IP, or public tunnel. A public DNS answer causes `claude /login` to
-reject the gateway.
-
-### Separate platform and gateway VPCs (legacy gateway mode)
-
-Separate VPCs keep the development control plane and the inference gateway
-independently deployable. Private routing between them is explicit and can be
-implemented through VPC peering, Transit Gateway, or your central network
-architecture.
+An optional inference gateway owns its own identity configuration. Its
+identity client and secrets are not shared with the platform Cognito client.
 
 ### Service-side image builds
 
 The MicroVM image is built by the AWS Lambda MicroVM service from a source
-archive; local Docker is not required. In legacy gateway mode, the gateway
-image is separately built as `linux/amd64` in AWS CodeBuild and pushed to
-ECR with an immutable tag.
+archive. Local Docker is not required. The image's Claude Code and VS Code CLI
+versions and checksums are declared once in `microvm/tool-versions.json`.
 
 ### Durable workspace, ephemeral compute
 
@@ -184,115 +116,99 @@ device codes are not checkpointed.
 ### Eight-hour replacement lifecycle
 
 Each MicroVM invocation has a maximum duration of 28,800 seconds. Suspended
-time counts toward that limit. The control-plane reconciler begins a managed
-termination 45 minutes before expiry so the terminate hook has time to pause
-the tunnel and upload `/workspace` to the workspace checkpoint bucket.
+time counts toward that limit. The reconciler begins a managed termination 45
+minutes before expiry so the terminate hook can pause the tunnel and upload
+`/workspace`.
 
-The checkpoint is addressed by the authenticated owner and workspace ID, not
-by the disposable MicroVM or session ID. After the old invocation reaches a
-terminal state, start the same workspace ID again. The new MicroVM downloads
-and validates the latest checkpoint before starting the shell or VS Code
-tunnel.
-
-The current workflow requires a new connection after replacement:
-
-1. the existing terminal or VS Code connection closes;
-2. the user starts the same workspace ID from the portal or client;
-3. `/workspace` is restored into a fresh MicroVM; and
-4. a VS Code user completes a new Microsoft Remote Tunnel device login.
-
-This is checkpoint and restore, not live process migration. Running processes,
-memory, open terminals, `/home/developer`, VS Code Server files, tunnel
-credentials, device codes, and temporary AWS credentials are recreated. The
-default checkpoint limits are 128 MiB compressed and 1 GiB extracted. A hard
-service interruption can lose changes made after the most recent successful
-checkpoint, so Git remains the source of record.
+The checkpoint is addressed by authenticated owner and workspace ID. Starting
+the same workspace after termination restores the latest checkpoint into a
+fresh MicroVM. This is checkpoint and restore, not live process migration.
+Running processes, memory, open terminals, `/home/developer`, VS Code Server
+files, and temporary credentials are recreated. A hard interruption can lose
+changes since the latest successful checkpoint, so Git remains the source of
+record.
 
 ## Identity and authorization boundaries
 
 | Boundary | Authentication | Authorizes |
 | --- | --- | --- |
-| Portal | Amazon Cognito user pool ID token | Create, read, suspend, resume, terminate, and start tunnel authentication for the Cognito owner |
-| CLI control | AWS SigV4 | Private control API operations for the AWS principal owner |
-| Native shell | Five-minute Lambda MicroVM shell token | Temporary bootstrap or terminal attachment to one MicroVM |
+| Cognito browser control | Amazon Cognito user pool ID token | Create, read, connect, suspend, resume, terminate, and start tunnel authentication for the `oidc:<sub>` owner |
+| IAM CLI control | AWS SigV4 | Private control API operations for the IAM principal owner |
+| Native shell | Five-minute Lambda MicroVM shell token | Temporary terminal attachment to one MicroVM |
 | VS Code tunnel | Microsoft or GitHub device identity | Join one Microsoft dev tunnel |
-| Amazon Bedrock (default) | MicroVM execution-role SigV4 | Invoke approved model or inference-profile ARNs |
-| Claude gateway (legacy) | Entra OIDC through the gateway web app | Gateway session, model policy, and inference access |
-| Amazon Bedrock (legacy gateway) | ECS task-role SigV4 | Invoke approved model or inference-profile ARNs |
+| Amazon Bedrock | MicroVM execution-role SigV4 | Invoke the configured model endpoint and resources |
+| Optional inference gateway | Gateway-owned user identity | Gateway session, policy, and inference access |
 | AgentCore tools | MicroVM execution-role SigV4 | Invoke the approved AgentCore Gateway and targets |
 
-A credential in one boundary does not grant access in another. In particular:
+A credential in one boundary does not grant access in another:
 
-- portal sign-in does not authenticate VS Code Remote Tunnels;
+- Cognito sign-in does not authenticate VS Code Remote Tunnels;
+- Cognito and IAM ownership remain separate, with no identity linking or
+  environment migration;
 - Remote Tunnels sign-in does not grant Claude inference;
 - AgentCore policy does not govern `/v1/messages`; and
-- the developer device does not receive the MicroVM execution-role or
-  gateway ECS role credentials.
+- the developer device does not receive the MicroVM execution role.
 
 ## Prerequisites
 
 ### Organizational decisions
 
-Agree the following before deployment:
+Agree and record the following before deployment:
 
 - AWS account and Region;
-- platform VPC CIDR (and, for legacy gateway mode, a non-overlapping
-  gateway VPC CIDR);
-- private connectivity method for developer devices;
-- private DNS ownership and forwarding;
-- portal user provisioning ownership for the Cognito user pool;
-- Bedrock models and inference profiles;
-- log retention and data classification;
+- platform VPC CIDR;
+- private connectivity and private DNS for developer devices;
+- trusted private source CIDR for the API endpoint;
+- portal user-provisioning ownership for the Cognito user pool;
+- approved Bedrock model and endpoint family;
+- log retention, data classification, and checkpoint retention;
 - NAT or centralized egress architecture;
-- for legacy gateway mode: the gateway hostname, TLS certificate authority
-  and renewal process, approved Entra tenant, user groups, guest-user
-  policy, Conditional Access and MFA requirements, approved email domains,
-  RDS availability, backup, and deletion-protection requirements, the
-  source repository, build account, and image promotion process, and
-  operations ownership for secret and certificate rotation.
+- production resilience, quotas, alarms, and cost controls;
+- for VS Code sessions, approval to relay source, terminal, and editor
+  protocol traffic through Microsoft dev tunnels, including the permitted
+  Microsoft or GitHub identity, data residency, proxy, endpoint allowlisting,
+  and TLS-inspection policy; and
+- when optional gateway mode is selected, ownership and approval of the
+  separately deployed gateway and the private network integration described
+  in [Optional private gateway integration](#optional-private-gateway-integration).
+
+Relay approval is a deployment prerequisite for VS Code mode, not a
+post-deployment limitation. Organizations that do not approve that relay can
+deploy terminal-only environments.
 
 ### AWS access
 
-The deployment role requires permissions to create and manage:
+The platform deployment role requires permissions to create and manage:
 
 - CloudFormation and CDK bootstrap resources;
-- VPCs, subnets, route tables, peering, endpoints, security groups, NAT
-  Gateways, and Elastic IP addresses;
+- VPCs, subnets, route tables, endpoints, security groups, NAT Gateways, and
+  Elastic IP addresses;
 - API Gateway, Lambda, Lambda MicroVM resources, and Network Connectors;
-- ECS, Fargate, ECR, ALB, RDS, and CodeBuild (legacy gateway mode only);
 - IAM roles and policies;
-- Route 53 and ACM integrations;
-- Secrets Manager, S3, KMS, DynamoDB, SSM, Cognito, and CloudWatch; and
+- S3, KMS, DynamoDB, SSM, Cognito, and CloudWatch; and
 - Bedrock and optional AgentCore resources.
 
-Use a dedicated deployment role or CI role rather than long-lived IAM user
-credentials.
+Use a dedicated deployment or CI role rather than long-lived IAM user
+credentials. A separately deployed gateway has its own permission
+requirements in its canonical deployment documentation.
 
 ### Local tools
 
-- Node.js 20 or later
+- Node.js 20 or later on deployment and operator systems
 - npm
+- Python 3.12 for local MicroVM agent tests
 - AWS CLI v2
-- AWS CDK CLI compatible with the repositories
-- Azure CLI authenticated to the target Entra tenant (legacy gateway mode
-  only)
+- AWS CDK CLI compatible with this repository
 - `jq`
-- Draw.io Desktop only when regenerating the diagram
 
 No local Docker installation is required.
 
-### Required source artifacts
+Developer devices need only a supported browser for Terminal environments.
+They do not require Node.js, npm, an AWS profile, a source checkout, or a
+custom executable. VS Code environments additionally require an approved VS
+Code Desktop and Remote Tunnels installation.
 
-- the remote development platform repository (this sample);
-- approved deployment configuration; and
-- for legacy gateway mode: the Claude Apps Gateway CDK repository, the
-  approved Linux x86-64 Claude gateway binary, and the release checksum or
-  signed manifest used to verify that binary.
-
-## Deployment value worksheet
-
-Record these values in your change record. Values marked "gateway mode"
-apply only to the legacy gateway deployment.
+### Deployment value worksheet
 
 | Value | Example | Your value |
 | --- | --- | --- |
@@ -300,125 +216,71 @@ apply only to the legacy gateway deployment.
 | AWS account | `111122223333` | |
 | AWS Region | `us-east-1` | |
 | Platform VPC CIDR | `10.42.0.0/16` | |
-| VPN client CIDR | `10.100.0.0/22` | |
-| Bedrock model/profile IDs | Approved values | |
+| Trusted developer source CIDR | `10.100.0.0/22` | |
+| Bedrock model or profile ID | `anthropic.claude-sonnet-5` | |
 | AgentCore Gateway URL and ARN | Optional | |
-| Gateway VPC CIDR (gateway mode) | `10.60.0.0/16` | |
-| Effective ALB source CIDR (gateway mode) | Often the platform VPC CIDR after VPN SNAT | |
-| Gateway URL (gateway mode) | `https://claude-gateway.dev.example.com` | |
-| Private hosted zone ID (gateway mode) | `Z...` | |
-| Hosted zone name (gateway mode) | `dev.example.com` | |
-| ACM certificate ARN (gateway mode) | `arn:aws:acm:...` | |
-| Entra tenant ID (gateway mode) | GUID | |
-| Gateway Entra client ID (gateway mode) | GUID | |
-| Allowed email domains (gateway mode) | `example.com` | |
-| Gateway image tag (gateway mode) | `2.1.197-entra-YYYYMMDD` | |
+| Portal enabled | `true` | |
+| Optional gateway URL | `https://<private-gateway-hostname>` | |
+| Optional gateway VPC CIDR | Non-overlapping private CIDR | |
 
-## Network, DNS, and TLS preparation
+## Network preparation
 
-### CIDR planning
+### CIDR and routes
 
-The platform VPC, VPN client pool, corporate networks, any Transit Gateway
-attachments, and (in legacy gateway mode) the gateway VPC must use
-non-overlapping CIDRs.
+The platform VPC, developer networks, corporate networks, and Transit Gateway
+attachments must use non-overlapping CIDRs.
 
-Recommended route policy (gateway rows apply to legacy gateway mode only):
+The platform private subnets require:
 
-| Source | Destination | Route |
-| --- | --- | --- |
-| Platform private subnets | S3 prefix list | S3 gateway endpoint |
-| Platform private subnets | Private AWS services | Interface endpoints |
-| Platform private subnets | Approved public HTTPS | NAT or centralized egress |
-| Platform private subnets | Gateway VPC CIDR | VPC peering or Transit Gateway |
-| Gateway private subnets | Platform VPC CIDR | Return route through the same private connection |
-| Gateway private subnets | Bedrock, ECR, Secrets, Logs, Monitoring | Interface endpoints |
-| Gateway private subnets | Entra authorize/token endpoints | NAT or centralized egress |
+| Destination | Route |
+| --- | --- |
+| S3 prefix list | S3 gateway endpoint |
+| Private AWS services | Interface endpoints |
+| Approved public HTTPS | NAT Gateway or centralized egress |
+
+The default sample creates one NAT Gateway to control cost. Production
+deployments that require zonal resilience should use one NAT Gateway per
+Availability Zone or an approved centralized egress design.
 
 ### Private connectivity for developers
 
-Provide one of:
+Provide an organization-managed private path using one of:
 
-- AWS Client VPN;
-- site-to-site VPN;
-- Direct Connect;
+- AWS Client VPN or site-to-site VPN;
+- AWS Direct Connect;
 - Transit Gateway connectivity; or
-- a managed VDI or workstation already inside the routed network.
+- an approved VDI or workstation already inside the routed network.
 
-The private API (and, in legacy gateway mode, the gateway) is not reachable
-from an unrouted public workstation. The connectivity method is an
-organizational decision and is outside the scope of this sample.
+The private API is not reachable from an unrouted public workstation. The
+stack does not create client VPN endpoints, certificates, or private network
+attachments.
 
-When AWS Client VPN is used with the legacy gateway, confirm the source CIDR
-observed by the gateway ALB. Client VPN commonly source-NATs traffic to its
-association subnet, so the ALB may observe the platform VPC CIDR rather than
-the VPN client pool. Use that effective source CIDR for the gateway
-`ingressCidr`.
-
-### Private DNS (legacy gateway mode)
-
-The gateway hostname must resolve to private IPv4 addresses from:
-
-- both platform private subnets;
-- the gateway VPC;
-- the developer browser; and
-- any validation workstation or VDI.
-
-Use one of:
-
-- a Route 53 private hosted zone associated with both VPCs;
-- Route 53 Resolver inbound endpoints and corporate conditional forwarding;
-  or
-- corporate split-horizon DNS.
-
-Do not publish an AAAA record for an IPv4-only gateway. Verify every returned
-address is private:
-
-```bash
-dig +short <gateway-hostname> A
-dig +short <gateway-hostname> AAAA
-```
-
-### TLS (legacy gateway mode)
-
-Use a trusted ACM certificate whose subject alternative name exactly matches
-the gateway hostname. A common pattern is:
-
-- public DNS validation for the certificate; and
-- a private DNS A/alias record for the internal ALB.
-
-If a private CA is used, distribute the root and intermediate CA certificates
-to every developer device and remote runtime that validates the gateway.
-
-Treat ACM renewal as an operational event because Claude Code can pin the
-gateway leaf-certificate fingerprint on first use.
+Developer devices must resolve and reach the private execute-api endpoint.
+The Cognito hosted UI and approved relay endpoints use public HTTPS through
+the organization's existing device egress.
 
 ### Security-group policy
 
-Minimum rules are (gateway rows apply to legacy gateway mode only):
+Minimum platform rules are:
 
 | Resource | Inbound |
 | --- | --- |
-| Platform API endpoint | TCP 443 from approved VPN and connector security groups |
-| VPC endpoints | TCP 443 from the workload security groups only |
-| Internal ALB | TCP 443 from the effective platform/VPN source CIDR |
-| Gateway tasks | TCP 8080 from the ALB security group only |
-| RDS PostgreSQL | TCP 5432 from the gateway task security group only |
+| Platform API endpoint | TCP 443 from the trusted private client CIDR and connector security group |
+| Interface VPC endpoints | TCP 443 from workload security groups only |
 
-Do not allow `0.0.0.0/0` to the gateway listener or database.
+Do not expose the API endpoint publicly. The API resource policy is pinned to
+the stack-created VPC endpoint.
 
 ## Configure portal identity (Amazon Cognito)
 
-The platform stack creates the portal user pool, hosted UI domain, and app
-client automatically when the portal is enabled with `"enablePortal": true`
-in the deployment configuration. There is nothing to register before
-deployment.
+The stack creates the user pool, hosted UI domain, and browser app client when
+`"enablePortal": true` is set in deployment configuration. There is nothing
+to register before deployment.
 
-The app client is a public PKCE client. It has no client secret, and its
-callback URL is set automatically to the stack's `PortalUrl` output.
-Self-service sign-up is disabled: only operator-created users can sign in.
+The app client is a public PKCE client with no secret. Its callback is the
+stack's `PortalUrl` output. Self-service sign-up is disabled.
 
-After platform deployment, create each portal user with a real email
-address:
+After deployment, create each user with a verified email address:
 
 ```bash
 PORTAL_USER_POOL_ID="$(
@@ -440,533 +302,74 @@ aws cognito-idp admin-create-user \
   --profile <profile>
 ```
 
-Cognito emails the user a temporary password; the hosted UI forces a new
-password on first sign-in. Passwords require at least 12 characters with
-upper case, lower case, digits, and symbols.
+Cognito emails a temporary password and requires a new password at first
+sign-in. Passwords require at least 12 characters with upper case, lower
+case, digits, and symbols.
 
-The portal requests `openid profile email`. The API Gateway Cognito
-authorizer validates:
+The browser requests `openid profile email`. The API Gateway authorizer
+validates token signature, issuer, app-client audience, and expiry. The
+control Lambda uses the verified `sub` as the owner identity.
 
-- the token signature against the user pool JWKS;
-- the user pool issuer;
-- audience equal to the portal app client ID;
-- token expiry; and
-- the verified `sub` owner claim.
+## Optional private gateway integration
 
-## Configure Microsoft Entra ID (legacy gateway mode)
+The gateway is a separate deployable component. Its own documentation is the
+source of truth:
 
-This section applies only when the legacy Claude Apps Gateway inference
-mode is deployed. Skip it for the default Bedrock mode.
+- [Deployment and identity configuration](../../claude-apps-gateway/cdk/README.md)
+- [Private connectivity and DNS](../../claude-apps-gateway/docs/connectivity.md)
+- [Operational gotchas](../../claude-apps-gateway/docs/gotchas.md)
+- [Teardown](../../claude-apps-gateway/docs/teardown.md)
 
-Authenticate Azure CLI to the target tenant:
+Do not copy those procedures into this guide. Complete their security review,
+identity setup, image build, deployment, acceptance, operations, and teardown
+in the gateway's own change record.
 
-```bash
-az login --tenant <tenant-id>
-az account show --query '{tenantId:tenantId,user:user.name}' --output json
+This platform needs only the following integration contract:
+
+1. The gateway exposes an approved private HTTPS URL.
+2. The gateway and platform CIDRs do not overlap.
+3. Platform private subnets have a route to the gateway, and the gateway
+   network has the corresponding return route.
+4. The gateway security policy accepts HTTPS from the effective platform
+   source CIDR.
+5. The private hostname resolves to private IPv4 addresses from both the
+   MicroVM network path and the developer browser's approved private network.
+6. The TLS hostname and chain are trusted by both clients.
+7. Gateway health, identity, inference, rollback, and recovery acceptance has
+   passed under the gateway owner's procedures.
+
+Record the approved URL and gateway CIDR, then configure the platform with:
+
+```json
+{
+  "inferenceMode": "claude-gateway",
+  "claudeGatewayUrl": "https://<private-gateway-hostname>",
+  "claudeGatewayCidr": "<gateway-vpc-cidr>"
+}
 ```
 
-The operator must be permitted to create app registrations, service
-principals, and credentials.
+The network owner supplies the routes described above. The platform applies
+the runtime provider settings, but it does not create, upgrade, monitor, or
+delete the gateway.
 
-### Create the gateway confidential web application
+## Deploy the platform
 
-Choose the gateway hostname before creating this application because the
-callback URI must match exactly.
+### Configure deployment
 
-```bash
-TENANT_ID='<tenant-id>'
-GATEWAY_URL='https://<gateway-hostname>'
-OPTIONAL_CLAIMS='{
-  "idToken": [
-    {
-      "name": "email",
-      "essential": false
-    }
-  ],
-  "accessToken": [],
-  "saml2Token": []
-}'
-
-GATEWAY_APP_JSON="$(
-  az ad app create \
-    --display-name "Claude Apps Gateway" \
-    --sign-in-audience AzureADMyOrg \
-    --web-home-page-url "$GATEWAY_URL" \
-    --web-redirect-uris "${GATEWAY_URL}/oauth/callback" \
-    --optional-claims "$OPTIONAL_CLAIMS" \
-    --output json
-)"
-
-GATEWAY_CLIENT_ID="$(jq -r '.appId' <<<"$GATEWAY_APP_JSON")"
-GATEWAY_OBJECT_ID="$(jq -r '.id' <<<"$GATEWAY_APP_JSON")"
-
-az ad sp create --id "$GATEWAY_CLIENT_ID" --output none
-
-printf 'Gateway client ID: %s\n' "$GATEWAY_CLIENT_ID"
-printf 'Gateway object ID: %s\n' "$GATEWAY_OBJECT_ID"
-```
-
-Do not create the credential until the gateway stack has created
-`claude-gateway-oidc-client-secret`. This allows the generated value to be
-written directly to Secrets Manager without displaying or storing it.
-
-Validate the registration:
-
-```bash
-az ad app show \
-  --id "$GATEWAY_CLIENT_ID" \
-  --query '{
-    appId:appId,
-    signInAudience:signInAudience,
-    web:web,
-    optionalClaims:optionalClaims
-  }' \
-  --output json
-```
-
-Expected:
-
-- single-tenant `AzureADMyOrg`;
-- one web redirect URI:
-  `https://<gateway-hostname>/oauth/callback`;
-- `email` in the ID-token optional claims;
-- no SPA redirect URI; and
-- a service principal with `appRoleAssignmentRequired` configured according
-  to your policy.
-
-### Users with external email domains
-
-Adding `gmail.com` or another domain to the gateway allowlist does not make
-that identity a tenant user. For a single-tenant app, an external user must
-first exist in the Entra tenant as an approved member or guest and must be
-allowed by enterprise-application assignment and Conditional Access.
-
-Confirm the user has a populated `mail` or equivalent email claim and add the
-domain only when your identity policy explicitly permits it.
-
-### Conditional Access and assignment
-
-For the gateway enterprise application:
-
-- require MFA as appropriate;
-- restrict access to approved users or groups;
-- apply compliant-device or location requirements where appropriate;
-- review user-consent settings;
-- configure sign-in and audit-log retention; and
-- document emergency access and break-glass procedures.
-
-The gateway app performs a browser flow but is a server-side confidential
-client. The portal app is a browser SPA and must remain secretless.
-
-## Deploy Claude Apps Gateway (legacy gateway mode)
-
-This section applies only when the legacy gateway inference mode is
-deployed. The commands below use the CDK deployment under
-`claude-apps-gateway/cdk`.
-
-### Install and validate dependencies
-
-```bash
-cd claude-apps-gateway/cdk
-npm ci
-npm test -- --runInBand
-npm run build
-```
-
-Verify the AWS identity and Region before making changes:
-
-```bash
-aws sts get-caller-identity --profile <profile>
-aws configure get region --profile <profile>
-```
-
-### Bootstrap CDK
-
-Run once per account and Region:
-
-```bash
-npx cdk bootstrap \
-  aws://<account-id>/<region> \
-  --profile <profile>
-```
-
-### Pass 1: create the ECR repository
-
-```bash
-npx cdk deploy ClaudeGatewayStack \
-  --profile <profile> \
-  --require-approval never \
-  -c region=<region> \
-  -c imageReady=false
-```
-
-Record the `EcrRepositoryUri` output.
-
-### Stamp the non-secret gateway configuration
-
-The generated `gateway.yaml` contains the public URL, Entra issuer, Entra
-client ID, allowed email domains, Region, and database name. It contains
-references to environment variables for all secrets.
-
-```bash
-PUBLIC_URL='https://<gateway-hostname>' \
-AWS_REGION='<region>' \
-OIDC_ISSUER='https://login.microsoftonline.com/<tenant-id>/v2.0' \
-OIDC_CLIENT_ID='<gateway-client-id>' \
-ALLOWED_EMAIL_DOMAINS='example.com' \
-DB_NAME='claude_gateway' \
-./scripts/stamp-config.sh
-```
-
-For approved external identities, use a comma-separated list such as:
-
-```bash
-ALLOWED_EMAIL_DOMAINS='example.com,gmail.com'
-```
-
-For Entra, do not add a Cognito-specific `scopes` override. The gateway
-default must include:
-
-```text
-openid profile email offline_access
-```
-
-Validate the stamped values and confirm the secret remains an environment
-reference:
-
-```bash
-grep -E 'issuer:|client_id:|client_secret:|allowed_email_domains:' gateway.yaml
-```
-
-Expected:
-
-```yaml
-oidc:
-  issuer: https://login.microsoftonline.com/<tenant-id>/v2.0
-  client_id: <gateway-client-id>
-  client_secret: ${OIDC_CLIENT_SECRET}
-  allowed_email_domains: [example.com]
-```
-
-### Build and push through AWS CodeBuild
-
-Use an immutable tag:
-
-```bash
-IMAGE_TAG='<gateway-version>-entra-<yyyymmdd>'
-```
-
-The CodeBuild source bundle contains exactly:
-
-```text
-Dockerfile
-buildspec.yml
-claude
-gateway.yaml
-```
-
-The `claude` file must be the approved Linux x86-64 binary and must be
-verified against its trusted release checksum before packaging.
-
-Example `buildspec.yml`:
-
-```yaml
-version: 0.2
-env:
-  variables:
-    DOCKER_BUILDKIT: "1"
-phases:
-  pre_build:
-    commands:
-      - aws ecr get-login-password --region "$AWS_REGION" |
-        docker login --username AWS --password-stdin "$ECR_REGISTRY"
-  build:
-    commands:
-      - chmod 0755 claude
-      - docker build --platform=linux/amd64 --provenance=false
-        -t "$ECR_REPOSITORY:$IMAGE_TAG" .
-      - test "$(docker image inspect
-        "$ECR_REPOSITORY:$IMAGE_TAG"
-        --format '{{.Architecture}}')" = amd64
-  post_build:
-    commands:
-      - docker push "$ECR_REPOSITORY:$IMAGE_TAG"
-```
-
-Provision the CodeBuild project through your approved infrastructure
-pipeline. Use:
-
-- source type `S3` or your source pipeline;
-- image `aws/codebuild/standard:7.0` or an approved later standard image;
-- x86-64 `LINUX_CONTAINER`;
-- privileged mode enabled;
-- no build artifacts, because the output is pushed to ECR; and
-- CloudWatch Logs enabled with your retention policy.
-
-The CodeBuild service role must be able to:
-
-- read the source bundle from the staging S3 bucket;
-- obtain an ECR authorization token;
-- upload layers and images to the gateway ECR repository; and
-- write its own CloudWatch build logs.
-
-Add `kms:Decrypt` for the staging key when the source bucket uses a
-customer-managed KMS key. Do not grant the build access to the Entra client
-secret; the image contains non-secret configuration only.
-
-The following example creates a project when one is not already provided. `CODEBUILD_ROLE_ARN` refers to the pre-created service role with
-the permissions above:
-
-```bash
-BUILD_PROJECT='claude-gateway-build'
-BUILD_BUCKET='<approved-build-bucket>'
-BUILD_KEY="claude-gateway/${IMAGE_TAG}/source.zip"
-CODEBUILD_ROLE_ARN='<codebuild-service-role-arn>'
-
-aws codebuild create-project \
-  --name "$BUILD_PROJECT" \
-  --source "type=S3,location=${BUILD_BUCKET}/${BUILD_KEY}" \
-  --artifacts type=NO_ARTIFACTS \
-  --environment \
-    type=LINUX_CONTAINER,image=aws/codebuild/standard:7.0,computeType=BUILD_GENERAL1_SMALL,privilegedMode=true,imagePullCredentialsType=CODEBUILD \
-  --service-role "$CODEBUILD_ROLE_ARN" \
-  --region <region> \
-  --profile <profile>
-```
-
-Package and upload the four build inputs. These commands require `zip` and the
-AWS CLI locally, but do not require Docker:
-
-```bash
-ECR_REPOSITORY="$(
-  aws cloudformation describe-stacks \
-    --stack-name ClaudeGatewayStack \
-    --region <region> \
-    --profile <profile> \
-    --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" \
-    --output text
-)"
-ECR_REGISTRY="${ECR_REPOSITORY%%/*}"
-SOURCE_ZIP="/tmp/claude-gateway-${IMAGE_TAG}.zip"
-
-rm -f "$SOURCE_ZIP"
-zip -j "$SOURCE_ZIP" Dockerfile buildspec.yml claude gateway.yaml
-
-aws s3 cp \
-  "$SOURCE_ZIP" \
-  "s3://${BUILD_BUCKET}/${BUILD_KEY}" \
-  --region <region> \
-  --profile <profile>
-```
-
-Start the build with the immutable image tag and wait for a terminal status:
-
-```bash
-BUILD_ID="$(
-  aws codebuild start-build \
-    --project-name "$BUILD_PROJECT" \
-    --source-location-override "${BUILD_BUCKET}/${BUILD_KEY}" \
-    --environment-variables-override \
-      "name=ECR_REGISTRY,value=${ECR_REGISTRY},type=PLAINTEXT" \
-      "name=ECR_REPOSITORY,value=${ECR_REPOSITORY},type=PLAINTEXT" \
-      "name=IMAGE_TAG,value=${IMAGE_TAG},type=PLAINTEXT" \
-    --region <region> \
-    --profile <profile> \
-    --query 'build.id' \
-    --output text
-)"
-
-while :; do
-  BUILD_STATUS="$(
-    aws codebuild batch-get-builds \
-      --ids "$BUILD_ID" \
-      --region <region> \
-      --profile <profile> \
-      --query 'builds[0].buildStatus' \
-      --output text
-  )"
-  case "$BUILD_STATUS" in
-    SUCCEEDED) break ;;
-    FAILED|FAULT|STOPPED|TIMED_OUT)
-      printf 'CodeBuild failed: %s\n' "$BUILD_STATUS" >&2
-      exit 1
-      ;;
-  esac
-  sleep 15
-done
-```
-
-Do not overwrite an existing immutable tag. Verify the resulting digest:
-
-```bash
-aws ecr describe-images \
-  --repository-name claude-gateway \
-  --image-ids imageTag="$IMAGE_TAG" \
-  --region <region> \
-  --profile <profile> \
-  --query 'imageDetails[0].{digest:imageDigest,pushedAt:imagePushedAt,tags:imageTags}'
-```
-
-### Pass 2: deploy the full gateway stack
-
-The private hosted zone and ACM certificate must already exist.
-
-```bash
-npx cdk diff ClaudeGatewayStack \
-  --profile <profile> \
-  -c region=<region> \
-  -c publicUrl=https://<gateway-hostname> \
-  -c imageTag="$IMAGE_TAG" \
-  -c certArn=<acm-certificate-arn> \
-  -c zoneName=<private-zone-name> \
-  -c zoneId=<private-zone-id> \
-  -c ingressCidr=<effective-platform-or-vpn-source-cidr> \
-  -c imageReady=true
-```
-
-Review every replacement before deployment, then deploy with the same
-context:
-
-```bash
-npx cdk deploy ClaudeGatewayStack \
-  --profile <profile> \
-  --require-approval never \
-  -c region=<region> \
-  -c publicUrl=https://<gateway-hostname> \
-  -c imageTag="$IMAGE_TAG" \
-  -c certArn=<acm-certificate-arn> \
-  -c zoneName=<private-zone-name> \
-  -c zoneId=<private-zone-id> \
-  -c ingressCidr=<effective-platform-or-vpn-source-cidr> \
-  -c imageReady=true
-```
-
-Record:
-
-- `PublicUrl`;
-- `OAuthRedirectUri`;
-- `EcrRepositoryUri`;
-- `AlbDnsName`;
-- `TaskRoleArn`; and
-- `RdsEndpoint`.
-
-### Create and store the gateway Entra credential
-
-Generate the credential and put it directly into Secrets Manager. Do not
-print it or write it to a file:
-
-```bash
-set -euo pipefail
-
-SECRET=''
-trap 'unset SECRET' EXIT
-
-SECRET="$(
-  az ad app credential reset \
-    --id '<gateway-client-id>' \
-    --append \
-    --display-name 'AWS Claude Apps Gateway' \
-    --years 1 \
-    --query password \
-    --output tsv
-)"
-
-test -n "$SECRET"
-
-aws secretsmanager put-secret-value \
-  --secret-id claude-gateway-oidc-client-secret \
-  --secret-string="$SECRET" \
-  --region <region> \
-  --profile <profile> \
-  --query VersionId \
-  --output text
-
-unset SECRET
-```
-
-The equals form in `--secret-string="$SECRET"` safely handles generated
-secrets that begin with a hyphen.
-
-Force a new ECS deployment so new tasks receive the current secret version:
-
-```bash
-aws ecs update-service \
-  --cluster claude-gateway \
-  --service claude-gateway \
-  --force-new-deployment \
-  --region <region> \
-  --profile <profile>
-
-aws ecs wait services-stable \
-  --cluster claude-gateway \
-  --services claude-gateway \
-  --region <region> \
-  --profile <profile>
-```
-
-### Production hardening
-
-Before production use:
-
-- enable RDS deletion protection;
-- use approved backup retention and restore testing;
-- select Multi-AZ RDS if the recovery objective requires it;
-- use one NAT Gateway per AZ or centralized resilient egress;
-- retain production ECR images and scan them;
-- enable CloudTrail, VPC Flow Logs, and required security monitoring;
-- set log retention to your organizational standard;
-- protect the hosted zone, ACM certificate, secrets, and KMS keys;
-- alarm on unhealthy ECS tasks, ALB 5xx, database capacity, and failed auth;
-- define maintenance windows and patch/update ownership; and
-- protect CloudFormation stacks from accidental deletion.
-
-## Connect the platform and gateway VPCs (legacy gateway mode)
-
-Create VPC peering or your standard routed attachment after both VPCs
-exist.
-
-For VPC peering:
-
-1. create the peering connection;
-2. accept it in the peer account when cross-account;
-3. enable DNS resolution from the remote VPC on both sides;
-4. add the gateway CIDR route to both platform private route tables;
-5. add the platform CIDR return route to both gateway private route tables;
-6. associate or share the gateway private hosted zone with the platform VPC;
-7. confirm NACLs and security groups allow the intended traffic; and
-8. add Client VPN authorization and split-tunnel routes for the gateway CIDR
-   when Client VPN is used.
-
-Required connectivity tests:
-
-```bash
-dig +short <gateway-hostname>
-curl -fsS https://<gateway-hostname>/healthz
-curl -fsS https://<gateway-hostname>/readyz
-```
-
-The DNS response must contain private IPv4 addresses only.
-
-## Deploy the remote development platform
-
-### Configure the deployment
-
-Copy the example file:
+Copy the example:
 
 ```bash
 cp deployment.example.json deployment.json
 ```
 
-Configure Bedrock inference and the portal:
+Configure the default Bedrock path:
 
 ```json
 {
   "region": "<region>",
   "vpcCidr": "<platform-vpc-cidr>",
   "projectName": "claude-microvm",
-  "vpnClientCidr": "<vpn-client-cidr>",
-  "createClientVpn": false,
-  "vpnClientName": "developer",
+  "trustedClientCidr": "<routed-developer-source-cidr>",
   "inferenceMode": "bedrock",
   "bedrockModelId": "<approved-bedrock-model-or-profile-id>",
   "allowClaudeAiSubscription": false,
@@ -980,19 +383,33 @@ Configure Bedrock inference and the portal:
 }
 ```
 
-For legacy gateway mode, replace the inference settings with:
-
-```json
-{
-  "inferenceMode": "claude-gateway",
-  "claudeGatewayUrl": "https://<gateway-hostname>",
-  "claudeGatewayCidr": "<gateway-vpc-cidr>"
-}
-```
-
 Set `agentCoreGatewayUrl` and `agentCoreGatewayArn` together or omit both.
 Keep `allowClaudeAiSubscription` false unless direct personal subscriptions
 are explicitly approved.
+
+For optional gateway mode, replace the inference fields with the values in
+[Optional private gateway integration](#optional-private-gateway-integration).
+
+### Choose a Bedrock model ID
+
+The stack pins one explicit Claude model ID and rejects other providers and
+malformed values. The accepted ID determines the endpoint:
+
+- `anthropic.claude-sonnet-5` is the default direct model ID. Claude Code
+  routes this form to the Messages API, and the stack creates a private
+  Messages endpoint with the required project-scoped permission.
+- `us.anthropic.claude-*`, `eu.anthropic.claude-*`,
+  `au.anthropic.claude-*`, and `global.anthropic.claude-*` are geographic or
+  global inference-profile IDs. Claude Code routes these through the private
+  Bedrock Runtime endpoint.
+
+Machine-managed settings expose the matching Claude Code family alias, such as
+`sonnet`, as the only selectable model and map that alias to the exact
+`bedrockModelId`. The raw `anthropic.*` or inference-profile ID is therefore
+not shown as a second Custom model. Before deployment, confirm that the exact
+model and endpoint are available in the target Region and that the account has
+model access. See the
+[Claude Sonnet 5 model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5.html).
 
 ### Validate and deploy
 
@@ -1021,170 +438,168 @@ The deploy command:
 
 No local Docker build is used.
 
-### Create portal users
+### Provider policy inside the MicroVM
 
-The Cognito app client callback URL is set automatically to the stack's
-`PortalUrl` output; no redirect URI configuration is required. Create each
-portal user in the pool using the commands in
-[Configure portal identity (Amazon Cognito)](#configure-portal-identity-amazon-cognito).
+For Bedrock mode, the root lifecycle agent configures Claude Code with the
+execution role's temporary AWS credentials and the approved model ID. Direct
+IDs enable the Messages endpoint; inference-profile IDs use the Runtime
+endpoint. No interactive Claude sign-in occurs.
 
-Open the portal only from a device with private network access.
-
-### How provider policy reaches the MicroVM
-
-For the default Bedrock mode, the root lifecycle agent configures Claude
-Code with the MicroVM execution role's temporary AWS credentials and the
-approved Bedrock model or inference profile; no interactive Claude sign-in
-occurs.
-
-For a legacy gateway-mode session, the root lifecycle agent writes
-machine-managed Claude settings equivalent to:
+For optional gateway mode, the lifecycle agent writes machine-managed
+settings equivalent to:
 
 ```json
 {
   "forceLoginMethod": "gateway",
-  "forceLoginGatewayUrl": "https://<gateway-hostname>",
+  "forceLoginGatewayUrl": "https://<private-gateway-hostname>",
   "allowManagedMcpServersOnly": true
 }
 ```
 
-Users cannot override these values from repository or user settings.
-
-Changing the gateway's Entra issuer while retaining the same gateway URL is a
-server-side gateway change and does not require a new MicroVM. Changing an
-active workspace between `bedrock`, `claude-gateway`, and `claude-ai` does
-require terminating and recreating that session.
+Changing an active workspace between `bedrock`, `claude-gateway`, and
+`claude-ai` requires terminating and recreating that session.
 
 ## Configure developer devices
 
 ### Network access
 
-Install and connect the approved VPN client or use an approved routed VDI.
+Connect through the approved private network or an approved routed VDI.
 Validate private DNS and HTTPS to:
 
 - the private API Gateway endpoint;
-- the Cognito hosted UI domain (public HTTPS);
-- Microsoft dev tunnels and required VS Code distribution endpoints; and
-- for legacy gateway mode: the gateway hostname and the Microsoft Entra
-  authorize and token endpoints.
+- the Cognito hosted UI domain when the portal is enabled;
+- Microsoft dev tunnels and required VS Code distribution endpoints for VS
+  Code mode; and
+- the private gateway URL when optional gateway mode is enabled.
 
-### Visual Studio Code
+### Visual Studio Code compatibility workarounds
 
-The repository client creates an isolated local VS Code profile and sets:
+The portal does not install software on the developer device. Use an approved
+VS Code Desktop and Remote Tunnels installation. The source-tree IAM operator
+CLI has an optional acceptance helper that uses an isolated local profile
+under `~/.claude-microvm/vscode-user-data` and currently applies two temporary
+compatibility workarounds:
+
+1. It installs a pinned pre-release `ms-vscode.remote-server` build with
+   `--pre-release --force`. A stable extension release supersedes this pin
+   only after remote connection, terminal, extension, and reconnect acceptance
+   passes on supported macOS and Windows clients.
+2. It writes
+   `"microsoft-authentication.implementation": "msal-no-broker"` so Microsoft
+   authentication uses the system browser. Remove this override only after
+   the native broker passes Microsoft tunnel sign-in and reconnect acceptance
+   through the isolated profile and approved VDI path on supported macOS and
+   Windows clients.
+
+These settings are current-behavior workarounds, not permanent platform
+requirements. Keep them confined to the isolated profile. The other managed
+compatibility setting is:
 
 ```json
 {
-  "extensions.supportNodeGlobalNavigator": true,
-  "microsoft-authentication.implementation": "msal-no-broker"
+  "extensions.supportNodeGlobalNavigator": true
 }
 ```
 
-`msal-no-broker` directs VS Code Microsoft authentication through the system
-browser instead of the native account broker. It is relevant to VS Code and
-Remote Tunnels sign-in; it does not configure Claude Apps Gateway OIDC.
-
 The local and remote tunnel endpoints must use the same approved Microsoft or
-GitHub identity.
+GitHub identity. Microsoft is the default provider in the portal, control
+service, and source-tree operator CLI; select GitHub explicitly when required.
 
-### Start a remote environment
+### Start environments
 
-Command-line workflow:
+The browser is the developer control plane. **Terminal** embeds a terminal
+connected to the native MicroVM shell and does not start VS Code Server or a
+Remote Tunnel. **VS Code** creates an editor environment and requires a
+separate Microsoft or GitHub tunnel identity.
 
-```bash
-npm run client -- \
-  --region <region> \
-  --profile <profile> \
-  vscode <workspace-name>
-```
+#### Portal Terminal workflow
 
-Portal workflow:
+1. Open the private `PortalUrl` and sign in through Cognito.
+2. Select **Terminal**, create the environment, wait for `RUNNING`, and choose
+   **Connect** in that environment's row.
+3. The portal requests a five-minute shell credential and opens the native
+   `SHELL_INGRESS` WebSocket using the documented Lambda MicroVM WebSocket
+   subprotocols. The credential remains in memory and is not written to
+   browser storage or downloaded.
+4. The portal starts `/usr/local/bin/developer-shell` as user 1000 and presents
+   the `/workspace` shell. Run `claude` at that prompt.
+5. Choose **Close** or run `exit` to disconnect. Choose **Reconnect** or
+   **Connect** to open another shell; disconnecting does not stop the
+   environment.
 
-1. open the private portal;
-2. sign in through the Cognito hosted UI;
-3. create a VS Code environment;
-4. wait for the environment to reach `RUNNING`;
-5. choose **Authenticate**;
-6. complete the Microsoft or GitHub device flow; and
-7. open the assigned tunnel in VS Code Desktop.
+No handoff file, AWS profile, local Claude installation, source checkout,
+Node.js, npm, or custom executable participates in this workflow. Use the
+portal for explicit lifecycle operations. **Suspend** checkpoints and pauses
+the MicroVM. **Restart** checkpoint-terminates it, waits for completion, and
+starts a replacement for the same workspace. **Terminate**
+checkpoint-terminates it without replacement.
 
-### Sign in to Claude Apps Gateway (legacy gateway mode)
+#### Portal VS Code workflow
 
-The default Bedrock mode requires no Claude sign-in; Claude Code is ready
-as soon as the environment is running. For legacy gateway mode, inside the
-remote environment:
+1. Open the private `PortalUrl` and sign in through Cognito.
+2. Select **VS Code** and the approved tunnel identity.
+3. Create the environment and wait for `RUNNING`.
+4. Choose **Connect**, complete the Microsoft or GitHub device flow, and open
+   the assigned tunnel.
 
-```bash
-claude /login
-```
+Tunnel identity is separate from Cognito and applies only to VS Code mode.
 
-Use the newly generated verification link. The browser must redirect to:
+#### IAM workflows
+
+The source-tree CLI is an IAM-authorized operator and automation tool. It is
+not distributed to developers.
+
+IAM terminal workflow:
 
 ```text
-https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize
+npm run client -- --region REGION --profile PROFILE start WORKSPACE
 ```
 
-After Entra authentication, the browser returns to:
+IAM VS Code workflow:
 
 ```text
-https://<gateway-hostname>/oauth/callback
+npm run client -- --region REGION --profile PROFILE vscode WORKSPACE
 ```
 
-If a previous provider session is cached, sign out before initiating a fresh
-login. Do not reuse an expired device code or old browser tab.
+IAM-owned and Cognito-owned environments use separate ownership namespaces
+and are not linked or migrated.
 
 ## User flow
 
-### Portal and environment creation
+### Browser control and terminal
 
-1. The developer connects to the private network.
-2. The browser opens the private portal.
-3. The portal generates a PKCE verifier and redirects to the Cognito
-   hosted UI.
-4. Cognito authenticates the user and enforces the pool password policy.
-5. The portal exchanges the authorization code without a secret.
-6. The browser sends the Cognito ID token to the private API.
-7. The API Gateway Cognito authorizer verifies the token and the control
-   Lambda derives the owner from `sub`.
-8. The control Lambda creates or resumes the developer's MicroVM.
+1. The developer connects to the approved private network.
+2. The browser completes Cognito authorization code with PKCE.
+3. The portal sends the ID token to the Cognito-authorized private API route.
+4. The control Lambda derives `oidc:<sub>` and creates or manages that user's
+   environment.
+5. For Terminal access, the portal obtains a five-minute shell token and opens
+   a direct WebSocket from the browser to the environment's shell endpoint.
+6. The embedded terminal sends keyboard and resize events to the native PTY;
+   the shell, commands, and Claude Code process remain inside the MicroVM.
+
+The portal stores its Cognito ID token only in tab-scoped `sessionStorage` and
+holds the shell credential only in memory. Expired Cognito authentication
+returns the developer to sign-in. No local callback, refresh token, handoff
+file, or downloaded shell credential participates in this flow.
 
 ### VS Code Remote Tunnels
 
-1. The tunnel-login helper runs inside the MicroVM as the developer user.
+1. The tunnel-login helper runs inside the MicroVM as the unprivileged
+   developer user.
 2. The developer approves the Microsoft or GitHub device code.
-3. VS Code Server and VS Code Desktop connect outbound to Microsoft dev
+3. VS Code Server and VS Code Desktop connect outbound through Microsoft dev
    tunnels.
-4. Source, terminal, Git, and Claude extension execution remain inside the
-   MicroVM.
+4. Source, terminal, Git, and extension execution remain inside the MicroVM.
 
-### Inference (default Bedrock mode)
+### Bedrock inference
 
-1. Claude Code sends a model request using the MicroVM execution role's
-   temporary AWS credentials.
-2. The request traverses the Network Connector ENIs to the Bedrock Runtime
-   VPC endpoint.
-3. Bedrock invokes the approved model or inference profile and streams the
-   response back over the same private path.
-
-### Claude gateway authentication (legacy gateway mode)
-
-1. Claude Code requests a device code from the private gateway.
-2. The gateway stores pending state in PostgreSQL.
-3. The developer browser opens the private gateway verification URL.
-4. The gateway redirects to the gateway Entra web application.
-5. Entra authenticates the user and returns an authorization code to the
-   gateway callback.
-6. The gateway exchanges the code using its Secrets Manager client secret.
-7. The gateway validates the email domain and identity claims.
-8. Claude Code's device poll receives gateway access and refresh tokens.
-
-### Inference (legacy gateway mode)
-
-1. Claude Code sends a Messages API request to the internal gateway.
-2. The ALB terminates TLS and forwards to a healthy Fargate task.
-3. The gateway validates the session and managed policy.
-4. The gateway invokes an approved Bedrock model or inference profile through
-   the Bedrock Runtime VPC endpoint.
-5. The response streams back over the same private path.
+1. Claude Code signs a request with the MicroVM execution role's temporary
+   credentials.
+2. A direct `anthropic.*` ID uses the private Messages endpoint; a geographic
+   or global profile ID uses the private Bedrock Runtime endpoint.
+3. Bedrock invokes the configured model and streams the response over the same
+   private path.
 
 ## Acceptance and verification
 
@@ -1193,159 +608,66 @@ login. Do not reuse an expired device code or old browser tab.
 Confirm for the portal Cognito user pool:
 
 - self-service sign-up is disabled;
-- the app client has no secret and one exact callback URL (`PortalUrl`);
+- the browser app client has no secret;
+- its callback is the exact `PortalUrl`;
 - the hosted UI domain resolves; and
-- each approved developer has a pool user with a verified email.
-
-Confirm for the gateway Entra application (legacy gateway mode):
-
-- the app is single tenant;
-- the service principal exists;
-- the app has one exact web redirect and one active credential;
-- the app emits the `email` ID-token claim; and
-- assignment and Conditional Access match your identity policy.
-
-### Gateway stack (legacy gateway mode)
-
-```bash
-aws cloudformation describe-stacks \
-  --stack-name ClaudeGatewayStack \
-  --region <region> \
-  --profile <profile> \
-  --query 'Stacks[0].StackStatus'
-
-aws ecs describe-services \
-  --cluster claude-gateway \
-  --services claude-gateway \
-  --region <region> \
-  --profile <profile> \
-  --query 'services[0].{desired:desiredCount,running:runningCount,pending:pendingCount,deployments:deployments}'
-```
-
-Expected:
-
-- CloudFormation is `CREATE_COMPLETE` or `UPDATE_COMPLETE`;
-- desired and running task counts are both two;
-- pending count is zero; and
-- the primary deployment is `COMPLETED`.
-
-### HTTP endpoints (legacy gateway mode)
-
-```bash
-curl -fsS https://<gateway-hostname>/healthz
-curl -fsS https://<gateway-hostname>/readyz
-curl -fsS \
-  https://<gateway-hostname>/.well-known/oauth-authorization-server |
-  jq .
-curl -fsS -X POST \
-  https://<gateway-hostname>/oauth/device_authorization |
-  jq '{verification_uri,expires_in,interval}'
-```
-
-Expected:
-
-- `/healthz` returns HTTP 200;
-- `/readyz` returns HTTP 200;
-- discovery exposes the gateway device and token endpoints; and
-- device authorization returns a new verification URI.
-
-### Verify the live Entra redirect (legacy gateway mode)
-
-Submit a fresh device code through the gateway page and inspect the first
-redirect. It must use:
-
-```text
-host:         login.microsoftonline.com
-tenant path:  /<tenant-id>/oauth2/v2.0/authorize
-client_id:    <gateway-client-id>
-redirect_uri: https://<gateway-hostname>/oauth/callback
-response_type: code
-scope:        openid profile email offline_access
-```
-
-There must be no Cognito hostname in this redirect.
-
-### Gateway logs (legacy gateway mode)
-
-The startup log for each current task should show:
-
-```text
-oidc issuer https://login.microsoftonline.com/<tenant-id>/v2.0
-email domains <approved-domains>
-claude gateway listening on http://0.0.0.0:8080
-```
-
-Review the gateway log group for unexpected `error`, `failed`, `panic`, or
-`fatal` events.
+- each approved developer has a verified pool user.
 
 ### End-to-end acceptance
 
 Record dated evidence for:
 
 - portal Cognito sign-in;
-- environment creation and ownership enforcement;
-- Microsoft or GitHub tunnel authentication;
-- VS Code connection to the Linux ARM64 environment;
-- Claude gateway Entra sign-in (legacy gateway mode only);
-- one successful Bedrock-backed prompt;
+- environment creation and owner isolation;
+- browser Terminal connection from each supported browser and device OS;
+- keyboard input, paste, terminal resize, disconnect, and reconnect;
+- confirmation that the shell token is absent from browser storage and URLs;
+- a normal `/workspace` shell followed by an interactive `claude` launch;
+- Microsoft and, when approved, GitHub tunnel authentication;
+- VS Code connection to the Linux ARM64 workspace;
+- one successful prompt through the configured inference mode;
+- one selectable Claude Code model family mapped to the configured Bedrock
+  model ID, without a duplicate Custom model entry;
 - one approved AgentCore tool call when enabled;
 - suspend and resume;
-- terminate and recreate with workspace restoration; and
-- denial for an unassigned or disallowed user.
+- restart and terminate/recreate with workspace restoration; and
+- denial for an unapproved user.
+
+Before removing either VS Code workaround, run the relevant supersession
+criteria from
+[Visual Studio Code compatibility workarounds](#visual-studio-code-compatibility-workarounds)
+on both supported macOS and Windows clients. Include an approved VDI path when
+VDI is in scope. Current validation includes one routed Windows Server 2022
+host, remote workspace connection, and graphical Claude Code prompt; it does
+not yet provide the full macOS, Windows, reconnect, lifecycle, and VDI
+acceptance matrix required to remove either workaround.
+
+For optional gateway mode, attach the gateway owner's separate deployment and
+acceptance record rather than duplicating its checks here.
 
 ## Day-2 operations
 
-### Rotate the gateway Entra secret (legacy gateway mode)
+### Update the platform
 
-1. append a new Entra credential;
-2. write it directly to the existing Secrets Manager secret;
-3. force a new ECS deployment;
-4. wait for both tasks to become healthy;
-5. complete one interactive login and token refresh test; and
-6. delete the old Entra credential only after acceptance.
+Update dependency pins and `microvm/tool-versions.json` through review, run the
+full validation suite, inspect `cdk diff`, then rerun:
 
-Never place the credential in source control, build arguments, container
-layers, task-definition environment variables, or support tickets.
+```bash
+npm run deploy -- \
+  --config deployment.json \
+  --profile <profile> \
+  --require-approval never
+```
 
-### Change non-secret gateway configuration (legacy gateway mode)
+### Offboard a Cognito user
 
-The gateway YAML is baked into the image. Rebuild and deploy a new immutable
-image when changing:
+1. Disable or delete the user in the Cognito user pool.
+2. Terminate active MicroVM environments owned by that user.
+3. Preserve or delete checkpoints according to retention policy.
+4. Review control-plane and portal audit events.
 
-- Entra issuer;
-- client ID;
-- gateway URL;
-- allowed email domains;
-- Bedrock Region;
-- model mapping;
-- managed policy; or
-- telemetry destination.
-
-Use `cdk diff` before every deployment. A configuration-only rollout should
-normally replace only the ECS task definition and update the ECS service.
-
-### Offboard a user
-
-1. disable or delete the user in the portal Cognito user pool
-   (`aws cognito-idp admin-disable-user`);
-2. for gateway mode, disable or remove the user from the Entra enterprise
-   application and revoke Entra sessions when immediate revocation is
-   required;
-3. terminate active MicroVM environments owned by that user;
-4. preserve or delete checkpoints according to retention policy; and
-5. review gateway and portal audit events.
-
-The sample gateway session TTL is one hour. A disabled user loses access no
-later than the next failed refresh or token expiry, subject to identity
-provider revocation behavior. Cognito ID tokens expire after one hour; the
-portal holds no refresh token, so a disabled pool user cannot sign in
-again.
-
-### Certificate renewal (legacy gateway mode)
-
-Monitor ACM renewal and publish the approved new leaf fingerprint when
-certificate pinning is used. Validate the full chain from developer devices
-and MicroVM routes before the previous certificate expires.
+Cognito ID tokens expire after one hour. The browser holds no refresh token,
+so disabled users cannot renew access.
 
 ### Backup and recovery
 
@@ -1354,80 +676,34 @@ Production operations must test:
 - S3 checkpoint version recovery;
 - KMS key access and recovery controls;
 - restoration into a non-production environment; and
-- for legacy gateway mode: RDS point-in-time recovery, ECS rollback to a
-  previous immutable image, and Entra secret rotation with no user-visible
-  outage.
+- recreation of a terminated workspace from its latest checkpoint.
+
+Operate and recover an optional gateway through its
+[canonical deployment documentation](../../claude-apps-gateway/cdk/README.md)
+and [operational gotchas](../../claude-apps-gateway/docs/gotchas.md).
 
 ## Troubleshooting
 
-All modes:
-
 | Symptom | Likely cause | Resolution |
 | --- | --- | --- |
-| Bedrock returns 403 | Model access is not enabled or IAM omits an ARN family | Enable model access and grant invoke actions on both inference-profile and underlying foundation-model ARNs. |
-| Portal returns HTTP 401 | Token audience/issuer mismatch or malformed authorization header | Confirm the browser loaded `config.json` from the deployed portal URL and sends the raw Cognito ID token in the `authorization` header. |
-| VS Code Microsoft sign-in repeatedly invokes a broken native broker | Account-broker behavior is unsuitable through the tunnel/VDI | Set `"microsoft-authentication.implementation": "msal-no-broker"` in the isolated VS Code profile and restart the extension host. |
-| Remote Tunnel connects but extensions fail | Microsoft update/Marketplace/CDN egress is blocked | Allow the documented VS Code and dev-tunnel endpoints through your egress control. |
+| Bedrock returns 403 | Model access is not enabled or the selected endpoint permission is missing | Enable model access. Direct IDs require the Messages project permission; profile IDs require invoke actions on the profile and underlying foundation model. |
+| Portal returns HTTP 401 | The Cognito ID token expired or its audience, issuer, or authorization header is wrong | Sign in again. If the problem persists, confirm `config.json` contains the deployed browser app client and exact portal callback URL. |
+| Terminal does not connect | The environment is not `RUNNING`, the browser cannot reach the shell endpoint, the shell credential expired, or WebSocket subprotocols are filtered | Use **Refresh**, confirm live state, then choose **Reconnect**. Verify browser WebSocket access and that intermediaries preserve `lambda-microvms` subprotocol headers. |
+| Terminal opens but input or sizing is wrong | Browser compatibility, focus, clipboard policy, or resize observation failed | Focus the terminal, retry in a supported browser, and inspect browser console/network errors. Re-run keyboard, paste, and resize acceptance. |
+| VS Code repeatedly invokes a failing native Microsoft broker | Current native-broker behavior is incompatible with the isolated tunnel or VDI path | Retain the temporary `msal-no-broker` setting in the isolated profile. Remove it only after the documented desktop acceptance criteria pass. |
+| Remote Tunnel connects but extensions fail | Microsoft update, Marketplace, CDN, or relay egress is blocked | Apply the organization's approved endpoint policy and repeat relay acceptance. |
+| Portal environment is absent from the IAM CLI | Cognito and IAM are separate ownership namespaces | Manage `oidc:<sub>` environments in the portal and IAM-owned environments with the source-tree CLI; the platform does not link them. |
+| Checkpoint restore fails | Object, KMS, archive limits, or integrity validation failed | Review the MicroVM log group and retained S3 object version, then restore a known-good checkpoint version. |
 
-Legacy gateway mode:
-
-| Symptom | Likely cause | Resolution |
-| --- | --- | --- |
-| Device login shows Cognito | Old gateway image/task or an old browser/device flow | Confirm current ECS image tag and task logs show the Entra issuer. Start a fresh `claude /login` and do not reuse an old tab. |
-| `AADSTS50011` | Gateway redirect URI mismatch | Compare the URI character-for-character, including scheme, hostname, path, and trailing slash. The gateway uses a web redirect. |
-| Gmail or another external account cannot sign in | Account is not a member/guest in the single tenant, is not assigned, or has no email claim | Invite and approve the user in Entra, assign the enterprise app, confirm `mail`/`email`, and allow the domain only if policy permits it. |
-| Gateway reports email domain denied | `email` claim missing or domain not in `allowed_email_domains` | Confirm the gateway app's optional `email` ID-token claim and inspect the Entra user mail attribute. Rebuild the image if the domain list changes. |
-| `/login` rejects the gateway as public | Gateway DNS returns a public A or AAAA address | Correct split-horizon/private DNS. Use an internal IPv4-only ALB and remove public or IPv6 answers. |
-| Gateway hostname resolves but HTTPS times out | Missing VPN/peering route, wrong return route, NACL, or ALB source CIDR | Verify both route directions and determine the post-SNAT source CIDR observed by the ALB. |
-| TLS trust or hostname error | Certificate name mismatch, missing private CA, or stale pinned certificate | Use a certificate for the exact hostname, distribute the CA chain, and follow the renewal/pinning process. |
-| Entra callback returns invalid client secret | Secret value is wrong, expired, or ECS tasks still have the previous version | Store the credential value rather than its credential ID, then force a new ECS deployment. |
-| OIDC discovery fails at gateway startup | Wrong tenant issuer, DNS failure, or no NAT path to Entra | Use the tenant-specific v2 issuer and validate outbound TCP 443, DNS, and proxy policy. |
-| Entra returns `invalid_scope` | Provider-specific Cognito scope override remains in the image | Remove the explicit Cognito scopes block and retain Entra defaults including `offline_access`. |
-| Gateway task cannot read `gateway.yaml` | File or parent directory permissions are too restrictive | Build with the staged config directory and mode `0644` for the file and executable parent directories. |
-| Re-running `/login` shows a generic account picker after successful login | A valid gateway session already exists | Dismiss the picker and test a prompt. Confirm the status banner identifies the Cloud gateway. |
-| CodeBuild image will not start on Fargate | Wrong image architecture or OCI manifest | Build `linux/amd64`, use the approved Dockerfile, and publish a standard runnable image manifest. |
-| MicroVM cannot reach the gateway | Platform connector route, peering, DNS association, or gateway SG is missing | Verify the route policy in [CIDR planning](#cidr-planning) and test from the platform private network. |
-
-## Rollback (legacy gateway mode)
-
-Keep the previous immutable gateway image and previous Secrets Manager version
-until the new Entra deployment passes acceptance.
-
-To roll back:
-
-1. deploy the previous image tag through CDK;
-2. restore the previous OIDC secret version only if the previous identity
-   provider requires it;
-3. wait for ECS service stability;
-4. verify discovery and device authorization; and
-5. record the rollback in the change and incident records.
-
-Do not delete the previous identity provider or application during the
-initial migration window. Remove it only through a separate approved change
-after the rollback period expires.
+For optional gateway failures, use the gateway's
+[operational gotchas](../../claude-apps-gateway/docs/gotchas.md). Keep fixes
+and incident evidence with that component rather than adding a second
+troubleshooting table here.
 
 ## Teardown
 
-Destroy application stacks only after checkpoints, logs, database data, and
-audit evidence have been retained according to your retention policy.
-
-Gateway (legacy gateway mode):
-
-```bash
-cd claude-apps-gateway/cdk
-npx cdk destroy ClaudeGatewayStack \
-  --profile <profile> \
-  -c region=<region> \
-  -c publicUrl=https://<gateway-hostname> \
-  -c imageTag=<current-image-tag> \
-  -c certArn=<acm-certificate-arn> \
-  -c zoneName=<private-zone-name> \
-  -c zoneId=<private-zone-id> \
-  -c ingressCidr=<effective-source-cidr> \
-  -c imageReady=true
-```
-
-Platform:
+Destroy the platform only after checkpoints, logs, and audit evidence have
+been retained according to policy:
 
 ```bash
 npm run destroy:microvm -- \
@@ -1438,26 +714,19 @@ npx cdk destroy ClaudeMicrovmStack \
   --profile <profile>
 ```
 
-Remove separately managed resources:
-
-- VPC peering or Transit Gateway routes;
-- private hosted-zone associations and Resolver rules;
-- Client VPN attachments and certificates;
-- ACM certificate and DNS validation records when no longer used;
-- CodeBuild project and source bucket (legacy gateway mode);
-- retained backup artifacts; and
-- the gateway Entra service principal and app registration (legacy gateway
-  mode).
-
 The portal Cognito user pool, domain, and app client are deleted with the
-platform stack. Delete the gateway confidential credential before deleting
-its app registration.
+platform stack. Confirm retained S3, DynamoDB, KMS, and log resources against
+your deletion policy.
+
+Delete separately managed private routes and DNS only when no other workload
+uses them. Tear down an optional gateway with its
+[canonical teardown procedure](../../claude-apps-gateway/docs/teardown.md).
 
 ## Diagram regeneration
 
 The architecture diagram is maintained by hand in
-[../images/architecture.drawio](../images/architecture.drawio). After
-editing it in Draw.io Desktop, re-export the PNG:
+[../images/architecture.drawio](../images/architecture.drawio). After editing
+it in Draw.io Desktop, re-export the PNG:
 
 ```bash
 DRAWIO='/Applications/draw.io.app/Contents/MacOS/draw.io'
@@ -1465,13 +734,12 @@ DRAWIO='/Applications/draw.io.app/Contents/MacOS/draw.io'
 "$DRAWIO" \
   --export \
   --format png \
-  --page-index 0 \
+  --page-index 1 \
   --border 20 \
   --scale 2 \
   --output images/architecture.png \
   images/architecture.drawio
 ```
 
-After every change, inspect the PNG at full size and confirm no connectors
-intersect, no label overlaps another element, and the MicroVM remains
-outside the VPC.
+Inspect the PNG at full size after export. Confirm that labels do not overlap,
+connectors do not cross labels, and the MicroVM remains outside the VPC.

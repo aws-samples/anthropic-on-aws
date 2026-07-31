@@ -14,6 +14,8 @@ import { posix, win32 } from 'node:path';
 import process from 'node:process';
 
 const TUNNEL_NAME_PATTERN = /^[A-Za-z0-9-]{1,20}$/;
+// Temporary compatibility pin. Move to a stable release after it passes the
+// supported macOS and Windows Remote Tunnels acceptance matrix.
 export const REMOTE_TUNNELS_EXTENSION =
   'ms-vscode.remote-server';
 export const REMOTE_TUNNELS_EXTENSION_VERSION =
@@ -24,6 +26,8 @@ export const VSCODE_USER_DATA_DIRECTORY_ENVIRONMENT_VARIABLE =
   'CLAUDE_MICROVM_VSCODE_USER_DATA_DIR';
 export const VSCODE_COMPATIBILITY_SETTINGS = {
   'extensions.supportNodeGlobalNavigator': true,
+  // Temporary compatibility override. Remove after the native broker passes
+  // isolated-profile tunnel and VDI acceptance on supported desktop clients.
   'microsoft-authentication.implementation': 'msal-no-broker',
   'telemetry.telemetryLevel': 'off',
 } as const;

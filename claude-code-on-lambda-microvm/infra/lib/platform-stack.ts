@@ -21,6 +21,10 @@ import { applyNagAcknowledgements } from './nag-acks.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(here, '../..');
 const require = createRequire(import.meta.url);
+const BEDROCK_INFERENCE_PROFILE_PREFIX =
+  /^(?:us|eu|au|global)\./;
+const BEDROCK_MODEL_ID_PATTERN =
+  /^(?:(?:us|eu|au|global)\.)?anthropic\.claude-[A-Za-z0-9._:-]{1,180}$/;
 
 export class PlatformStack extends cdk.Stack {
   public constructor(
@@ -51,18 +55,18 @@ export class PlatformStack extends cdk.Stack {
     }
     const bedrockModelId =
       this.node.tryGetContext('bedrockModelId') ??
-      'us.anthropic.claude-sonnet-4-6';
+      'anthropic.claude-sonnet-5';
     if (
       inferenceMode === 'bedrock' &&
-      !/^(?:us|global)\.anthropic\.claude-[A-Za-z0-9._:-]{1,180}$/.test(
-        bedrockModelId,
-      )
+      !isApprovedBedrockModelId(bedrockModelId)
     ) {
       throw new Error('bedrockModelId is not an approved Claude model ID');
     }
-    const createClientVpn = contextBoolean(
-      this.node.tryGetContext('createClientVpn'),
-      false,
+    const bedrockUsesInferenceProfile =
+      BEDROCK_INFERENCE_PROFILE_PREFIX.test(bedrockModelId);
+    const bedrockFoundationModelId = bedrockModelId.replace(
+      BEDROCK_INFERENCE_PROFILE_PREFIX,
+      '',
     );
     const enableAgentCore = contextBoolean(
       this.node.tryGetContext('enableAgentCore'),
@@ -77,12 +81,16 @@ export class PlatformStack extends cdk.Stack {
       false,
     );
 
-    const vpnClientCidr = new cdk.CfnParameter(this, 'VpnClientCidr', {
-      type: 'String',
-      default: '10.100.0.0/22',
-      description:
-        'Client VPN address pool, or the trusted client CIDR when the sample VPN is disabled.',
-    });
+    const trustedClientCidr = new cdk.CfnParameter(
+      this,
+      'TrustedClientCidr',
+      {
+        type: 'String',
+        default: '10.100.0.0/22',
+        description:
+          'Routed private CIDR allowed to call the control API from developer devices.',
+      },
+    );
     const claudeGatewayUrl =
       inferenceMode === 'claude-gateway'
         ? new cdk.CfnParameter(this, 'ClaudeGatewayUrl', {
@@ -104,20 +112,6 @@ export class PlatformStack extends cdk.Stack {
               'Exact private destination CIDR containing the Claude Apps Gateway.',
           })
         : undefined;
-    const clientVpnServerCertificateArn = createClientVpn
-      ? new cdk.CfnParameter(this, 'ClientVpnServerCertificateArn', {
-          type: 'String',
-          description:
-            'Imported ACM server certificate for the managed Client VPN endpoint.',
-        })
-      : undefined;
-    const clientVpnRootCertificateArn = createClientVpn
-      ? new cdk.CfnParameter(this, 'ClientVpnRootCertificateArn', {
-          type: 'String',
-          description:
-            'Imported ACM client certificate whose chain authorizes mutual-TLS VPN clients.',
-        })
-      : undefined;
     const agentCoreGatewayUrl = enableAgentCore
       ? new cdk.CfnParameter(this, 'AgentCoreGatewayUrl', {
           type: 'String',
@@ -293,19 +287,9 @@ export class PlatformStack extends cdk.Stack {
         vpc,
         allowAllOutbound: false,
         description:
-          'Private execute-api endpoint: TLS from corporate VPN clients.',
+          'Private execute-api endpoint: TLS from trusted private clients.',
       },
     );
-    const clientVpnSg = createClientVpn
-      ? new ec2.SecurityGroup(this, 'ClientVpnSecurityGroup', {
-          vpc,
-          allowAllOutbound: false,
-          description:
-            'Managed Client VPN: private TLS access to the control API.',
-        })
-      : undefined;
-    const vpnClientPeer: ec2.IPeer =
-      clientVpnSg ?? ec2.Peer.ipv4(vpnClientCidr.valueAsString);
 
     endpointSg.addIngressRule(
       microvmConnectorSg,
@@ -313,9 +297,9 @@ export class PlatformStack extends cdk.Stack {
       'Lambda MicroVMs',
     );
     apiEndpointSg.addIngressRule(
-      vpnClientPeer,
+      ec2.Peer.ipv4(trustedClientCidr.valueAsString),
       ec2.Port.tcp(443),
-      'VPN clients calling the private control API',
+      'Trusted private clients calling the control API',
     );
     apiEndpointSg.addIngressRule(
       microvmConnectorSg,
@@ -327,82 +311,6 @@ export class PlatformStack extends cdk.Stack {
       ec2.Port.tcp(443),
       'HTTPS through private endpoints, peering, or the managed NAT gateway',
     );
-    if (clientVpnSg) {
-      clientVpnSg.addEgressRule(
-        apiEndpointSg,
-        ec2.Port.tcp(443),
-        'Private lifecycle API',
-      );
-      const resolverPeer = ec2.Peer.ipv4(
-        `${vpcResolverAddress(vpcCidr)}/32`,
-      );
-      clientVpnSg.addEgressRule(
-        resolverPeer,
-        ec2.Port.udp(53),
-        'VPC DNS resolver',
-      );
-      clientVpnSg.addEgressRule(
-        resolverPeer,
-        ec2.Port.tcp(53),
-        'VPC DNS resolver over TCP',
-      );
-      if (claudeGatewayCidr) {
-        clientVpnSg.addEgressRule(
-          ec2.Peer.ipv4(claudeGatewayCidr.valueAsString),
-          ec2.Port.tcp(443),
-          'Claude Apps Gateway sign-in',
-        );
-      }
-    }
-
-    const clientVpnEndpoint = clientVpnSg
-      ? new ec2.ClientVpnEndpoint(this, 'ClientVpnEndpoint', {
-          vpc,
-          cidr: vpnClientCidr.valueAsString,
-          clientCertificateArn:
-            clientVpnRootCertificateArn!.valueAsString,
-          serverCertificateArn:
-            clientVpnServerCertificateArn!.valueAsString,
-          authorizeAllUsersToVpcCidr: true,
-          clientLoginBanner:
-            'Private Claude Code MicroVM development environment',
-          description:
-            'Mutual-TLS access to the private Claude MicroVM control API',
-          disconnectOnSessionTimeout: true,
-          dnsServers: [vpcResolverAddress(vpcCidr)],
-          logGroup: new logs.LogGroup(this, 'ClientVpnLogGroup', {
-            logGroupName: `/${projectName.valueAsString}/client-vpn`,
-            retention: logs.RetentionDays.THREE_MONTHS,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
-          }),
-          logging: true,
-          port: ec2.VpnPort.HTTPS,
-          securityGroups: [clientVpnSg],
-          selfServicePortal: false,
-          sessionTimeout: ec2.ClientVpnSessionTimeout.EIGHT_HOURS,
-          splitTunnel: true,
-          transportProtocol: ec2.TransportProtocol.UDP,
-          vpcSubnets: {
-            subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-          },
-        })
-      : undefined;
-    if (clientVpnEndpoint && claudeGatewayCidr) {
-      // Split-tunnel clients only receive routes the endpoint
-      // advertises; without these the browser cannot reach the
-      // Claude Apps Gateway for SSO sign-in.
-      clientVpnEndpoint.addAuthorizationRule('ClaudeGatewayAuth', {
-        cidr: claudeGatewayCidr.valueAsString,
-        description: 'Claude Apps Gateway sign-in',
-      });
-      vpc.privateSubnets.forEach((subnet, index) => {
-        clientVpnEndpoint.addRoute(`ClaudeGatewayRoute${index}`, {
-          cidr: claudeGatewayCidr.valueAsString,
-          target: ec2.ClientVpnRouteTarget.subnet(subnet),
-          description: 'Claude Apps Gateway sign-in',
-        });
-      });
-    }
 
     const s3Endpoint = vpc.addGatewayEndpoint('S3Endpoint', {
       service: ec2.GatewayVpcEndpointAwsService.S3,
@@ -452,6 +360,17 @@ export class PlatformStack extends cdk.Stack {
             'BedrockRuntimeEndpoint',
             new ec2.InterfaceVpcEndpointService(
               `com.amazonaws.${this.region}.bedrock-runtime`,
+              443,
+            ),
+          )
+        : undefined;
+    const bedrockMantleEndpoint =
+      inferenceMode === 'bedrock' &&
+      !bedrockUsesInferenceProfile
+        ? addInterfaceEndpoint(
+            'BedrockMantleEndpoint',
+            new ec2.InterfaceVpcEndpointService(
+              `com.amazonaws.${this.region}.bedrock-mantle`,
               443,
             ),
           )
@@ -506,14 +425,22 @@ export class PlatformStack extends cdk.Stack {
     }
     if (inferenceMode === 'bedrock') {
       const bedrockResources = [
-        this.formatArn({
-          service: 'bedrock',
-          resource: 'inference-profile',
-          resourceName: bedrockModelId,
-        }),
         `arn:${this.partition}:bedrock:*::foundation-model/` +
-          bedrockModelId.replace(/^(?:us|global)\./, ''),
+          bedrockFoundationModelId,
       ];
+      if (bedrockUsesInferenceProfile) {
+        bedrockResources.unshift(
+          this.formatArn({
+            service: 'bedrock',
+            resource: 'inference-profile',
+            resourceName: bedrockModelId,
+          }),
+        );
+      } else {
+        bedrockResources[0] =
+          `arn:${this.partition}:bedrock:${this.region}::` +
+          `foundation-model/${bedrockFoundationModelId}`;
+      }
       const invokeBedrock = new iam.PolicyStatement({
         actions: [
           'bedrock:InvokeModel',
@@ -532,6 +459,25 @@ export class PlatformStack extends cdk.Stack {
           resources: bedrockResources,
         }),
       );
+      if (bedrockMantleEndpoint) {
+        const mantleProjectArn = this.formatArn({
+          service: 'bedrock-mantle',
+          resource: 'project',
+          resourceName: 'default',
+        });
+        const invokeMantle = new iam.PolicyStatement({
+          actions: ['bedrock-mantle:CreateInference'],
+          resources: [mantleProjectArn],
+        });
+        microvmExecutionRole.addToPolicy(invokeMantle);
+        bedrockMantleEndpoint.addToPolicy(
+          new iam.PolicyStatement({
+            actions: ['bedrock-mantle:CreateInference'],
+            principals: [microvmExecutionRole],
+            resources: [mantleProjectArn],
+          }),
+        );
+      }
     }
 
     const buildRole = new iam.Role(this, 'MicrovmBuildRole', {
@@ -913,10 +859,9 @@ export class PlatformStack extends cdk.Stack {
         tunnelAuthWorker.functionArn,
       );
 
-      // The portal is a public client using the Cognito hosted UI
-      // with the authorization-code + PKCE flow, so the app client
-      // has no secret. Sign-up stays admin-only: operators create
-      // portal users in the pool after deployment.
+      // The browser uses the Cognito hosted UI with authorization-code
+      // + PKCE, so the app client has no secret. Sign-up stays
+      // admin-only: operators create users in the pool after deployment.
       // Built from the static stage name: referencing the stage
       // token here would make the app client depend on the stage,
       // whose deployment depends on methods that reference the
@@ -1016,6 +961,10 @@ export class PlatformStack extends cdk.Stack {
             minify: true,
             sourceMap: true,
             externalModules: [],
+            nodeModules: [
+              '@xterm/addon-fit',
+              '@xterm/xterm',
+            ],
           },
         },
       );
@@ -1030,6 +979,12 @@ export class PlatformStack extends cdk.Stack {
       portal.addMethod('GET', portalSiteIntegration, siteMethodOptions);
       portal
         .addResource('app.js')
+        .addMethod('GET', portalSiteIntegration, siteMethodOptions);
+      portal
+        .addResource('terminal-vendor.js')
+        .addMethod('GET', portalSiteIntegration, siteMethodOptions);
+      portal
+        .addResource('xterm.css')
         .addMethod('GET', portalSiteIntegration, siteMethodOptions);
       portal
         .addResource('config.json')
@@ -1088,11 +1043,6 @@ export class PlatformStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ConnectorOperatorRoleArn', {
       value: connectorOperatorRole.roleArn,
     });
-    if (clientVpnEndpoint) {
-      new cdk.CfnOutput(this, 'ClientVpnEndpointId', {
-        value: clientVpnEndpoint.endpointId,
-      });
-    }
     new cdk.CfnOutput(this, 'ControlApiUrl', {
       value:
         `https://${api.restApiId}.execute-api.${this.region}.` +
@@ -1141,7 +1091,10 @@ export class PlatformStack extends cdk.Stack {
       value: workspaceClaims.tableName,
     });
 
-    applyNagAcknowledgements(this, { bedrockModelId });
+    applyNagAcknowledgements(this, {
+      bedrockFoundationModelId,
+      bedrockUsesInferenceProfile,
+    });
   }
 }
 
@@ -1172,37 +1125,11 @@ function contextBoolean(
   throw new Error('Boolean CDK context values must be true or false');
 }
 
-function vpcResolverAddress(cidr: string): string {
-  const [address, prefixText, extra] = cidr.split('/');
-  const octets = address?.split('.').map(Number) ?? [];
-  const prefix = Number(prefixText);
-  if (
-    extra !== undefined ||
-    octets.length !== 4 ||
-    octets.some(
-      (octet) =>
-        !Number.isInteger(octet) || octet < 0 || octet > 255,
-    ) ||
-    !Number.isInteger(prefix) ||
-    prefix < 0 ||
-    prefix > 30
-  ) {
-    throw new Error(
-      'vpcCidr must be an IPv4 CIDR with at least four addresses',
-    );
-  }
-  const numericAddress =
-    (((octets[0]! * 256 + octets[1]!) * 256 + octets[2]!) *
-      256 +
-      octets[3]!) >>>
-    0;
-  const mask =
-    prefix === 0 ? 0 : (0xffff_ffff << (32 - prefix)) >>> 0;
-  const resolver = ((numericAddress & mask) + 2) >>> 0;
-  return [
-    (resolver >>> 24) & 255,
-    (resolver >>> 16) & 255,
-    (resolver >>> 8) & 255,
-    resolver & 255,
-  ].join('.');
+export function isApprovedBedrockModelId(
+  value: unknown,
+): value is string {
+  return (
+    typeof value === 'string' &&
+    BEDROCK_MODEL_ID_PATTERN.test(value)
+  );
 }

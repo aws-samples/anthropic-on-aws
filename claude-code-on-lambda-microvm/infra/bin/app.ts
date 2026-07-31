@@ -7,7 +7,7 @@ const app = new cdk.App();
 // cdk-nag AwsSolutions pack: error-level findings fail synth unless
 // acknowledged with a written justification at the offending construct
 // (see lib/nag.ts).
-cdk.Validations.of(app).addPlugins(new AwsSolutionsChecks(app, { verbose: true }));
+cdk.Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
 const region =
   app.node.tryGetContext('region') ??
   'us-east-1';

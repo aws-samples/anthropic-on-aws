@@ -87,7 +87,7 @@ export class ControlService {
     const workspaceId = requestedWorkspaceId ?? 'default';
     const accessMode = options.accessMode ?? 'terminal';
     const inferenceMode = options.inferenceMode ?? config.inferenceMode;
-    const tunnelProvider = options.tunnelProvider ?? 'github';
+    const tunnelProvider = options.tunnelProvider ?? 'microsoft';
     if (!WORKSPACE_ID_PATTERN.test(workspaceId)) {
       throw new ControlError(
         400,
@@ -189,25 +189,15 @@ export class ControlService {
         ownerHash,
         workspaceId,
       );
-      // Keep existing image-19 terminal sessions deployable while the feature
-      // image is building. VS Code and Claude.ai require the v3 contract.
-      const payloadVersion =
-        accessMode === 'vscode' || inferenceMode === 'claude-ai'
-          ? 3
-          : 2;
       const runPayload = encodeRunHookPayload({
-        version: payloadVersion,
+        version: 3,
         sessionId,
         ownerHash,
         workspaceId,
         awsRegion: config.region,
         inferenceMode,
-        ...(payloadVersion === 3
-          ? {
-              accessMode,
-              tunnelName: record.tunnelName,
-            }
-          : {}),
+        accessMode,
+        tunnelName: record.tunnelName,
         claudeGatewayUrl:
           inferenceMode === 'claude-gateway'
             ? config.claudeGatewayUrl
@@ -285,9 +275,22 @@ export class ControlService {
     }
   }
 
-  public async list(ownerPrincipal: string): Promise<SessionRecord[]> {
-    return this.options.repository.listForOwner(
+  public async list(
+    ownerPrincipal: string,
+    refreshActive = false,
+  ): Promise<SessionRecord[]> {
+    const records = await this.options.repository.listForOwner(
       this.ownerHash(ownerPrincipal),
+    );
+    if (!refreshActive) {
+      return records;
+    }
+    return Promise.all(
+      records.map((record) =>
+        record.microvmId && isActive(record.state)
+          ? this.refreshFromMicrovm(record)
+          : record,
+      ),
     );
   }
 

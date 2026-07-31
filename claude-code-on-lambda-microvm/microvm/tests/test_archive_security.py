@@ -29,7 +29,7 @@ def session() -> agent.Session:
         aws_region="us-east-1",
         inference_mode="bedrock",
         claude_gateway_url=None,
-        bedrock_model_id="us.anthropic.claude-sonnet-4-6",
+        bedrock_model_id="anthropic.claude-sonnet-5",
         agentcore_gateway_url=None,
         checkpoint_download_url=checkpoint_url("download.tar.gz"),
         checkpoint_upload_url=checkpoint_url("upload.tar.gz"),
@@ -175,15 +175,14 @@ class RunPayloadTests(unittest.TestCase):
                 "microvmId": "microvm-1",
                 "runHookPayload": json.dumps(
                     {
-                        "version": 2,
+                        "version": 3,
                         "sessionId": "session-1",
                         "ownerHash": "a" * 64,
                         "workspaceId": "payments",
                         "awsRegion": "us-east-1",
                         "inferenceMode": "bedrock",
-                        "bedrockModelId": (
-                            "us.anthropic.claude-sonnet-4-6"
-                        ),
+                        "accessMode": "terminal",
+                        "bedrockModelId": "anthropic.claude-sonnet-5",
                         "checkpoint": {
                             "downloadUrl": checkpoint_url("download"),
                             "uploadUrl": checkpoint_url("upload"),
@@ -197,7 +196,7 @@ class RunPayloadTests(unittest.TestCase):
         self.assertEqual(parsed.workspace_id, "payments")
         self.assertEqual(
             parsed.bedrock_model_id,
-            "us.anthropic.claude-sonnet-4-6",
+            "anthropic.claude-sonnet-5",
         )
         self.assertIsNone(parsed.claude_gateway_url)
         self.assertEqual(
@@ -211,12 +210,13 @@ class RunPayloadTests(unittest.TestCase):
                 "microvmId": "microvm-1",
                 "runHookPayload": json.dumps(
                     {
-                        "version": 2,
+                        "version": 3,
                         "sessionId": "session-1",
                         "ownerHash": "a" * 64,
                         "workspaceId": "default",
                         "awsRegion": "us-east-1",
                         "inferenceMode": "claude-gateway",
+                        "accessMode": "terminal",
                         "claudeGatewayUrl": (
                             "https://claude.internal.example.com"
                         ),
@@ -313,42 +313,33 @@ class RunPayloadTests(unittest.TestCase):
             checkpoint_url("download"),
         )
 
-    def test_requires_v3_for_new_session_modes(self) -> None:
-        base = {
-            "version": 2,
-            "sessionId": "session-1",
-            "ownerHash": "a" * 64,
-            "workspaceId": "default",
-            "awsRegion": "us-east-1",
-            "inferenceMode": "claude-ai",
-            "checkpoint": {
-                "uploadUrl": checkpoint_url("upload"),
-            },
-        }
-        with self.assertRaisesRegex(ValueError, "version 3"):
-            agent.parse_run_request(
-                {
-                    "microvmId": "microvm-1",
-                    "runHookPayload": json.dumps(base),
-                }
-            )
-        with self.assertRaisesRegex(ValueError, "version 3"):
-            agent.parse_run_request(
-                {
-                    "microvmId": "microvm-1",
-                    "runHookPayload": json.dumps(
-                        {
-                            **base,
-                            "inferenceMode": "bedrock",
-                            "bedrockModelId": (
-                                "us.anthropic.claude-sonnet-4-6"
-                            ),
-                            "accessMode": "vscode",
-                            "tunnelName": "cm-0123456789abcdef0",
-                        }
-                    ),
-                }
-            )
+    def test_bedrock_model_validation_accepts_both_endpoint_families(
+        self,
+    ) -> None:
+        accepted = (
+            "anthropic.claude-sonnet-5",
+            "us.anthropic.claude-sonnet-5",
+            "eu.anthropic.claude-opus-5",
+            "au.anthropic.claude-fable-5",
+            "global.anthropic.claude-sonnet-5",
+        )
+        rejected = (
+            "amazon.nova-pro",
+            "apac.anthropic.claude-sonnet-5",
+            "anthropic.not-claude-sonnet-5",
+            "anthropic.claude-",
+        )
+
+        for value in accepted:
+            with self.subTest(value=value):
+                self.assertIsNotNone(
+                    agent.BEDROCK_MODEL_PATTERN.fullmatch(value)
+                )
+        for value in rejected:
+            with self.subTest(value=value):
+                self.assertIsNone(
+                    agent.BEDROCK_MODEL_PATTERN.fullmatch(value)
+                )
 
     def test_requires_tunnel_name_only_for_vscode_sessions(self) -> None:
         base = {
@@ -385,14 +376,18 @@ class RunPayloadTests(unittest.TestCase):
                 }
             )
 
-    def test_rejects_legacy_and_oversized_payloads(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Unsupported"):
-            agent.parse_run_request(
-                {
-                    "microvmId": "microvm-1",
-                    "runHookPayload": json.dumps({"version": 1}),
-                }
-            )
+    def test_rejects_unsupported_and_oversized_payloads(self) -> None:
+        for version in (1, 2):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(ValueError, "Unsupported"):
+                    agent.parse_run_request(
+                        {
+                            "microvmId": "microvm-1",
+                            "runHookPayload": json.dumps(
+                                {"version": version}
+                            ),
+                        }
+                    )
         with self.assertRaisesRegex(ValueError, "runHookPayload"):
             agent.parse_run_request(
                 {

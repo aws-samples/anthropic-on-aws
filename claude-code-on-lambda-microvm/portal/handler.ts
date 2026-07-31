@@ -1,8 +1,14 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
 import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
 } from 'aws-lambda';
 import { PORTAL_HTML, PORTAL_JS } from './site.js';
+
+let terminalVendorScript: string | undefined;
+let terminalStylesheet: string | undefined;
 
 // Serves the static portal page through the same private API
 // Gateway as the control routes: no extra bucket, no CloudFront,
@@ -22,6 +28,30 @@ export async function handler(
       200,
       'application/javascript; charset=utf-8',
       PORTAL_JS,
+    );
+  }
+  if (resource === '/portal/terminal-vendor.js') {
+    terminalVendorScript ??= [
+      '/*! @xterm/xterm 6.0.0 and @xterm/addon-fit 0.11.0; MIT */',
+      packageFile('@xterm/xterm/lib/xterm.js'),
+      packageFile('@xterm/addon-fit/lib/addon-fit.js'),
+    ].join('\n');
+    return response(
+      200,
+      'application/javascript; charset=utf-8',
+      terminalVendorScript,
+      'public, max-age=31536000, immutable',
+    );
+  }
+  if (resource === '/portal/xterm.css') {
+    terminalStylesheet ??= packageFile(
+      '@xterm/xterm/css/xterm.css',
+    );
+    return response(
+      200,
+      'text/css; charset=utf-8',
+      terminalStylesheet,
+      'public, max-age=31536000, immutable',
     );
   }
   if (resource === '/portal/config.json') {
@@ -56,11 +86,12 @@ function response(
   statusCode: number,
   contentType: string,
   body: string,
+  cacheControl = 'no-store',
 ): APIGatewayProxyResult {
   return {
     statusCode,
     headers: {
-      'cache-control': 'no-store',
+      'cache-control': cacheControl,
       'content-type': contentType,
       'referrer-policy': 'no-referrer',
       'strict-transport-security': 'max-age=31536000',
@@ -68,6 +99,13 @@ function response(
     },
     body,
   };
+}
+
+function packageFile(relativePath: string): string {
+  return readFileSync(
+    path.join(process.cwd(), 'node_modules', relativePath),
+    'utf8',
+  );
 }
 
 function requiredEnvironment(name: string): string {

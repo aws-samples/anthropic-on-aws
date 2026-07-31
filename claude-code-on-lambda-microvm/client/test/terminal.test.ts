@@ -2,13 +2,14 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import {
   BackpressuredTerminalOutput,
-  claudeBootstrapCommand,
   createTerminalModeRestorer,
+  developerShellBootstrapCommand,
   TerminalOutputMatcher,
   TERMINAL_RESTORE_SEQUENCE,
   validateShellUrl,
   vscodeTunnelLoginCommand,
 } from '../src/terminal.js';
+import { VSCODE_TUNNEL_READY_OUTPUT_PATTERN } from '../../shared/tunnel-output.js';
 
 describe('native shell terminal', () => {
   it('accepts only a plain WSS shell URL', () => {
@@ -29,12 +30,12 @@ describe('native shell terminal', () => {
     }
   });
 
-  it('executes Claude as the unprivileged developer user', () => {
-    const command = claudeBootstrapCommand().toString('utf8');
+  it('opens the managed shell as the unprivileged developer user', () => {
+    const command = developerShellBootstrapCommand().toString('utf8');
 
     expect(command).toBe(
       'exec setpriv --reuid=1000 --regid=1000 --init-groups ' +
-      '/usr/local/bin/claude-session\n',
+      '/usr/local/bin/developer-shell\n',
     );
   });
 
@@ -55,7 +56,7 @@ describe('native shell terminal', () => {
 
   it('recognizes a tunnel-ready message split across shell frames', () => {
     const matcher = new TerminalOutputMatcher(
-      /VS Code tunnel [A-Za-z0-9-]+ is ready\./,
+      VSCODE_TUNNEL_READY_OUTPUT_PATTERN,
     );
 
     expect(

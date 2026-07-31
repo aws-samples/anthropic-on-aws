@@ -135,6 +135,47 @@ describe('DynamoSessionRepository', () => {
     });
   });
 
+  it('queries every page of the owner index in newest-first order', async () => {
+    const older = {
+      ...RECORD,
+      sessionId: 'session-older',
+      updatedAt: 900,
+    };
+    const pageKey = {
+      ownerHash: RECORD.ownerHash,
+      updatedAt: RECORD.updatedAt,
+      sessionId: RECORD.sessionId,
+    };
+    let page = 0;
+    const send = vi.fn(async (command: unknown) => {
+      expect(command).toBeInstanceOf(QueryCommand);
+      page += 1;
+      return page === 1
+        ? { Items: [RECORD], LastEvaluatedKey: pageKey }
+        : { Items: [older] };
+    });
+
+    await expect(
+      repository(send).listForOwner(RECORD.ownerHash),
+    ).resolves.toEqual([RECORD, older]);
+
+    expect(send).toHaveBeenCalledTimes(2);
+    const queries = send.mock.calls.map(
+      ([command]) => command as QueryCommand,
+    );
+    expect(queries[0]?.input).toMatchObject({
+      TableName: 'sessions',
+      IndexName: 'owner-updated-index',
+      KeyConditionExpression: 'ownerHash = :owner',
+      ExpressionAttributeValues: {
+        ':owner': RECORD.ownerHash,
+      },
+      ScanIndexForward: false,
+    });
+    expect(queries[0]?.input.ExclusiveStartKey).toBeUndefined();
+    expect(queries[1]?.input.ExclusiveStartKey).toEqual(pageKey);
+  });
+
   it('queries stale state and releases only its claim', async () => {
     const send = vi.fn(async (command: unknown) => {
       if (command instanceof QueryCommand) {
@@ -226,7 +267,7 @@ describe('AwsMicrovmService', () => {
         ingressArn: 'arn:ingress',
         executionRoleArn: 'arn:role',
         logGroup: '/microvms',
-        payload: '{"version":2}',
+        payload: '{"version":3,"accessMode":"terminal"}',
         clientToken: 'session-1',
         idleAfterSeconds: 900,
         suspendedRetentionSeconds: 3_600,
@@ -249,7 +290,7 @@ describe('AwsMicrovmService', () => {
         suspendedDurationSeconds: 3_600,
       },
       maximumDurationInSeconds: 28_800,
-      runHookPayload: '{"version":2}',
+      runHookPayload: '{"version":3,"accessMode":"terminal"}',
     });
   });
 

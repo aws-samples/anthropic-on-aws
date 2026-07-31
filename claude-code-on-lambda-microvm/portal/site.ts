@@ -123,6 +123,9 @@ export const PORTAL_HTML = `<!doctype html>
     align-items: end;
     gap: .8rem;
   }
+  #new.terminal-access {
+    grid-template-columns: minmax(14rem, 1fr) auto auto;
+  }
   .field { display: grid; gap: .32rem; min-width: 0; }
   .field-label, legend {
     color: var(--muted);
@@ -176,6 +179,18 @@ export const PORTAL_HTML = `<!doctype html>
     justify-content: space-between;
     gap: .75rem;
     margin-bottom: .55rem;
+  }
+  .refresh-controls {
+    display: flex;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: .65rem;
+  }
+  .refresh-controls button { min-width: 7rem; }
+  .refresh-status {
+    color: var(--muted);
+    font-size: .78rem;
+    text-align: right;
   }
   .table-scroll {
     overflow-x: auto;
@@ -268,6 +283,15 @@ export const PORTAL_HTML = `<!doctype html>
     box-shadow: 0 18px 50px #18212638;
   }
   dialog::backdrop { background: #18212680; }
+  #terminal-dialog {
+    width: min(72rem, calc(100% - 2rem));
+    height: min(48rem, calc(100vh - 2rem));
+    overflow: hidden;
+  }
+  #terminal-dialog[open] {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
   .dialog-head {
     display: flex;
     align-items: center;
@@ -280,6 +304,59 @@ export const PORTAL_HTML = `<!doctype html>
   .tunnel-summary { margin: 0 0 1rem; }
   .tunnel-summary strong { display: block; }
   .tunnel-summary code { color: var(--muted); }
+  .dialog-head-actions {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+  }
+  .terminal-status {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    color: var(--muted);
+    font-size: .78rem;
+    white-space: nowrap;
+  }
+  .terminal-body {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: auto minmax(18rem, 1fr);
+    gap: .65rem;
+    padding: .75rem;
+  }
+  .terminal-context {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: .55rem;
+  }
+  .terminal-context strong {
+    flex: 0 0 auto;
+  }
+  .terminal-context code {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: .75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #terminal-screen {
+    min-width: 0;
+    min-height: 18rem;
+    overflow: hidden;
+    border: 1px solid #354146;
+    border-radius: 4px;
+    background: #101416;
+    padding: .55rem;
+  }
+  #terminal-screen .xterm {
+    height: 100%;
+  }
+  #terminal-screen .xterm-viewport {
+    scrollbar-color: #66777d #101416;
+  }
   .auth-state {
     margin: 1rem -1rem;
     border-top: 1px solid var(--line);
@@ -339,9 +416,20 @@ export const PORTAL_HTML = `<!doctype html>
     .identity { align-items: flex-end; flex-direction: column; gap: .35rem; }
     #who { max-width: 11rem; }
     .shell { padding: 1rem; }
-    #new { grid-template-columns: 1fr; align-items: stretch; }
+    #new, #new.terminal-access {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
     #new button { width: 100%; }
     .dialog-actions > * { flex: 1 1 auto; text-align: center; }
+    #terminal-dialog {
+      width: calc(100% - 1rem);
+      height: calc(100vh - 1rem);
+    }
+    .dialog-head { align-items: flex-start; }
+    .dialog-head-actions { flex-wrap: wrap; justify-content: flex-end; }
+    .terminal-status { order: 3; width: 100%; justify-content: flex-end; }
+    .terminal-context code { display: none; }
   }
 </style>
 </head>
@@ -390,12 +478,12 @@ export const PORTAL_HTML = `<!doctype html>
           <div class="segments">
             <label>
               <input type="radio" name="new-tunnel-provider"
-                     value="github" checked>
+                     value="github">
               GitHub
             </label>
             <label>
               <input type="radio" name="new-tunnel-provider"
-                     value="microsoft">
+                     value="microsoft" checked>
               Microsoft
             </label>
           </div>
@@ -406,7 +494,11 @@ export const PORTAL_HTML = `<!doctype html>
     <section class="sessions-section" aria-labelledby="environments-title">
       <div class="section-heading">
         <h2 id="environments-title">Environments</h2>
-        <button id="refresh" class="quiet" type="button">Refresh</button>
+        <div class="refresh-controls">
+          <span id="refresh-status" class="refresh-status"
+                role="status" aria-live="polite"></span>
+          <button id="refresh" class="quiet" type="button">Refresh</button>
+        </div>
       </div>
       <div class="table-scroll">
         <table>
@@ -429,9 +521,31 @@ export const PORTAL_HTML = `<!doctype html>
   </main>
 </div>
 
+<dialog id="terminal-dialog" aria-labelledby="terminal-title">
+  <div class="dialog-head">
+    <h2 id="terminal-title">Terminal</h2>
+    <div class="dialog-head-actions">
+      <span class="terminal-status" role="status" aria-live="polite">
+        <span id="terminal-status-dot" class="status-dot"
+              aria-hidden="true"></span>
+        <span id="terminal-status-text">Disconnected</span>
+      </span>
+      <button id="terminal-reconnect" type="button" hidden>Reconnect</button>
+      <button id="terminal-close" class="quiet" type="button">Close</button>
+    </div>
+  </div>
+  <div class="terminal-body">
+    <div class="terminal-context">
+      <strong id="terminal-workspace"></strong>
+      <code id="terminal-session"></code>
+    </div>
+    <div id="terminal-screen" aria-label="MicroVM terminal"></div>
+  </div>
+</dialog>
+
 <dialog id="tunnel-dialog" aria-labelledby="tunnel-title">
   <div class="dialog-head">
-    <h2 id="tunnel-title">Authenticate VS Code tunnel</h2>
+    <h2 id="tunnel-title">Connect with VS Code</h2>
     <button id="tunnel-close" class="quiet" type="button">Close</button>
   </div>
   <div class="dialog-body">
@@ -443,11 +557,11 @@ export const PORTAL_HTML = `<!doctype html>
       <legend>Identity provider</legend>
       <div class="segments">
         <label>
-          <input type="radio" name="tunnel-provider" value="github" checked>
+          <input type="radio" name="tunnel-provider" value="github">
           GitHub
         </label>
         <label>
-          <input type="radio" name="tunnel-provider" value="microsoft">
+          <input type="radio" name="tunnel-provider" value="microsoft" checked>
           Microsoft
         </label>
       </div>
@@ -479,6 +593,8 @@ export const PORTAL_HTML = `<!doctype html>
     </div>
   </div>
 </dialog>
+<link rel="stylesheet" href="portal/xterm.css?v=6.0.0">
+<script src="portal/terminal-vendor.js?v=6.0.0"></script>
 <script src="portal/app.js"></script>
 </body>
 </html>
@@ -490,6 +606,17 @@ var pageUrl = location.origin +
   location.pathname.replace(/[/]+$/, '');
 var configPromise;
 var refreshPromise;
+var refreshIsLive = false;
+var terminalSession;
+var terminal;
+var terminalFitAddon;
+var terminalSocket;
+var terminalDataSubscription;
+var terminalBinarySubscription;
+var terminalResizeObserver;
+var terminalStartTimer;
+var terminalInitialized = false;
+var terminalGeneration = 0;
 var tunnelSession;
 var tunnelJob;
 var tunnelPollTimer;
@@ -538,6 +665,7 @@ function signedIn() {
 
 function signOut() {
   stopTunnelPoll();
+  if (el('terminal-dialog').open) { el('terminal-dialog').close(); }
   if (el('tunnel-dialog').open) { el('tunnel-dialog').close(); }
   sessionStorage.removeItem('portalIdToken');
   sessionStorage.removeItem('portalVerifier');
@@ -654,6 +782,48 @@ async function action(method, path, body) {
   }
 }
 
+async function restartEnvironment(session, button) {
+  if (!confirm('Restart ' + session.workspaceId + '?')) { return; }
+  clearError();
+  button.disabled = true;
+  button.textContent = 'Restarting...';
+  try {
+    await api('DELETE', '/sessions/' + session.sessionId);
+    var deadline = Date.now() + 120000;
+    var stopped = false;
+    while (Date.now() < deadline) {
+      var current = await api(
+        'GET', '/sessions/' + session.sessionId);
+      if (
+        current.state === 'TERMINATED' ||
+        current.state === 'FAILED'
+      ) {
+        stopped = true;
+        break;
+      }
+      await new Promise(function (resolve) {
+        setTimeout(resolve, 2000);
+      });
+    }
+    if (!stopped) {
+      throw new Error('Timed out waiting for the environment to stop');
+    }
+    await api('POST', '/sessions', {
+      workspaceId: session.workspaceId,
+      accessMode: session.accessMode || 'terminal',
+      inferenceMode: session.inferenceMode,
+      tunnelProvider: session.accessMode === 'vscode'
+        ? session.tunnelProvider : undefined
+    });
+    await refresh(true);
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Restart';
+  }
+}
+
 function sessionRow(session) {
   var row = document.createElement('tr');
   var workspaceCell = document.createElement('td');
@@ -699,11 +869,11 @@ function sessionRow(session) {
         provider === 'github' ? 'GitHub' : 'Microsoft';
       providerSelect.append(option);
     });
-    providerSelect.value = session.tunnelProvider || 'github';
+    providerSelect.value = session.tunnelProvider || 'microsoft';
     providerSelect.disabled = session.state !== 'RUNNING';
     providerSelect.addEventListener('change', function () {
       var requestedProvider = providerSelect.value;
-      providerSelect.value = session.tunnelProvider || 'github';
+      providerSelect.value = session.tunnelProvider || 'microsoft';
       openTunnelDialog(session, requestedProvider);
     });
     providerCell.append(providerSelect);
@@ -724,16 +894,18 @@ function sessionRow(session) {
   var actionCell = document.createElement('td');
   var actions = document.createElement('div');
   actions.className = 'actions';
-  if (
-    session.state === 'RUNNING' &&
-    session.accessMode === 'vscode' &&
-    session.tunnelName
-  ) {
-    actions.append(actionButton('Authenticate', function () {
-      openTunnelDialog(
-        session,
-        providerSelect ? providerSelect.value : undefined);
-    }, 'primary'));
+  if (session.state === 'RUNNING') {
+    if (session.accessMode === 'vscode' && session.tunnelName) {
+      actions.append(actionButton('Connect', function () {
+        openTunnelDialog(
+          session,
+          providerSelect ? providerSelect.value : undefined);
+      }, 'primary'));
+    } else if (session.accessMode !== 'vscode') {
+      actions.append(actionButton('Connect', function () {
+        openTerminalDialog(session);
+      }, 'primary'));
+    }
   }
   if (session.state === 'RUNNING') {
     actions.append(actionButton('Suspend', function () {
@@ -744,6 +916,16 @@ function sessionRow(session) {
     actions.append(actionButton('Resume', function () {
       action('POST', '/sessions/' + session.sessionId + '/resume');
     }));
+  }
+  if (
+    session.state === 'RUNNING' ||
+    session.state === 'SUSPENDED' ||
+    session.state === 'FAILED'
+  ) {
+    var restartButton = actionButton('Restart', function () {
+      restartEnvironment(session, restartButton);
+    });
+    actions.append(restartButton);
   }
   if (session.state !== 'TERMINATED') {
     actions.append(actionButton('Terminate', function () {
@@ -773,10 +955,17 @@ function badge(state) {
   return span;
 }
 
-async function refresh() {
+async function refresh(live) {
   if (!signedIn()) { return; }
-  if (refreshPromise) { return refreshPromise; }
-  refreshPromise = api('GET', '/sessions')
+  var useLiveState = live === true;
+  if (refreshPromise) {
+    if (!useLiveState || refreshIsLive) { return refreshPromise; }
+    return refreshPromise.then(function () { return refresh(true); });
+  }
+  refreshIsLive = useLiveState;
+  refreshPromise = api(
+    'GET',
+    useLiveState ? '/sessions?refresh=true' : '/sessions')
     .then(function (data) {
       var body = el('sessions');
       body.replaceChildren();
@@ -785,8 +974,31 @@ async function refresh() {
       });
       el('empty').hidden = data.sessions.length !== 0;
     })
-    .finally(function () { refreshPromise = undefined; });
+    .finally(function () {
+      refreshPromise = undefined;
+      refreshIsLive = false;
+    });
   return refreshPromise;
+}
+
+async function manualRefresh() {
+  var button = el('refresh');
+  var status = el('refresh-status');
+  clearError();
+  button.disabled = true;
+  button.textContent = 'Refreshing...';
+  status.textContent = 'Checking live state...';
+  try {
+    await refresh(true);
+    status.textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch (error) {
+    status.textContent = 'Refresh failed';
+    showError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Refresh';
+  }
 }
 
 function render() {
@@ -802,6 +1014,318 @@ function render() {
 function activeTunnelStatus(status) {
   return ['QUEUED', 'CONNECTING', 'AWAITING_USER', 'STARTING']
     .indexOf(status) >= 0;
+}
+
+function setTerminalStatus(label, state) {
+  el('terminal-status-text').textContent = label;
+  el('terminal-status-dot').className = 'status-dot' +
+    (state === 'connecting' ? ' active' : '') +
+    (state === 'connected' ? ' ready' : '') +
+    (state === 'failed' ? ' failed' : '');
+  el('terminal-reconnect').hidden =
+    state === 'connecting' || state === 'connected';
+}
+
+function fitTerminal() {
+  if (
+    !terminal ||
+    !terminalFitAddon ||
+    !el('terminal-dialog').open
+  ) {
+    return;
+  }
+  try {
+    terminalFitAddon.fit();
+    sendTerminalResize();
+  } catch (error) {
+    // The terminal can be between layout and disposal during dialog close.
+  }
+}
+
+function sendTerminalResize() {
+  if (
+    !terminal ||
+    !terminalInitialized ||
+    !terminalSocket ||
+    terminalSocket.readyState !== WebSocket.OPEN
+  ) {
+    return;
+  }
+  terminalSocket.send(JSON.stringify({
+    type: 'resize',
+    rows: Math.max(1, Math.min(1000, terminal.rows)),
+    cols: Math.max(1, Math.min(1000, terminal.cols))
+  }));
+}
+
+function ensureTerminal() {
+  if (terminal) { return; }
+  if (
+    typeof Terminal !== 'function' ||
+    !globalThis.FitAddon ||
+    typeof globalThis.FitAddon.FitAddon !== 'function'
+  ) {
+    throw new Error('The browser terminal failed to load');
+  }
+  terminal = new Terminal({
+    allowTransparency: false,
+    convertEol: false,
+    cursorBlink: true,
+    cursorStyle: 'block',
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace',
+    fontSize: 14,
+    lineHeight: 1.15,
+    scrollback: 10000,
+    screenReaderMode: true,
+    theme: {
+      background: '#101416',
+      foreground: '#e8edef',
+      cursor: '#6dd6dc',
+      cursorAccent: '#101416',
+      selectionBackground: '#2f6f74',
+      black: '#101416',
+      red: '#e06c75',
+      green: '#8fcb88',
+      yellow: '#e5c07b',
+      blue: '#72a7d8',
+      magenta: '#c792c7',
+      cyan: '#68c9cf',
+      white: '#d9e0e2',
+      brightBlack: '#66777d',
+      brightRed: '#ef8c94',
+      brightGreen: '#a9d7a4',
+      brightYellow: '#f0d292',
+      brightBlue: '#8ebbe3',
+      brightMagenta: '#d8a8d8',
+      brightCyan: '#82d8dc',
+      brightWhite: '#ffffff'
+    }
+  });
+  terminalFitAddon = new globalThis.FitAddon.FitAddon();
+  terminal.loadAddon(terminalFitAddon);
+  terminal.open(el('terminal-screen'));
+  terminalDataSubscription = terminal.onData(function (data) {
+    if (
+      terminalInitialized &&
+      terminalSocket &&
+      terminalSocket.readyState === WebSocket.OPEN
+    ) {
+      terminalSocket.send(new TextEncoder().encode(data));
+    }
+  });
+  terminalBinarySubscription = terminal.onBinary(function (data) {
+    if (
+      terminalInitialized &&
+      terminalSocket &&
+      terminalSocket.readyState === WebSocket.OPEN
+    ) {
+      var bytes = new Uint8Array(data.length);
+      for (var index = 0; index < data.length; index += 1) {
+        bytes[index] = data.charCodeAt(index) & 255;
+      }
+      terminalSocket.send(bytes);
+    }
+  });
+  terminalResizeObserver = new ResizeObserver(function () {
+    fitTerminal();
+  });
+  terminalResizeObserver.observe(el('terminal-screen'));
+  setTimeout(fitTerminal, 0);
+}
+
+function closeTerminalSocket() {
+  terminalGeneration += 1;
+  terminalInitialized = false;
+  if (terminalStartTimer) {
+    clearTimeout(terminalStartTimer);
+    terminalStartTimer = undefined;
+  }
+  var socket = terminalSocket;
+  terminalSocket = undefined;
+  if (
+    socket &&
+    (socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING)
+  ) {
+    socket.close(1000, 'Browser terminal closing');
+  }
+}
+
+function disposeTerminal() {
+  closeTerminalSocket();
+  if (terminalResizeObserver) {
+    terminalResizeObserver.disconnect();
+    terminalResizeObserver = undefined;
+  }
+  if (terminalDataSubscription) {
+    terminalDataSubscription.dispose();
+    terminalDataSubscription = undefined;
+  }
+  if (terminalBinarySubscription) {
+    terminalBinarySubscription.dispose();
+    terminalBinarySubscription = undefined;
+  }
+  if (terminal) {
+    terminal.dispose();
+    terminal = undefined;
+  }
+  terminalFitAddon = undefined;
+  el('terminal-screen').replaceChildren();
+}
+
+function validShellUrl(value) {
+  var url = new URL(value);
+  if (
+    url.protocol !== 'wss:' ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !== '/shell'
+  ) {
+    throw new Error('The MicroVM returned an invalid shell endpoint');
+  }
+  return url.toString();
+}
+
+function isTerminalControlMessage(text) {
+  if (!text.startsWith('{')) { return false; }
+  try {
+    var value = JSON.parse(text);
+    return Boolean(
+      value &&
+      typeof value === 'object' &&
+      typeof value.type === 'string');
+  } catch (error) {
+    return false;
+  }
+}
+
+function initializeTerminalSession(generation) {
+  if (
+    generation !== terminalGeneration ||
+    terminalInitialized ||
+    !terminalSocket ||
+    terminalSocket.readyState !== WebSocket.OPEN
+  ) {
+    return;
+  }
+  terminalInitialized = true;
+  if (terminalStartTimer) {
+    clearTimeout(terminalStartTimer);
+    terminalStartTimer = undefined;
+  }
+  fitTerminal();
+  terminalSocket.send(new TextEncoder().encode(
+    'exec setpriv --reuid=1000 --regid=1000 --init-groups ' +
+    '/usr/local/bin/developer-shell\\n'));
+  setTerminalStatus('Connected', 'connected');
+  terminal.focus();
+}
+
+function writeTerminalFrame(data, generation) {
+  if (generation !== terminalGeneration || !terminal) { return; }
+  initializeTerminalSession(generation);
+  if (typeof data === 'string') {
+    if (!isTerminalControlMessage(data)) {
+      terminal.write(data);
+    }
+    return;
+  }
+  if (data instanceof ArrayBuffer) {
+    terminal.write(new Uint8Array(data));
+    return;
+  }
+  if (data instanceof Blob) {
+    data.arrayBuffer().then(function (buffer) {
+      if (generation === terminalGeneration && terminal) {
+        terminal.write(new Uint8Array(buffer));
+      }
+    }).catch(function () {
+      setTerminalStatus('Connection error', 'failed');
+    });
+  }
+}
+
+async function connectTerminal() {
+  if (!terminalSession) { return; }
+  closeTerminalSocket();
+  var generation = terminalGeneration;
+  terminal.reset();
+  setTerminalStatus('Connecting', 'connecting');
+  try {
+    var connection = await api(
+      'POST',
+      '/sessions/' + terminalSession.sessionId + '/connect',
+      {});
+    if (
+      generation !== terminalGeneration ||
+      !terminalSession ||
+      !el('terminal-dialog').open
+    ) {
+      return;
+    }
+    var shellUrl = validShellUrl(connection.shellUrl);
+    if (!connection.shellToken) {
+      throw new Error('The MicroVM returned no shell credential');
+    }
+    var socket = new WebSocket(shellUrl, [
+      'lambda-microvms',
+      'lambda-microvms.authentication.' + connection.shellToken
+    ]);
+    terminalSocket = socket;
+    socket.binaryType = 'arraybuffer';
+    socket.addEventListener('open', function () {
+      if (generation !== terminalGeneration) {
+        socket.close(1000, 'Stale browser terminal');
+        return;
+      }
+      setTerminalStatus('Preparing shell', 'connecting');
+      terminalStartTimer = setTimeout(function () {
+        initializeTerminalSession(generation);
+      }, 1500);
+    });
+    socket.addEventListener('message', function (event) {
+      writeTerminalFrame(event.data, generation);
+    });
+    socket.addEventListener('error', function () {
+      if (generation === terminalGeneration) {
+        setTerminalStatus('Connection error', 'failed');
+      }
+    });
+    socket.addEventListener('close', function (event) {
+      if (generation !== terminalGeneration) { return; }
+      terminalInitialized = false;
+      terminalSocket = undefined;
+      if (terminalStartTimer) {
+        clearTimeout(terminalStartTimer);
+        terminalStartTimer = undefined;
+      }
+      setTerminalStatus(
+        event.code === 1000 ? 'Disconnected' : 'Connection lost',
+        event.code === 1000 ? undefined : 'failed');
+    });
+  } catch (error) {
+    if (generation !== terminalGeneration) { return; }
+    setTerminalStatus('Connection failed', 'failed');
+    showError(error);
+  }
+}
+
+function openTerminalDialog(session) {
+  clearError();
+  terminalSession = session;
+  el('terminal-workspace').textContent = session.workspaceId;
+  el('terminal-session').textContent = session.sessionId;
+  el('terminal-dialog').showModal();
+  try {
+    ensureTerminal();
+    connectTerminal();
+  } catch (error) {
+    setTerminalStatus('Unavailable', 'failed');
+    showError(error);
+  }
 }
 
 function resetTunnelDialog(session, provider) {
@@ -822,7 +1346,7 @@ function resetTunnelDialog(session, provider) {
   el('tunnel-cancel').hidden = true;
   el('open-vscode').hidden = true;
   setSelectedProvider(
-    provider || session.tunnelProvider || 'github');
+    provider || session.tunnelProvider || 'microsoft');
   setProviderEnabled(true);
 }
 
@@ -934,7 +1458,7 @@ function setSelectedProvider(provider) {
 function selectedProvider() {
   var selected =
     document.querySelector('input[name="tunnel-provider"]:checked');
-  return selected ? selected.value : 'github';
+  return selected ? selected.value : 'microsoft';
 }
 
 function setProviderEnabled(enabled) {
@@ -1028,8 +1552,7 @@ el('login').addEventListener('click', function () {
 });
 el('signout').addEventListener('click', signOut);
 el('refresh').addEventListener('click', function () {
-  clearError();
-  refresh().catch(showError);
+  manualRefresh();
 });
 el('new').addEventListener('submit', function (event) {
   event.preventDefault();
@@ -1049,6 +1572,18 @@ el('new').addEventListener('submit', function (event) {
   }).then(function (result) {
     if (result) { el('workspace').value = ''; }
   }).finally(function () { submit.disabled = false; });
+});
+el('terminal-close').addEventListener('click', function () {
+  el('terminal-dialog').close();
+});
+el('terminal-dialog').addEventListener('close', function () {
+  disposeTerminal();
+  terminalSession = undefined;
+  setTerminalStatus('Disconnected');
+});
+el('terminal-reconnect').addEventListener('click', function () {
+  clearError();
+  connectTerminal();
 });
 el('tunnel-close').addEventListener('click', function () {
   el('tunnel-dialog').close();
@@ -1078,12 +1613,13 @@ el('tunnel-cancel').addEventListener('click', function () {
 el('copy-code').addEventListener('click', function () {
   copyDeviceCode();
 });
-
 function syncNewProviderField() {
   var access = document.querySelector(
     'input[name="access-mode"]:checked');
-  el('new-provider-field').disabled =
-    Boolean(access && access.value !== 'vscode');
+  var terminalAccess = Boolean(access && access.value !== 'vscode');
+  el('new-provider-field').disabled = terminalAccess;
+  el('new-provider-field').hidden = terminalAccess;
+  el('new').classList.toggle('terminal-access', terminalAccess);
 }
 setInterval(function () {
   refresh().catch(showError);
