@@ -1,0 +1,26 @@
+name: anthropic-aws-news-tracker
+on:
+  schedule:
+    - cron: "0 22 * * *" # 8am AEST daily
+  workflow_dispatch: {}
+jobs:
+  fetch-news:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run news fetcher
+        id: fetch
+        run: node scripts/anthropic-aws-news/fetch-news.mjs
+
+      - name: Commit tracker updates
+        if: steps.fetch.outputs.new_items == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/anthropic-aws-tracker.md scripts/anthropic-aws-news/seen-items.json
+          git commit -m "chore(news-tracker): record new Anthropic/AWS announcements"
+          git push

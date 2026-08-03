@@ -101,7 +101,7 @@ The IAM policy for the task role looks like:
 }
 ```
 
-The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-4-8`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`apac.` — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
+The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-4-8`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`au.`, plus `jp.` for Opus 4.8 and Haiku 4.5 (Sonnet 5 has no `jp.` profile) — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
 
 ### 4. Claude Code v2.1.195 or later
 
@@ -237,7 +237,8 @@ upstreams:
     auth: {}              # uses ECS task role / instance profile
 
 # Explicit catalog → global cross-region inference profiles, so the config is
-# region-agnostic. (For data residency, swap global. for a geo prefix: us./eu./apac.)
+# region-agnostic. (For data residency, swap global. for a geo prefix: us./eu./au.,
+# plus jp. for Opus 4.8 and Haiku 4.5 — Sonnet 5 has no jp. profile.)
 auto_include_builtin_models: false
 models:
   - id: claude-opus-4-8

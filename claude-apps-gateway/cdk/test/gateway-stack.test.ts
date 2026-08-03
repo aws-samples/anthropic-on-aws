@@ -82,7 +82,7 @@ describe('pass 2 (imageReady: true) — full stack', () => {
       invokeStatement('arn:aws:bedrock:*::foundation-model/anthropic.*'),
     );
     // inference-profile ARN uses the GLOBAL cross-region prefix (global.anthropic.*),
-    // matching gateway.yaml's models: block — the us./eu./apac. prefixes would 403.
+    // matching gateway.yaml's models: block — a geo prefix like us./eu./au. would 403.
     template.hasResourceProperties(
       'AWS::IAM::Policy',
       invokeStatement(Match.stringLikeRegexp('inference-profile/global\\.anthropic\\.\\*')),

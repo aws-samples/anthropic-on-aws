@@ -167,6 +167,11 @@ npm install
 
 **Option A: Full deploy (recommended).** This runs CDK, builds the container image via CodeBuild, and starts the service:
 
+> [!IMPORTANT]
+> Requires the Linux `claude` binary staged first — see [step 5](#5-the-claude-code-linux-x64-binary)
+> above. `deploy.sh` checks for it before creating any AWS resources and exits with
+> a clear error if it's missing.
+
 ```bash
 ./scripts/deploy.sh
 ```
@@ -304,7 +309,8 @@ inference confined to a specific geography, switch the catalog off global:
 
 - Edit the `models:` block (in `deploy.sh`'s inline `gateway.yaml`, or your stamped
   `gateway.yaml` on the hardened path) — replace each `global.` prefix with a geo
-  profile (`us.` / `eu.` / `apac.`). Confirm the exact id per model with
+  profile (`us.` / `eu.` / `au.`, plus `jp.` for Opus 4.8 and Haiku 4.5 — Sonnet 5 has
+  no `jp.` profile). Confirm the exact id per model with
   `aws bedrock list-inference-profiles --region <your-region>` — they're not a clean
   substitution (e.g. Claude Haiku 4.5 has no short alias, only a dated id).
 - Change `inference-profile/global.anthropic.*` → your geo prefix in

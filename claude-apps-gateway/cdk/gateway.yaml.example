@@ -179,8 +179,9 @@ managed:
 #
 # Model catalog. Each id maps to a GLOBAL cross-region inference profile
 # (global.anthropic.*), which resolves from ANY Bedrock region — so this config is
-# region-agnostic. For data residency, swap global. for a geo profile (us./eu./apac.)
-# and confirm the exact id per model with `aws bedrock list-inference-profiles`
+# region-agnostic. For data residency, swap global. for a geo profile (us./eu./au.,
+# plus jp. for Opus 4.8 and Haiku 4.5 — Sonnet 5 has no jp. profile) and confirm the
+# exact id per model with `aws bedrock list-inference-profiles`
 # (see the README "Regions & data residency"). Claude Haiku 4.5 has no short alias —
 # it uses the dated profile id. For provisioned throughput, point `bedrock:` at the PT ARN.
 #
