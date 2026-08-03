@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-03
+
+- [AWS Security Hub MCP App brings exposure findings into your AI-assisted workflow (Preview)](https://aws.amazon.com/about-aws/whats-new/2026/07/aws-security-hub-mcp-app/) — *AWS What's New* (Mon, 27 Jul 2026 17:00:00 GMT)
+- [AWS Weekly Roundup: Local Zone in Athens, Claude Opus 5 on AWS, Lambda durable execution for .NET, and more (July 27, 2026)](https://aws.amazon.com/blogs/aws/aws-weekly-roundup-july-27-2026/) — *AWS News Blog* (Mon, 27 Jul 2026 14:54:41 +0000)
+
 ## 2026-07-27
 
 - [Claude Opus 5 is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/07/claude-opus-5-aws/) — *AWS What's New* (Fri, 24 Jul 2026 15:00:00 GMT)
