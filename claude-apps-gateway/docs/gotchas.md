@@ -413,3 +413,37 @@ interactive picker doesn't special-case an existing gateway session.
 just use the session (`claude -p "…"`). Confirm the session works end-to-end with a
 real prompt; an `inference` event in the gateway audit log is the proof that
 CLI → gateway → Bedrock → back all work.
+
+---
+
+## 19. Claude Desktop needs a server-side opt-in, or `/user/bootstrap` 404s
+
+**Symptom:** Claude Desktop is pointed at the gateway (its managed configuration has
+`bootstrapUrl: <public_url>/user/bootstrap`), sign-in succeeds, but Desktop reports it
+**couldn't fetch its bootstrap configuration**. The gateway audit log shows
+`desktop_bootstrap.denied` with a reason.
+
+**Why:** unlike the CLI, Desktop's config endpoint is opt-in per policy. `/user/bootstrap`
+returns `404` unless the policy matching the user carries a `desktop` key. The denial
+reason names which case you hit:
+- `not_configured` — no policy in the whole config has a `desktop` key.
+- `policy_not_opted_in` — a policy matched the user, but it (and the `match: {}` base it
+  inherits from) has no `desktop` key.
+- `no_policy_matched` — no policy matched the user at all (check group/email matching).
+
+This is the *safe* default: leaving `desktop` out means the gateway serves nobody's Desktop
+config, so a fleet that only uses the CLI is never accidentally exposing a Desktop surface.
+
+**Fix:** add a `desktop` key to the policy that matches the user, or to the `match: {}`
+base layer to opt in everyone who inherits it. `desktop: {}` alone is enough; the optional
+feature gates (`isLocalDevMcpEnabled`, `banner`, …) are documented on capability 2 in the
+[README](../README.md#claude-desktop-overlay). The gateway server must be on **v2.1.203+**
+(this example pins 2.1.218). The template ships this block commented out —
+[`cdk/gateway.yaml.template`](../cdk/gateway.yaml.template), under the `match: {}` policy.
+
+**Not the same as** `parentSettingsBehavior: "merge"`. That key governs a *different*
+Desktop integration — whether the embedded Claude Code sessions Desktop launches accept the
+gateway's policy as parent settings — and lives in the client `managed-settings.json` (and
+mirrored in the policy's `cli` block), not in the `desktop` block. Missing *that* key fails
+silently with no 404 and no warning; see the ["How developers connect"](../README.md#how-developers-connect)
+section. A full Desktop deployment sets both.
