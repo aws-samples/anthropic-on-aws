@@ -149,6 +149,13 @@ managed:
     #     availableModels: [claude-haiku-4-5]
     #     enforceAvailableModels: true
     #     permissions: { allow: [Read, Grep] }
+    #   # Claude Desktop feature gates (see the desktop: note on the base policy below).
+    #   desktop:
+    #     isLocalDevMcpEnabled: false
+    #     disableAutoUpdates: true
+    #     # `enabled: true` is REQUIRED — Desktop's banner.enabled has no default, so a
+    #     # banner with only `text:` renders nothing.
+    #     banner: { enabled: true, text: "Contractor build: internal use only" }
     # Per-team cost attribution: OTEL_RESOURCE_ATTRIBUTES is stamped on every
     # OTLP export, so CloudWatch's PromQL layer can group spend/usage by team
     # (sum by ("@resource.team.id") (...)) same as user.id/user.email already are.
@@ -165,6 +172,46 @@ managed:
           - claude-haiku-4-5
           # - claude-fable-5   # opt-in — see the models: block note below
         enforceAvailableModels: true
+        # CLAUDE DESKTOP, part 1 of 2 (uncomment if you deploy Desktop). Desktop hands
+        # this policy to the embedded Claude Code sessions it launches as PARENT
+        # settings, and Claude Code IGNORES parent settings on a machine with an
+        # admin-deployed managed source unless the WINNING source opts in with this key
+        # — so mirror it in the MDM managed-settings.json (and in any HKLM policy /
+        # macOS plist, which outrank the file). Machines that never sign in to the
+        # gateway get policy from that file alone. Left off by default because it also
+        # lets ANY launching host (Agent SDK app, IDE extension) supply parent settings;
+        # the filter is restrictive-only except for allow rules and sandbox allowlists,
+        # so pair it with the allowManaged*Only locks. See the README.
+        # parentSettingsBehavior: merge
+      #
+      # CLAUDE DESKTOP, part 2 of 2 — the /user/bootstrap opt-in. Presence of a
+      # `desktop` key is what makes the gateway serve Desktop's configuration to this
+      # policy's users; without it /user/bootstrap 404s for everyone (the safe default,
+      # so this stays commented) and Desktop reports it can't fetch its config. Each
+      # request is audited as desktop_bootstrap.serve / .denied. On the match:{} base
+      # layer it opts in every policy that inherits. Requires gateway >= 2.1.203.
+      #
+      # `desktop: {}` on its own is a complete opt-in. The keys below are optional
+      # feature gates with no CLI equivalent; each one omitted keeps Desktop's own
+      # default, and an UNKNOWN key here fails gateway boot. The rest of the response
+      # comes from the cli: block above — availableModels, bare tool-name
+      # permissions.deny entries, sandbox.network.allowedDomains, and an OTLP endpoint
+      # when telemetry.forward_to is set. hooks and scoped rules like Bash(npm *) have
+      # no Desktop equivalent and are dropped.
+      #
+      # Desktop clients need the other half: `bootstrapUrl` set to
+      # <public_url>/user/bootstrap in Claude Desktop's own managed configuration — a
+      # DIFFERENT key from the CLI's forceLoginGatewayUrl.
+      # desktop:
+      #   modelDiscoveryEnabled: false          # rely only on availableModels above
+      #   coworkTabEnabled: true
+      #   isClaudeCodeForDesktopEnabled: true
+      #   isDesktopExtensionEnabled: true
+      #   isDesktopExtensionSignatureRequired: true
+      #   isLocalDevMcpEnabled: false
+      #   disableAutoUpdates: false
+      #   autoUpdaterEnforcementHours: 72
+      #   banner: { enabled: true, text: "Internal gateway build", linkUrl: https://wiki.example.com/claude }
 
 # Optional blocks, left commented:
 #

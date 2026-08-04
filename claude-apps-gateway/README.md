@@ -109,7 +109,7 @@ Both the gateway server (Linux binary) and each developer's Claude Code CLI must
 
 Developers can update with `claude update`. The gateway server uses the same binary, downloaded from the Claude Code release page and packaged into a container image.
 
-Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot. The worked example in this repo pins **2.1.218**, which also fixes gateway spend metering to price Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates — directly relevant to this example's `global.anthropic.*` inference profiles. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
+Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot; v2.1.203 added the Claude Desktop bootstrap endpoint (`/user/bootstrap`). The worked example in this repo pins **2.1.218**, which also fixes gateway spend metering to price Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates — directly relevant to this example's `global.anthropic.*` inference profiles. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
 
 ### 5. Device management (for pushing settings to developers)
 
@@ -119,7 +119,7 @@ You need a way to deploy a JSON file to developer machines. This file tells Clau
 - Ansible/Chef/Puppet (Linux)
 - Manual file placement (for testing)
 
-Without this file, developers see the standard login picker instead of the Cloud gateway screen.
+Without this file, developers see the standard login picker instead of the Cloud gateway screen. If you also deploy Claude Desktop, the same MDM tool delivers Desktop's separate managed configuration (the `bootstrapUrl` key) — see ["How developers connect"](#claude-desktop).
 
 ---
 
@@ -195,6 +195,73 @@ managed:
 | Tool permissions / hooks / env (`cli` managed settings) | **Client-side** (delivered to the CLI) | **Yes** |
 
 Tool/permission policies are defense-in-depth (a patched client can ignore them); for a hard boundary use MDM-locked settings on managed devices. The governance guarantees are the server-side rows.
+
+<a id="claude-desktop-overlay"></a>
+**Claude Desktop overlay.** The same gateway serves Claude Desktop, but only for policies
+that explicitly opt in. `/user/bootstrap` — the endpoint Desktop fetches its config from —
+returns `404` unless the matching policy carries a `desktop` key. An empty `desktop: {}`
+is enough to opt a policy in, and a `desktop` key on the `match: {}` base layer opts in
+every policy that inherits it. Requires the gateway server on **v2.1.203+** (this example
+pins 2.1.218). Pair it with `bootstrapUrl` on the client side — see
+["How developers connect"](#claude-desktop).
+
+```yaml
+managed:
+  policies:
+    - match: { groups: [eng-contractors] }
+      cli:
+        availableModels: [claude-haiku-4-5]
+      desktop:                    # presence of this key is the opt-in
+        isLocalDevMcpEnabled: false
+        disableAutoUpdates: true
+        banner: { enabled: true, text: "Contractor build: internal use only" }
+```
+
+The gateway derives most of the bootstrap response from the matched policy's `cli` block:
+the model list from `availableModels`, disabled tools from **bare tool-name**
+`permissions.deny` entries, the egress allowlist from `sandbox.network.allowedDomains`,
+and — when `telemetry.forward_to` is set — an OTLP endpoint pointing back at the gateway,
+which fans out to your destinations. Keys with no Desktop equivalent are omitted, including
+`hooks` and scoped rules like `Bash(npm *)`; if a restriction matters for Desktop, express
+it as a bare tool name.
+
+The `desktop:` block itself holds only the Desktop-specific gates that have no CLI
+equivalent. Every key is optional (Desktop applies its own default for anything omitted),
+and unknown keys **fail gateway boot**:
+
+| Key | Effect |
+|---|---|
+| `modelDiscoveryEnabled` | Whether Desktop fetches `/v1/models` for its picker; `false` relies solely on the policy's model list |
+| `coworkTabEnabled`, `isClaudeCodeForDesktopEnabled` | Show or hide individual tabs |
+| `isDesktopExtensionEnabled`, `isDesktopExtensionSignatureRequired` | Desktop extension loading and signature checks |
+| `isLocalDevMcpEnabled` | Allow locally defined MCP servers |
+| `disableAutoUpdates`, `autoUpdaterEnforcementHours` | Auto-update policy |
+| `banner` | Persistent banner in the app: `enabled`, `text`, `backgroundColor`, `textColor`, `linkUrl` |
+
+Two traps worth knowing before you ship a `desktop` block, both hit on a live deploy:
+
+- **`banner` needs `enabled: true`.** `banner: { text: "…" }` on its own renders *nothing* —
+  Desktop's `enabled` sub-key has no default, and `text` only applies when it's truthy.
+  Write `banner: { enabled: true, text: "…" }`.
+- **The accepted key set is bounded by the pinned gateway version, and validation is
+  strict** — an unknown key fails boot and crash-loops the ECS task. The table above is the
+  full set as of 2.1.221. Notably `chatTabEnabled` is *not* in it, so a Desktop client
+  pointed at the gateway loses its **Chat** tab (Cowork and Code default on; Chat has no
+  default and can't be re-enabled from either side) — filed upstream as
+  [anthropics/claude-code#83723](https://github.com/anthropics/claude-code/issues/83723).
+  See [`docs/upstream-watch.md`](docs/upstream-watch.md) for how to probe a new key against
+  the pin.
+
+If you don't deploy Claude Desktop, leave `desktop` out entirely — `/user/bootstrap` then
+returns `404` for every user, which is the safe default. Either way, `/user/bootstrap` is
+on the same host and port as everything else, so the internal ALB needs no new listener
+rule or target group.
+
+**Audit events.** Each bootstrap fetch is logged as `desktop_bootstrap.serve` or
+`desktop_bootstrap.denied`; the denial carries a reason (`not_configured`,
+`policy_not_opted_in`, or `no_policy_matched`) plus the user's identity. Those land in the
+task's stderr → CloudWatch (`/claude-gateway/gateway`) alongside `session.mint`,
+`inference`, and the rest.
 
 ---
 
@@ -455,9 +522,19 @@ Admins push one JSON file to developer machines via MDM (Jamf, Intune, etc.):
 ```json
 {
   "forceLoginMethod": "gateway",
-  "forceLoginGatewayUrl": "https://claude-gateway.internal.company.com"
+  "forceLoginGatewayUrl": "https://claude-gateway.internal.company.com",
+  "parentSettingsBehavior": "merge"
 }
 ```
+
+The first two keys point `/login` at the gateway. The third is the one that's easy to
+miss: Claude Desktop delivers the gateway's policy to the Claude Code sessions it
+launches as *parent settings*, and Claude Code **ignores parent settings** on any
+machine that has an admin-deployed managed source unless the highest-priority source
+sets `parentSettingsBehavior: "merge"`. Without it, those embedded sessions run with
+none of the gateway's restrictions and **nothing warns you**. Machines where developers
+sign in through `/login` don't need it (every invocation fetches policy from the gateway
+directly), but it's harmless there — so push all three keys everywhere.
 
 Deploy that file to each device, typically via your MDM platform. The file path differs by platform:
 
@@ -467,7 +544,31 @@ Deploy that file to each device, typically via your MDM platform. The file path 
 | Linux and WSL | `/etc/claude-code/managed-settings.json` |
 | Windows | `C:\Program Files\ClaudeCode\managed-settings.json`, or Group Policy via the HKLM registry |
 
+Only the **highest-priority** admin source's value counts, and these are not merged
+across sources: an HKLM registry policy or a macOS managed-preferences plist outranks
+the `managed-settings.json` file, and the gateway's own `managed.policies[].cli` block
+outranks both. So if you deliver policy via Group Policy or a configuration profile, put
+all three keys *there* rather than in the file — and mirror `parentSettingsBehavior` into
+the gateway policy's `cli` block too, since that's what wins on connected machines.
+
 After that, developers just run `claude /login` → press Enter → browser SSO → done.
+
+### Claude Desktop
+
+Claude Desktop connects to the same gateway through a **different** MDM key, in Desktop's
+own managed configuration — not the two `forceLogin*` keys above:
+
+```json
+{ "bootstrapUrl": "https://claude-gateway.internal.company.com/user/bootstrap" }
+```
+
+Desktop derives the OIDC issuer from that URL, runs the same browser SSO, and fetches its
+configuration from the gateway instead of from Anthropic. It needs a **server-side opt-in
+as well**: `/user/bootstrap` returns `404` unless the policy matching the user carries a
+`desktop` key. See ["Claude Desktop" under capability 2](#claude-desktop-overlay) for that half.
+
+A developer who uses both the CLI and Desktop signs in to each separately; the gateway
+session isn't shared between them.
 
 ---
 
@@ -496,7 +597,7 @@ No license fee. Approximately $37/month for minimal AWS infrastructure (ECS $9 +
 No. Gateway requires browser SSO. Configure CI against Amazon Bedrock directly with IAM credentials.
 
 **Q: What about Claude Desktop / Cowork?**
-Claude Desktop (including Chat, Cowork, and Claude Code) can route through the gateway. Configure the gateway URL in the desktop app's managed settings via MDM.
+Supported, with an opt-in on both sides. Client side: set `bootstrapUrl` to `<public_url>/user/bootstrap` in Claude Desktop's own managed configuration — that's a different key from the CLI's `forceLoginGatewayUrl`. Server side: the policy matching the user must carry a `desktop` key, or `/user/bootstrap` returns `404`. Model access and policy then follow the same per-group rules as the CLI. See ["Claude Desktop overlay"](#claude-desktop-overlay). Separately, if Desktop launches embedded Claude Code sessions, `parentSettingsBehavior: "merge"` must be in the winning managed source or those sessions get none of the gateway's policy.
 
 **Q: Can they fail over between regions?**
 Yes. Configure multiple upstreams with different regions. The gateway tries them in order and fails over on 5xx/429.

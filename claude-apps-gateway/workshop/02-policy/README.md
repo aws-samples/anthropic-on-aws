@@ -109,6 +109,30 @@ strictKnownMarketplaces:
   - { source: github, repo: "your-org/approved-plugins" }
 ```
 
+**Extend the policy to Claude Desktop:**
+The same per-group policy can serve Claude Desktop, but only for policies that opt in. Add a
+`desktop` key **alongside** `cli` and the gateway serves that policy's users at
+`/user/bootstrap` (Desktop's config endpoint); leave it out and `/user/bootstrap` returns
+`404`. `desktop: {}` alone opts a policy in — the keys below are Desktop-only feature gates,
+and unknown keys fail gateway boot. Needs the gateway server on v2.1.203+.
+```yaml
+- match: { groups: [contractors] }
+  cli:
+    availableModels: [claude-haiku-4-5]
+  desktop:
+    isLocalDevMcpEnabled: false      # block locally defined MCP servers
+    disableAutoUpdates: true
+    # `enabled: true` is required — a banner with only `text:` renders nothing
+    banner: { enabled: true, text: "Contractor build: internal use only" }
+```
+The bootstrap response is derived from `cli` (models from `availableModels`, disabled tools
+from bare-name `permissions.deny`, egress from `sandbox.network.allowedDomains`); `hooks` and
+scoped rules like `Bash(npm *)` have no Desktop equivalent and are dropped. Desktop clients
+also need `bootstrapUrl` set to `<public_url>/user/bootstrap` in Desktop's own managed
+configuration. Separately, so that the Claude Code sessions Desktop *launches* inherit this
+policy, the client `managed-settings.json` must carry `parentSettingsBehavior: "merge"` —
+see the root README.
+
 ### How groups work
 
 The gateway reads group membership from the IdP token's `groups` claim. For this to work:

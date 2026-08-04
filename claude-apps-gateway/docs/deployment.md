@@ -249,7 +249,8 @@ Then push the managed-settings file to developer machines via MDM:
 ```json
 {
   "forceLoginMethod": "gateway",
-  "forceLoginGatewayUrl": "https://claude-gateway.example.com"
+  "forceLoginGatewayUrl": "https://claude-gateway.example.com",
+  "parentSettingsBehavior": "merge"
 }
 ```
 
@@ -259,9 +260,32 @@ Then push the managed-settings file to developer machines via MDM:
 | Linux / WSL | `/etc/claude-code/managed-settings.json` |
 | Windows | `C:\Program Files\ClaudeCode\managed-settings.json` |
 
+`parentSettingsBehavior: "merge"` is the key that's easy to drop. Claude Code ignores
+settings supplied by a launching process (*parent settings*) on any machine with an
+admin-deployed managed source unless the winning source sets it — and Claude Desktop
+delivers the gateway's policy to the embedded Claude Code sessions it launches *as* parent
+settings. Omit it and those sessions run unpoliced with no warning. Only the
+highest-priority admin source's value counts and the sources don't merge, so if you deliver
+policy via an HKLM registry policy or a macOS managed-preferences plist (both outrank the
+`managed-settings.json` file), put all three keys there instead — and mirror
+`parentSettingsBehavior` into the gateway policy's `cli` block, which outranks both on
+connected machines.
+
 Publish the cert's SHA-256 fingerprint (printed by `setup.sh`, or the
 `CertFingerprintHint` stack output) so developers can confirm the prompt on first
 `/login`. (A public, browser-trusted ACM cert shows no prompt — see prerequisite 2.)
+
+### Claude Desktop
+
+Claude Desktop connects to the same gateway, but through Desktop's own managed
+configuration and a different key — `bootstrapUrl`, pointed at `<public_url>/user/bootstrap`
+— plus a server-side opt-in: the policy matching the user must carry a `desktop` key or
+`/user/bootstrap` returns `404`. The gateway server must be on v2.1.203 or later (this
+example pins 2.1.218). Desktop then runs the same browser SSO and fetches its config from
+the gateway; per-group model access and policy match the CLI's. The endpoint shares the
+gateway's host and port, so the ALB needs no extra listener rule. See the
+[config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#claude-desktop-overlay)
+and the README's capability 2 for the `desktop:` feature gates.
 
 ## Telemetry
 

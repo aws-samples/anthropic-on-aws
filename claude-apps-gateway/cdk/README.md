@@ -222,7 +222,8 @@ Push this JSON file to developer machines via your MDM tool (Jamf, Intune, Ansib
 ```json
 {
   "forceLoginMethod": "gateway",
-  "forceLoginGatewayUrl": "https://claude-gateway.internal.company.com"
+  "forceLoginGatewayUrl": "https://claude-gateway.internal.company.com",
+  "parentSettingsBehavior": "merge"
 }
 ```
 
@@ -233,6 +234,14 @@ Push this JSON file to developer machines via your MDM tool (Jamf, Intune, Ansib
 | Windows | `C:\Program Files\ClaudeCode\managed-settings.json` |
 
 Developers then run `claude /login`, press Enter, complete browser SSO, and they're connected.
+
+`parentSettingsBehavior: "merge"` lets Claude Desktop deliver the gateway's policy to the
+embedded Claude Code sessions it launches; without it those sessions ignore the parent
+settings and run unpoliced on any managed machine. It's harmless on CLI-only machines, so
+push all three keys everywhere. If you deploy Claude Desktop as a client in its own right,
+it also needs `bootstrapUrl` (→ `<public_url>/user/bootstrap`) in Desktop's own managed
+configuration and a `desktop` key on the matching gateway policy — see the root
+[README](../README.md#claude-desktop) and the config reference.
 
 ## Configuration reference
 

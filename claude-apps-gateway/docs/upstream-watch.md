@@ -46,6 +46,27 @@ exceeds our pin, we're behind on that feature. Two known ones we already track:
 
 - `anthropicAws` (Claude Platform on AWS) provider — **requires ≥ 2.1.198**
 - cross-upstream failover on `404` — **added in 2.1.198**
+- Claude Desktop bootstrap endpoint (`/user/bootstrap`, the `desktop` policy key) — **requires ≥ 2.1.203**
+
+**The `desktop` block's key set is bounded by the pin, and the block is validated
+strictly** — an unknown key fails gateway boot (crash-loops the container on ECS), so a
+key copied from the docs page for a newer release takes the deployment down. As of
+`2.1.221` the accepted keys are exactly: `modelDiscoveryEnabled`, `coworkTabEnabled`,
+`isClaudeCodeForDesktopEnabled`, `isDesktopExtensionEnabled`,
+`isDesktopExtensionSignatureRequired`, `isLocalDevMcpEnabled`, `disableAutoUpdates`,
+`autoUpdaterEnforcementHours`, `banner`. Verify a new key against the pinned binary
+before shipping it:
+
+```bash
+# boots and reports `Unrecognized key(s) in object: '<key>'` if the pin doesn't know it
+claude gateway --config /tmp/probe.yaml
+```
+
+Known gap: `chatTabEnabled` exists in Claude Desktop (since build `1.13576.0`) but is
+**not** in the gateway schema through 2.1.221, so a bootstrap-configured Desktop loses its
+Chat tab with no way to re-enable it — filed as
+[anthropics/claude-code#83723](https://github.com/anthropics/claude-code/issues/83723).
+Re-test on each bump and drop this note if the key lands.
 
 ### 3. Re-check the two facts this example is sensitive to
 
