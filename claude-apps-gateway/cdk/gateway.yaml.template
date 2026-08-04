@@ -180,9 +180,18 @@ managed:
 #     - { id: terraform, key: "${GATEWAY_ADMIN_WRITE_KEY}" }
 #   read_keys:
 #     - { id: reporting, key: "${GATEWAY_ADMIN_READ_KEY}" }
+#   # Both optional: admin_groups lets members of an IdP group call the admin API
+#   # with their session bearer token instead of an x-api-key; blocked_message is
+#   # appended to the 429 a capped developer sees. The admin block is validated
+#   # STRICTLY — an unknown key here fails the boot.
 #   admin_groups: [platform-finops]
-#   # NOTE: enabling admin makes Postgres hold durable spend + audit + PII. Harden
+#   blocked_message: "Contact platform-team@company.com to request a higher limit."
+#   # NOTE 1: enabling admin makes Postgres hold durable spend + audit + PII. Harden
 #   # RDS (backups, deletion protection, multi-AZ) — see the README "Productionising".
+#   # NOTE 2: uncommenting this is NOT sufficient on its own. The ${...} keys are
+#   # expanded by the gateway at boot from the task definition's env, so the two
+#   # secrets must be minted and injected in the SAME deploy or the container
+#   # crash-loops with "undefined env var in config". Full steps: README §5.
 #
 # Model catalog. Each id maps to a GLOBAL cross-region inference profile
 # (global.anthropic.*), which resolves from ANY Bedrock region — so this config is

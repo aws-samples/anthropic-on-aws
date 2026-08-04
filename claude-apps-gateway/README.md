@@ -304,10 +304,21 @@ counters, an audit log, and per-developer PII. The example's RDS is deliberately
 disposable (`removalPolicy: DESTROY`, `deletionProtection: false`, 1-day backups,
 single-AZ), so turning this on is a conscious opt-in, not a default.
 
-**How to enable it** — three steps:
+**How to enable it** — three steps. This is a deliberate opt-in, so neither track
+provisions the admin keys for you; the code you need is below.
 
-**1. Mint the admin keys as secrets** (≥32 chars each), the same way the JWT/OIDC
-secrets are created:
+> [!IMPORTANT]
+> All three steps must land **together**, in the same deploy. The gateway expands
+> `${GATEWAY_ADMIN_WRITE_KEY}` when it reads the config, so a half-applied change
+> fails in one of two ways:
+> - **Config block without the secrets injected** → the container dies at boot with
+>   `undefined env var in config: GATEWAY_ADMIN_WRITE_KEY` (a crash-loop, not a 401).
+> - **Secrets injected without the config block** → the admin routes are never
+>   mounted, and requests fall through to developer-session auth, so `curl` gets
+>   `auth.denied` / `missing_token` even though the key is correct.
+
+**1. Mint the admin keys as secrets** (≥32 chars each — `openssl rand -base64 32`
+gives 44), the same way the JWT/OIDC secrets are created:
 
 ```bash
 aws secretsmanager create-secret --name claude-gateway-admin-write-key \
@@ -317,18 +328,50 @@ aws secretsmanager create-secret --name claude-gateway-admin-read-key \
 ```
 
 **2. Inject them into the container**, alongside `GATEWAY_JWT_SECRET` /
-`OIDC_CLIENT_SECRET`:
+`OIDC_CLIENT_SECRET`. Note it is the **execution** role that reads secrets (the ECS
+agent resolves them before the container starts), not the task role.
 
-- **CDK** — add to the `secrets:` map in `cdk/lib/claude-gateway-stack.ts` and grant
-  the task role `secretsmanager:GetSecretValue` on the two new ARNs:
+- **CDK** (`cdk/lib/claude-gateway-stack.ts`) — look up the two secrets and add them
+  to the container's `secrets:` map. `ecs.Secret.fromSecretsManager` grants the
+  execution role `secretsmanager:GetSecretValue` for you, so there is no separate
+  IAM edit:
   ```ts
+  const adminWriteSecret = secretsmanager.Secret.fromSecretNameV2(
+    this, 'AdminWriteKey', `${gatewayName}-admin-write-key`);
+  const adminReadSecret = secretsmanager.Secret.fromSecretNameV2(
+    this, 'AdminReadKey', `${gatewayName}-admin-read-key`);
+
+  // ...then inside the container definition's `secrets:` map:
   GATEWAY_ADMIN_WRITE_KEY: ecs.Secret.fromSecretsManager(adminWriteSecret),
   GATEWAY_ADMIN_READ_KEY:  ecs.Secret.fromSecretsManager(adminReadSecret),
   ```
-- **setup.sh** — add matching entries to the container `secrets` array and the IAM
-  secrets policy.
+- **`setup.sh`** — resolve the two ARNs next to the existing ones (phase 4), add them
+  to the exec-role secrets policy (phase 5a), and add them to the container `secrets`
+  array (phase 6):
+  ```bash
+  # phase 4, alongside JWT_SECRET_ARN / OIDC_SECRET_ARN:
+  ADMIN_WRITE_ARN="$(aws_q secretsmanager describe-secret \
+    --secret-id "${PROJECT}-admin-write-key" --query ARN)"
+  ADMIN_READ_ARN="$(aws_q secretsmanager describe-secret \
+    --secret-id "${PROJECT}-admin-read-key" --query ARN)"
+  ```
+  ```diff
+   # phase 5a — EXEC_SECRETS_POLICY Resource list:
+  -   "Resource":["${JWT_SECRET_ARN}","${OIDC_SECRET_ARN}","${DB_SECRET_ARN}"]},
+  +   "Resource":["${JWT_SECRET_ARN}","${OIDC_SECRET_ARN}","${DB_SECRET_ARN}",
+  +               "${ADMIN_WRITE_ARN}","${ADMIN_READ_ARN}"]},
+  ```
+  ```diff
+   # phase 6 — container `secrets` array (add --arg adminWriteArn/adminReadArn to
+   # the surrounding `jq` call so these expand):
+     {name: "DB_PASSWORD", valueFrom: ($dbArn + ":password::")}
+  +   ,{name: "GATEWAY_ADMIN_WRITE_KEY", valueFrom: $adminWriteArn}
+  +   ,{name: "GATEWAY_ADMIN_READ_KEY", valueFrom: $adminReadArn}
+  ```
 
-**3. Uncomment the `admin:` block** in `gateway.yaml` and redeploy:
+**3. Uncomment the `admin:` block** in **`cdk/gateway.yaml.template`** — not the
+generated `gateway.yaml`, which `stamp-config.sh` overwrites on every deploy — then
+redeploy:
 
 ```yaml
 admin:
@@ -336,8 +379,19 @@ admin:
     - { id: terraform, key: "${GATEWAY_ADMIN_WRITE_KEY}" }
   read_keys:
     - { id: reporting, key: "${GATEWAY_ADMIN_READ_KEY}" }
+  # Optional. `admin_groups` lets members of an IdP group call the admin API with
+  # their session bearer token instead of a key; `blocked_message` is appended to
+  # the 429 a capped developer sees. The block is validated strictly — unknown
+  # keys are rejected at boot.
   blocked_message: "Contact platform-team@company.com to request a higher limit."
 ```
+
+Because the config is **baked into the image**, editing the template only takes
+effect once a new image is built and the service points at it. `setup.sh` handles
+this automatically (its default image tag hashes the stamped config, so a config
+edit produces a new tag and a real rebuild). On the CDK track, build and push a new
+tag and re-run pass 2 with `-c imageTag=<new-tag>` — see
+[`docs/deployment.md`](docs/deployment.md#track-b--cdk-two-pass).
 
 > ⚠️ **Harden RDS before relying on this.** Enabling admin makes Postgres hold
 > durable spend + audit + PII. The shipped database is disposable — enable deletion

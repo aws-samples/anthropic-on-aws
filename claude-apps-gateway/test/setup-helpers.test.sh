@@ -134,6 +134,50 @@ else
   fail "placeholder error suggests put-secret-value" "${msg}"
 fi
 
+# ── 4. config_image_tag — the tag must cover binary version AND baked config ───
+# Config is baked into the image, so a tag keyed on CLAUDE_VERSION alone stays the
+# same when only the config changes; the "already in ECR" check then skips the
+# rebuild while the service is still redeployed, silently serving the old config.
+cfg_a="${TMP}/gw-a.yaml"
+cfg_b="${TMP}/gw-b.yaml"
+printf 'listen:\n  port: 8080\n'                  > "${cfg_a}"
+printf 'listen:\n  port: 8080\nadmin:\n  x: 1\n'  > "${cfg_b}"
+
+tag_a="$(config_image_tag 2.1.218 "${cfg_a}")"
+tag_b="$(config_image_tag 2.1.218 "${cfg_b}")"
+
+if [[ "${tag_a}" == 2.1.218-* ]]; then
+  pass "tag is prefixed with the pinned version"
+else
+  fail "tag is prefixed with the pinned version" "got ${tag_a}"
+fi
+
+if [[ "${tag_a}" != "${tag_b}" ]]; then
+  pass "config change (uncommented admin block) yields a different tag"
+else
+  fail "config change (uncommented admin block) yields a different tag" \
+       "both were ${tag_a} — a config edit would silently reuse the old image"
+fi
+
+if [[ "$(config_image_tag 2.1.218 "${cfg_a}")" == "${tag_a}" ]]; then
+  pass "same version + same config is deterministic (idempotent re-runs)"
+else
+  fail "same version + same config is deterministic (idempotent re-runs)"
+fi
+
+if [[ "$(config_image_tag 2.1.219 "${cfg_a}")" != "${tag_a}" ]]; then
+  pass "binary version bump alone yields a different tag"
+else
+  fail "binary version bump alone yields a different tag"
+fi
+
+# Must be a valid ECR tag: [A-Za-z0-9_.-] only, <=128 chars.
+if [[ "${tag_a}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+  pass "derived tag is a valid ECR image tag"
+else
+  fail "derived tag is a valid ECR image tag" "got ${tag_a}"
+fi
+
 echo ""
 echo "setup-helpers.test.sh: ${PASS} passed, ${FAIL} failed"
 [[ "${FAIL}" -eq 0 ]]
