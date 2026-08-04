@@ -214,7 +214,7 @@ managed:
       desktop:                    # presence of this key is the opt-in
         isLocalDevMcpEnabled: false
         disableAutoUpdates: true
-        banner: { text: "Contractor build: internal use only" }
+        banner: { enabled: true, text: "Contractor build: internal use only" }
 ```
 
 The gateway derives most of the bootstrap response from the matched policy's `cli` block:

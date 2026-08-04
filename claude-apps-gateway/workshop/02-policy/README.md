@@ -122,7 +122,8 @@ and unknown keys fail gateway boot. Needs the gateway server on v2.1.203+.
   desktop:
     isLocalDevMcpEnabled: false      # block locally defined MCP servers
     disableAutoUpdates: true
-    banner: { text: "Contractor build: internal use only" }
+    # `enabled: true` is required — a banner with only `text:` renders nothing
+    banner: { enabled: true, text: "Contractor build: internal use only" }
 ```
 The bootstrap response is derived from `cli` (models from `availableModels`, disabled tools
 from bare-name `permissions.deny`, egress from `sandbox.network.allowedDomains`); `hooks` and
