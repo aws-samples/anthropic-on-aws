@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-07
+
+- [Enforcing data residency with single-Region Claude Code on Amazon Bedrock](https://aws.amazon.com/blogs/machine-learning/enforcing-data-residency-with-single-region-claude-code-on-amazon-bedrock/) — *AWS Machine Learning Blog* (Thu, 06 Aug 2026 16:21:54 +0000)
+
 ## 2026-08-03
 
 - [AWS Security Hub MCP App brings exposure findings into your AI-assisted workflow (Preview)](https://aws.amazon.com/about-aws/whats-new/2026/07/aws-security-hub-mcp-app/) — *AWS What's New* (Mon, 27 Jul 2026 17:00:00 GMT)
