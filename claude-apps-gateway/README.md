@@ -308,9 +308,9 @@ upstreams:
 # plus jp. for Opus 4.8 and Haiku 4.5 — Sonnet 5 has no jp. profile.)
 auto_include_builtin_models: false
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
-    upstream_model: { bedrock: global.anthropic.claude-opus-4-8 }
+  - id: claude-opus-5
+    label: Claude Opus 5
+    upstream_model: { bedrock: global.anthropic.claude-opus-5 }
   - id: claude-haiku-4-5
     label: Claude Haiku 4.5   # no short alias — dated profile id
     upstream_model: { bedrock: global.anthropic.claude-haiku-4-5-20251001-v1:0 }
