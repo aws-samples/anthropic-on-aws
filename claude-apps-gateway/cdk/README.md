@@ -258,7 +258,7 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration; `deploy.sh` seeds it into Secrets Manager (never baked into the image) and refuses to deploy while it's still the placeholder |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
 | `BEDROCK_REGION` | Region whose Bedrock endpoint the gateway calls (the upstream `region:` + the inference-profile IAM ARN). Any region works — the gateway uses global inference profiles. See [Regions & data residency](#regions--data-residency) |
-| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. See [Regions](#regions) |
+| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. See [Regions & data residency](#regions--data-residency) |
 | `CERT_ARN` | Imported ACM cert ARN for `GATEWAY_HOSTNAME` (required; `deploy.sh` maps it to the `certArn` context) |
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 | `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
@@ -496,14 +496,23 @@ This deletes the ECS service, ALB, RDS database, ECR repository, IAM roles, secu
 
 ## Cost
 
+Idling, before any inference traffic (us-east-1, stack defaults):
+
 | Resource | Monthly cost |
 |----------|-------------|
-| ECS Fargate (0.5 vCPU, 1 GB — gateway + ADOT sidecar) | ~$9 |
-| RDS db.t4g.micro | ~$12 |
-| Application Load Balancer | ~$16 |
-| ACM certificate | Free |
-| **Total** | **~$37** |
+| 6 interface VPC endpoints × 2 AZs | ~$88 |
+| NAT gateway | ~$35 |
+| ECS Fargate (0.5 vCPU, 1 GB — gateway + ADOT sidecar), 2 tasks | ~$30 |
+| Application Load Balancer | ~$18 |
+| RDS db.t4g.micro (single-AZ, 20 GB gp3) | ~$14 |
+| ACM certificate, S3 gateway endpoint | Free |
+| **Total** | **~$185** |
+
+> The first two lines are two thirds of the bill and are absent from an
+> "ECS + RDS + ALB" estimate. **[`docs/costs.md`](../docs/costs.md)** covers the
+> endpoint posture options and what each one gives up, plus single-AZ endpoints
+> and VPC reuse.
 
 The ADOT collector runs as a sidecar inside the gateway's Fargate task (a small memory reservation), so per-user usage telemetry adds no separate service cost. Turning telemetry off (deleting the `telemetry:` block — see "Telemetry" under "How traffic flows") saves nothing here, since there's no idle task to remove.
 
-No license or per-seat fee from Anthropic. Amazon Bedrock inference costs are separate and the same as calling Amazon Bedrock directly without the gateway.
+No license or per-seat fee from Anthropic. Amazon Bedrock inference costs are separate, the same as calling Amazon Bedrock directly without the gateway, and dominate the total at any real fleet size.
