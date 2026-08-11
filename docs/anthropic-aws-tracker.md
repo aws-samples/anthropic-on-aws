@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-11
+
+- [Deploying Anthropic Claude apps gateway for AWS for enterprise workloads](https://aws.amazon.com/blogs/machine-learning/deploying-anthropic-claude-apps-gateway-for-aws-for-enterprise-workloads/) — *AWS Machine Learning Blog* (Tue, 11 Aug 2026 15:59:22 +0000)
+
 ## 2026-08-07
 
 - [Enforcing data residency with single-Region Claude Code on Amazon Bedrock](https://aws.amazon.com/blogs/machine-learning/enforcing-data-residency-with-single-region-claude-code-on-amazon-bedrock/) — *AWS Machine Learning Blog* (Thu, 06 Aug 2026 16:21:54 +0000)
