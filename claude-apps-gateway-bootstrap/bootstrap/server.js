@@ -147,8 +147,13 @@ app.get('/user/bootstrap', async (req, res) => {
       ? {}
       : { isLocalDevMcpEnabled: cfg.allowUserAddedMcpServers }),
     // Surface toggles (bootstrap-config-v2 schema): chatTabEnabled / coworkTabEnabled /
-    // isClaudeCodeForDesktopEnabled. Emitted only when set in the S3 config so an omitted
-    // key keeps the client default.
+    // isClaudeCodeForDesktopEnabled. Emitted only when set in the S3 config, but the client
+    // defaults are NOT uniform: coworkTabEnabled and isClaudeCodeForDesktopEnabled show unless
+    // set false, while chatTabEnabled is HIDDEN unless explicitly set true (see the gateway
+    // README's Claude Desktop overlay table). Omitting chatTabEnabled from the S3 config costs
+    // Desktop users the Chat tab, not "keeps the default" — set it explicitly if you want Chat
+    // visible. Gateway requires >= 2.1.227 for the key on that side; see
+    // ../../claude-apps-gateway/docs/upstream-watch.md.
     ...(cfg.chatTabEnabled === undefined ? {} : { chatTabEnabled: cfg.chatTabEnabled }),
     ...(cfg.coworkTabEnabled === undefined ? {} : { coworkTabEnabled: cfg.coworkTabEnabled }),
     ...(cfg.isClaudeCodeForDesktopEnabled === undefined
