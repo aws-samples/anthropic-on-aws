@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-13
+
+- [Claude Opus 5 is now available in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/07/claude-opus-5-aws-govcloud/) — *AWS What's New* (Thu, 13 Aug 2026 18:23:00 GMT)
+
 ## 2026-08-11
 
 - [Deploying Anthropic Claude apps gateway for AWS for enterprise workloads](https://aws.amazon.com/blogs/machine-learning/deploying-anthropic-claude-apps-gateway-for-aws-for-enterprise-workloads/) — *AWS Machine Learning Blog* (Tue, 11 Aug 2026 15:59:22 +0000)
