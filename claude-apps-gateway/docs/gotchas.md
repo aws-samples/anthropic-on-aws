@@ -438,7 +438,7 @@ config, so a fleet that only uses the CLI is never accidentally exposing a Deskt
 base layer to opt in everyone who inherits it. `desktop: {}` alone is enough; the optional
 feature gates (`isLocalDevMcpEnabled`, `banner`, …) are documented on capability 2 in the
 [README](../README.md#claude-desktop-overlay). The gateway server must be on **v2.1.203+**
-(this example pins 2.1.218). The template ships this block commented out —
+(this example pins 2.1.229). The template ships this block commented out —
 [`cdk/gateway.yaml.template`](../cdk/gateway.yaml.template), under the `match: {}` policy.
 
 **Not the same as** `parentSettingsBehavior: "merge"`. That key governs a *different*
@@ -447,3 +447,39 @@ gateway's policy as parent settings — and lives in the client `managed-setting
 mirrored in the policy's `cli` block), not in the `desktop` block. Missing *that* key fails
 silently with no 404 and no warning; see the ["How developers connect"](../README.md#how-developers-connect)
 section. A full Desktop deployment sets both.
+
+---
+
+## 20. Three ways the `desktop` block itself bites  **[hit live]**
+
+Once `/user/bootstrap` is serving (gotcha 19), the contents of the `desktop` block have
+their own traps. The key/effect table lives in the
+[README](../README.md#claude-desktop-overlay); these are the three failure modes.
+
+**A banner with only `text:` renders nothing.**  **[hit live]**
+`banner: { text: "…" }` looks correct and boots clean, but Desktop shows no banner:
+`enabled` has no default, and `text` only applies when it's truthy. Write
+`banner: { enabled: true, text: "…" }`.
+
+**The Chat tab is hidden unless you ask for it.**
+Cowork and Code default *on*; Chat does not. A `desktop` block that omits
+`chatTabEnabled: true` silently costs Desktop users that tab — nothing in the boot log or
+the bootstrap response flags it. Through 2.1.221 the key wasn't in the schema at all, so
+there was no way to re-enable it from either side (filed upstream as
+[anthropics/claude-code#83723](https://github.com/anthropics/claude-code/issues/83723),
+fixed in 2.1.227, which this example now pins past). It's now a choice rather than a dead
+end, but the default still costs you the tab.
+
+**An unknown key crash-loops the ECS task.**
+The block is validated *strictly* and the accepted key set is bounded by the pinned gateway
+version, so a key copied from the docs page for a newer release fails boot — the container
+exits, ECS restarts it, and the service never stabilises. The README's table is the full set
+as of 2.1.229. Probe a new key against the pinned binary before shipping it:
+
+```bash
+# reports `Unrecognized key(s) in object: '<key>'` if the pin doesn't know it
+claude gateway --config /tmp/probe.yaml
+```
+
+`chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` are the current examples: both need
+**≥ 2.1.227**. See [`upstream-watch.md`](upstream-watch.md) for the version-gate checklist.

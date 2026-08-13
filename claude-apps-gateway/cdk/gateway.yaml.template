@@ -174,7 +174,7 @@ managed:
     - match: {}
       cli:
         availableModels:
-          - claude-opus-4-8
+          - claude-opus-5
           - claude-sonnet-5
           - claude-haiku-4-5
           # - claude-fable-5   # opt-in — see the models: block note below
@@ -213,6 +213,10 @@ managed:
       #   modelDiscoveryEnabled: false          # rely only on availableModels above
       #   coworkTabEnabled: true
       #   isClaudeCodeForDesktopEnabled: true
+      #   # Chat tab is HIDDEN unless set true (Cowork and Code default on). Both of
+      #   # these keys need gateway >= 2.1.227 — on an older pin they fail boot.
+      #   chatTabEnabled: true
+      #   chatAdvancedFileAnalysisEnabled: false  # no effect if permissions.deny blocks Bash
       #   isDesktopExtensionEnabled: true
       #   isDesktopExtensionSignatureRequired: true
       #   isLocalDevMcpEnabled: false
@@ -243,7 +247,7 @@ managed:
 # Model catalog. Each id maps to a GLOBAL cross-region inference profile
 # (global.anthropic.*), which resolves from ANY Bedrock region — so this config is
 # region-agnostic. For data residency, swap global. for a geo profile (us./eu./au.,
-# plus jp. for Opus 4.8 and Haiku 4.5 — Sonnet 5 has no jp. profile) and confirm the
+# and jp. for some models — geo coverage varies per model) and confirm the
 # exact id per model with `aws bedrock list-inference-profiles`
 # (see the README "Regions & data residency"). Claude Haiku 4.5 has no short alias —
 # it uses the dated profile id. For provisioned throughput, point `bedrock:` at the PT ARN.
@@ -254,10 +258,10 @@ managed:
 # enable the retention prereq for your region, uncomment it in availableModels above,
 # and uncomment the entry below.
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
+  - id: claude-opus-5
+    label: Claude Opus 5
     upstream_model:
-      bedrock: global.anthropic.claude-opus-4-8
+      bedrock: global.anthropic.claude-opus-5
   - id: claude-sonnet-5
     label: Claude Sonnet 5
     upstream_model:

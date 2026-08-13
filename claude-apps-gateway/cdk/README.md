@@ -318,8 +318,8 @@ inference confined to a specific geography, switch the catalog off global:
 
 - Edit the `models:` block (in `deploy.sh`'s inline `gateway.yaml`, or your stamped
   `gateway.yaml` on the hardened path) — replace each `global.` prefix with a geo
-  profile (`us.` / `eu.` / `au.`, plus `jp.` for Opus 4.8 and Haiku 4.5 — Sonnet 5 has
-  no `jp.` profile). Confirm the exact id per model with
+  profile (`us.` / `eu.` / `au.`, and `jp.` for some models — geo coverage varies per
+  model, so it isn't uniform across the catalog). Confirm the exact id per model with
   `aws bedrock list-inference-profiles --region <your-region>` — they're not a clean
   substitution (e.g. Claude Haiku 4.5 has no short alias, only a dated id).
 - Change `inference-profile/global.anthropic.*` → your geo prefix in
@@ -327,7 +327,7 @@ inference confined to a specific geography, switch the catalog off global:
 - A geo (or in-region) profile only routes within that geography, so pick a
   `BEDROCK_REGION` the profile actually spans.
 
-**Default model set.** The shipped catalog is Claude Opus 4.8, Sonnet 5, and Haiku 4.5
+**Default model set.** The shipped catalog is Claude Opus 5, Sonnet 5, and Haiku 4.5
 — all three invoke via their global profiles from any region. **Claude Fable 5 is
 opt-in**: on Bedrock it requires a non-default data-retention mode that isn't enabled
 in every region, so it returns `ValidationException: data retention mode 'default' is

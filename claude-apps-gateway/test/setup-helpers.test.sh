@@ -143,10 +143,10 @@ cfg_b="${TMP}/gw-b.yaml"
 printf 'listen:\n  port: 8080\n'                  > "${cfg_a}"
 printf 'listen:\n  port: 8080\nadmin:\n  x: 1\n'  > "${cfg_b}"
 
-tag_a="$(config_image_tag 2.1.218 "${cfg_a}")"
-tag_b="$(config_image_tag 2.1.218 "${cfg_b}")"
+tag_a="$(config_image_tag 2.1.229 "${cfg_a}")"
+tag_b="$(config_image_tag 2.1.229 "${cfg_b}")"
 
-if [[ "${tag_a}" == 2.1.218-* ]]; then
+if [[ "${tag_a}" == 2.1.229-* ]]; then
   pass "tag is prefixed with the pinned version"
 else
   fail "tag is prefixed with the pinned version" "got ${tag_a}"
@@ -159,7 +159,7 @@ else
        "both were ${tag_a} — a config edit would silently reuse the old image"
 fi
 
-if [[ "$(config_image_tag 2.1.218 "${cfg_a}")" == "${tag_a}" ]]; then
+if [[ "$(config_image_tag 2.1.229 "${cfg_a}")" == "${tag_a}" ]]; then
   pass "same version + same config is deterministic (idempotent re-runs)"
 else
   fail "same version + same config is deterministic (idempotent re-runs)"
