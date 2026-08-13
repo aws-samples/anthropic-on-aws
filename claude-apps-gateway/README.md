@@ -101,7 +101,7 @@ The IAM policy for the task role looks like:
 }
 ```
 
-The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-4-8`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`au.`, plus `jp.` for Opus 4.8 and Haiku 4.5 (Sonnet 5 has no `jp.` profile) — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
+The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-5`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`au.`, and `jp.` for some models, since geo coverage varies per model — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
 
 ### 4. Claude Code v2.1.195 or later
 
@@ -109,7 +109,7 @@ Both the gateway server (Linux binary) and each developer's Claude Code CLI must
 
 Developers can update with `claude update`. The gateway server uses the same binary, downloaded from the Claude Code release page and packaged into a container image.
 
-Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot; v2.1.203 added the Claude Desktop bootstrap endpoint (`/user/bootstrap`). The worked example in this repo pins **2.1.218**, which also fixes gateway spend metering to price Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates — directly relevant to this example's `global.anthropic.*` inference profiles. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
+Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot; v2.1.203 added the Claude Desktop bootstrap endpoint (`/user/bootstrap`); v2.1.227 added the `desktop` block's `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` keys, the `oidc.use_proxy` flag, and the `pricing:` block. The worked example in this repo pins **2.1.229**, which adds SSE keepalive pings on streaming responses so long thinking pauses don't trip an idle timeout on the Bedrock upstream — this example still raises the ALB idle timeout to 3600s as well, since the ALB has to outlast the stream either way. The pin also carries the earlier fix that prices Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates, directly relevant to this example's `global.anthropic.*` inference profiles. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
 
 ### 5. Device management (for pushing settings to developers)
 
@@ -202,7 +202,7 @@ that explicitly opt in. `/user/bootstrap` — the endpoint Desktop fetches its c
 returns `404` unless the matching policy carries a `desktop` key. An empty `desktop: {}`
 is enough to opt a policy in, and a `desktop` key on the `match: {}` base layer opts in
 every policy that inherits it. Requires the gateway server on **v2.1.203+** (this example
-pins 2.1.218). Pair it with `bootstrapUrl` on the client side — see
+pins 2.1.229). Pair it with `bootstrapUrl` on the client side — see
 ["How developers connect"](#claude-desktop).
 
 ```yaml
@@ -232,25 +232,18 @@ and unknown keys **fail gateway boot**:
 | Key | Effect |
 |---|---|
 | `modelDiscoveryEnabled` | Whether Desktop fetches `/v1/models` for its picker; `false` relies solely on the policy's model list |
-| `coworkTabEnabled`, `isClaudeCodeForDesktopEnabled` | Show or hide individual tabs |
+| `coworkTabEnabled`, `isClaudeCodeForDesktopEnabled` | Show or hide the Cowork and Code tabs; both show unless set `false` |
+| `chatTabEnabled` | Show or hide the Chat tab — **hidden unless set `true`**. Needs gateway **≥ 2.1.227** |
+| `chatAdvancedFileAnalysisEnabled` | Let Claude run code in a local sandbox from the Chat tab to analyse attached files it can't read natively (spreadsheets, presentations). Off unless set `true`; no effect when the policy's `permissions.deny` disables `Bash`. Needs gateway **≥ 2.1.227** |
 | `isDesktopExtensionEnabled`, `isDesktopExtensionSignatureRequired` | Desktop extension loading and signature checks |
 | `isLocalDevMcpEnabled` | Allow locally defined MCP servers |
 | `disableAutoUpdates`, `autoUpdaterEnforcementHours` | Auto-update policy |
 | `banner` | Persistent banner in the app: `enabled`, `text`, `backgroundColor`, `textColor`, `linkUrl` |
 
-Two traps worth knowing before you ship a `desktop` block, both hit on a live deploy:
-
-- **`banner` needs `enabled: true`.** `banner: { text: "…" }` on its own renders *nothing* —
-  Desktop's `enabled` sub-key has no default, and `text` only applies when it's truthy.
-  Write `banner: { enabled: true, text: "…" }`.
-- **The accepted key set is bounded by the pinned gateway version, and validation is
-  strict** — an unknown key fails boot and crash-loops the ECS task. The table above is the
-  full set as of 2.1.221. Notably `chatTabEnabled` is *not* in it, so a Desktop client
-  pointed at the gateway loses its **Chat** tab (Cowork and Code default on; Chat has no
-  default and can't be re-enabled from either side) — filed upstream as
-  [anthropics/claude-code#83723](https://github.com/anthropics/claude-code/issues/83723).
-  See [`docs/upstream-watch.md`](docs/upstream-watch.md) for how to probe a new key against
-  the pin.
+The table above is the full accepted key set as of 2.1.229. Three traps bite here — a
+banner that renders nothing, a silently missing Chat tab, and an unknown key that
+crash-loops the ECS task; all three are written up in
+[`docs/gotchas.md`](docs/gotchas.md#20-three-ways-the-desktop-block-itself-bites).
 
 If you don't deploy Claude Desktop, leave `desktop` out entirely — `/user/bootstrap` then
 returns `404` for every user, which is the safe default. Either way, `/user/bootstrap` is
@@ -305,12 +298,12 @@ upstreams:
 
 # Explicit catalog → global cross-region inference profiles, so the config is
 # region-agnostic. (For data residency, swap global. for a geo prefix: us./eu./au.,
-# plus jp. for Opus 4.8 and Haiku 4.5 — Sonnet 5 has no jp. profile.)
+# and jp. for some models — geo coverage varies per model.)
 auto_include_builtin_models: false
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
-    upstream_model: { bedrock: global.anthropic.claude-opus-4-8 }
+  - id: claude-opus-5
+    label: Claude Opus 5
+    upstream_model: { bedrock: global.anthropic.claude-opus-5 }
   - id: claude-haiku-4-5
     label: Claude Haiku 4.5   # no short alias — dated profile id
     upstream_model: { bedrock: global.anthropic.claude-haiku-4-5-20251001-v1:0 }

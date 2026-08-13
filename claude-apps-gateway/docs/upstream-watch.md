@@ -10,8 +10,10 @@ Run it **before each version bump** and **when a gateway release ships**.
 
 ## Current pin
 
-- **Pinned version:** `2.1.218` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
-- **Validated on:** `2.1.218` (live end-to-end: deploy + SSO sign-in + Bedrock inference)
+- **Pinned version:** `2.1.229` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
+- **Validated on:** `2.1.218` (live end-to-end: deploy + SSO sign-in + Bedrock inference). The
+  `2.1.229` bump is verified statically only — `npm test`, the bash tests, and a config
+  parse. Re-run the live smoke test before relying on it.
 - **Floor:** `2.1.195` (the `gateway` subcommand floor)
 
 Update the "Pinned version" line here whenever `CLAUDE_VERSION` changes.
@@ -42,31 +44,38 @@ curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGEL
 ### 2. Look for version tripwires in the docs
 
 Any doc phrase like *"requires v2.1.X or later"* or *"as of vN"* is a gate. If X
-exceeds our pin, we're behind on that feature. Two known ones we already track:
+exceeds our pin, we're behind on that feature. The ones we already track:
 
 - `anthropicAws` (Claude Platform on AWS) provider — **requires ≥ 2.1.198**
 - cross-upstream failover on `404` — **added in 2.1.198**
+- complete-credentials validation on a partial Bedrock `auth:` block — **added in 2.1.207**
 - Claude Desktop bootstrap endpoint (`/user/bootstrap`, the `desktop` policy key) — **requires ≥ 2.1.203**
+- `desktop.chatTabEnabled` + `desktop.chatAdvancedFileAnalysisEnabled` — **require ≥ 2.1.227**
+- `oidc.use_proxy` (gateway's own IdP requests through `HTTPS_PROXY`) — **requires ≥ 2.1.227**
+- `pricing:` block (contracted rates for the spend meter; also needs `admin:`) — **requires ≥ 2.1.227**
+- `model must be a string` → `400` — **added in 2.1.221**; `model is required` → **2.1.228**
 
 **The `desktop` block's key set is bounded by the pin, and the block is validated
 strictly** — an unknown key fails gateway boot (crash-loops the container on ECS), so a
 key copied from the docs page for a newer release takes the deployment down. As of
-`2.1.221` the accepted keys are exactly: `modelDiscoveryEnabled`, `coworkTabEnabled`,
-`isClaudeCodeForDesktopEnabled`, `isDesktopExtensionEnabled`,
-`isDesktopExtensionSignatureRequired`, `isLocalDevMcpEnabled`, `disableAutoUpdates`,
-`autoUpdaterEnforcementHours`, `banner`. Verify a new key against the pinned binary
-before shipping it:
+`2.1.229` the accepted keys are exactly: `modelDiscoveryEnabled`, `coworkTabEnabled`,
+`isClaudeCodeForDesktopEnabled`, `chatTabEnabled`, `chatAdvancedFileAnalysisEnabled`,
+`isDesktopExtensionEnabled`, `isDesktopExtensionSignatureRequired`, `isLocalDevMcpEnabled`,
+`disableAutoUpdates`, `autoUpdaterEnforcementHours`, `banner`. Verify a new key against the
+pinned binary before shipping it:
 
 ```bash
 # boots and reports `Unrecognized key(s) in object: '<key>'` if the pin doesn't know it
 claude gateway --config /tmp/probe.yaml
 ```
 
-Known gap: `chatTabEnabled` exists in Claude Desktop (since build `1.13576.0`) but is
-**not** in the gateway schema through 2.1.221, so a bootstrap-configured Desktop loses its
-Chat tab with no way to re-enable it — filed as
+Closed gap: `chatTabEnabled` was missing from the gateway schema through 2.1.221, so a
+bootstrap-configured Desktop lost its Chat tab with no way to re-enable it — filed as
 [anthropics/claude-code#83723](https://github.com/anthropics/claude-code/issues/83723).
-Re-test on each bump and drop this note if the key lands.
+**2.1.227 added the key** (plus `chatAdvancedFileAnalysisEnabled`), and this example now
+pins past it. The issue is still open upstream even though the fix shipped. Note the
+default: Chat is *hidden* unless `chatTabEnabled: true`, so a `desktop` block that omits it
+still costs Desktop users the tab — it's now a choice rather than a dead end.
 
 ### 3. Re-check the two facts this example is sensitive to
 
