@@ -11,9 +11,8 @@ Run it **before each version bump** and **when a gateway release ships**.
 ## Current pin
 
 - **Pinned version:** `2.1.229` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
-- **Validated on:** `2.1.218` (live end-to-end: deploy + SSO sign-in + Bedrock inference). The
-  `2.1.229` bump is verified statically only — `npm test`, the bash tests, and a config
-  parse. Re-run the live smoke test before relying on it.
+- **Validated on:** `2.1.229` (live end-to-end: deploy + SSO sign-in + Bedrock inference on
+  Claude Opus 5, plus the Claude Desktop overlay serving a Chat tab via `/user/bootstrap`)
 - **Floor:** `2.1.195` (the `gateway` subcommand floor)
 
 Update the "Pinned version" line here whenever `CLAUDE_VERSION` changes.
@@ -69,21 +68,36 @@ pinned binary before shipping it:
 claude gateway --config /tmp/probe.yaml
 ```
 
+That probe is worth running against *two* binaries — the pin and the release below the
+gate — because it fails fast and needs no AWS: it reaches the config-schema check before
+touching Postgres, so `could not connect to Postgres` already means the schema passed.
+Verified this way for the 2.1.227 gate: `2.1.226` exits with `Unrecognized key(s) in
+object: 'chatTabEnabled', 'chatAdvancedFileAnalysisEnabled'` at
+`managed.policies[0].desktop`, while `2.1.229` gets past `config.load`.
+
 Closed gap: `chatTabEnabled` was missing from the gateway schema through 2.1.221, so a
 bootstrap-configured Desktop lost its Chat tab with no way to re-enable it — filed as
 [anthropics/claude-code#83723](https://github.com/anthropics/claude-code/issues/83723).
 **2.1.227 added the key** (plus `chatAdvancedFileAnalysisEnabled`), and this example now
 pins past it. The issue is still open upstream even though the fix shipped. Note the
 default: Chat is *hidden* unless `chatTabEnabled: true`, so a `desktop` block that omits it
-still costs Desktop users the tab — it's now a choice rather than a dead end.
+still costs Desktop users the tab — it's now a choice rather than a dead end. Confirmed
+live on 2.1.229: with the `desktop` block enabled, Claude Desktop showed the Chat tab.
 
-### 3. Re-check the two facts this example is sensitive to
+### 3. Re-check the facts this example is sensitive to
 
 - **Managed-settings keys.** We ship a live `managed.policies[].cli` block and set
   `enforceAvailableModels: true` with `auto_include_builtin_models`. A model ID or a
   `cli` key newer than the pin fails **at gateway boot** or is rejected server-side
   at `/v1/messages`. Confirm every model in `availableModels` and every `cli` key is
   known to the pinned version. (See the README's Claude Code version prerequisite.)
+- **Model IDs are two claims, not one.** A model can be current in Claude Code and still
+  have no Bedrock inference profile under our `global.` prefix — the release notes don't
+  tell you. Check the upstream side directly before shipping a catalog change:
+  `aws bedrock list-inference-profiles --query "inferenceProfileSummaries[?contains(inferenceProfileId,'<model>')]"`,
+  then one `aws bedrock-runtime converse --model-id global.anthropic.<model>` per entry.
+  Done for the 2.1.229 catalog: `global.anthropic.claude-opus-5` is ACTIVE and all three
+  shipped models return 200.
 - **Bedrock IAM ARN families.** The two-ARN grant (`inference-profile/global.anthropic.*`
   **and** `foundation-model/anthropic.*`) is asserted in the CDK tests. If the docs'
   IAM table changes, update the policy and the test.
@@ -97,6 +111,12 @@ still costs Desktop users the tab — it's now a choice rather than a dead end.
    README's version notes.
 3. Re-run the local verification (`cd cdk && npm test`; `./test/stamp-config.test.sh`;
    `bash -n cdk/scripts/setup.sh`) and add a test case if you're fixing a deployment trap.
+4. Only move the "Validated on" line above after a **live** run: deploy, browser SSO
+   sign-in, and one inference call per model in `availableModels`. Static checks can't
+   catch a model ID Bedrock doesn't serve or a schema key the pin rejects. The
+   laptop-side probe (`/healthz`, `/readyz`, the discovery doc) needs a route to the
+   private ALB — DNS alone isn't proof, since the hostname resolves publicly to its
+   private addresses whether or not the VPN is up. Check the route, not `dig`.
 
 ## Automated reminder
 
