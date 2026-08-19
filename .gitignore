@@ -47,6 +47,12 @@ cdk-nag-output.txt
 **/test/
 !claude-code-on-lambda-microvm/**/test/
 !claude-code-on-lambda-microvm/**/test/**
+!claude-code-on-agentcore-runtime-microvm/**/bin/
+!claude-code-on-agentcore-runtime-microvm/**/bin/**
+!claude-code-on-agentcore-runtime-microvm/**/lib/
+!claude-code-on-agentcore-runtime-microvm/**/lib/**
+!claude-code-on-agentcore-runtime-microvm/**/test/
+!claude-code-on-agentcore-runtime-microvm/**/test/**
 **/.next/
 **/__pycache__/
 mkdocs-env/*

@@ -1,0 +1,10 @@
+{
+  "region": "us-east-1",
+  "vpcCidr": "10.43.0.0/16",
+  "projectName": "claude-agentcore",
+  "trustedClientCidr": "10.101.0.0/22",
+  "bedrockModelId": "anthropic.claude-sonnet-5",
+  "allowClaudeAiSubscription": false,
+  "enablePortal": false,
+  "idleAfterSeconds": 900
+}
