@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-19
+
+- [AWS Cost Anomaly Detection supports third-party models on Amazon Bedrock](https://aws.amazon.com/about-aws/whats-new/2026/08/aws-cost-anomaly-detection-bedrock-3P/) — *AWS What's New* (Wed, 19 Aug 2026 17:57:00 GMT)
+
 ## 2026-08-18
 
 - [AgentCore payments is now generally available in Amazon Bedrock AgentCore](https://aws.amazon.com/about-aws/whats-new/2026/08/bedrock-agentcore-payments-ga/) — *AWS What's New* (Tue, 18 Aug 2026 19:15:00 GMT)
