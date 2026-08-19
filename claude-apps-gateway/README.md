@@ -584,7 +584,7 @@ curl -X POST https://<gateway>/oauth/device_authorization
 ## FAQ
 
 **Q: How much does it cost?**
-No license fee. Approximately $37/month for minimal AWS infrastructure (ECS $9 + RDS $12 + ALB $16). Plus Amazon Bedrock inference (same as without the gateway).
+No license or per-seat fee. A live deploy of this example idles at roughly **$185/month** (us-east-1, stack defaults): the two largest line items are the six interface VPC endpoints (~$88) and the NAT gateway (~$35), then Fargate (~$30), the ALB (~$18), and RDS (~$14). Amazon Bedrock inference is separate, charged at the same rates as calling Bedrock directly, and dominates at any real scale. See [`docs/costs.md`](docs/costs.md) for the breakdown and the posture trade-offs that reduce it.
 
 **Q: Can CI/CD pipelines use the gateway?**
 No. Gateway requires browser SSO. Configure CI against Amazon Bedrock directly with IAM credentials.
@@ -620,6 +620,7 @@ Existing signed-in developers keep working (tokens validate locally). New sign-i
 | Resource | Link |
 |----------|------|
 | **Deployment guide (this repo)** | [`docs/deployment.md`](docs/deployment.md) |
+| Cost breakdown & trade-offs (this repo) | [`docs/costs.md`](docs/costs.md) |
 | Field guide to deployment traps (this repo) | [`docs/gotchas.md`](docs/gotchas.md) |
 | Official docs | https://code.claude.com/docs/en/claude-apps-gateway |
 | Config reference | https://code.claude.com/docs/en/claude-apps-gateway-config |
