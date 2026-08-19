@@ -5,6 +5,14 @@ import { HttpRequest } from '@smithy/protocol-http';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import type { ConnectResponse } from './api.js';
+import {
+  decodeShellFrame,
+  encodeClose,
+  encodeResize,
+  encodeStdin,
+  parseShellStatus,
+  ShellChannel,
+} from './shell-protocol.js';
 
 const DETACH_BYTE = 0x1d;
 const PING_INTERVAL_MILLISECONDS = 1_000;
@@ -201,17 +209,27 @@ async function runOneConnection(
     });
   });
 
-  outputListener = (data, isBinary): void => {
+  outputListener = (data): void => {
     lastReadAt = Date.now();
-    const buffer = asBuffer(data);
-    if (isBinary) {
-      terminalOutput.write(buffer);
-      return;
+    const frame = decodeShellFrame(asBuffer(data));
+    if (frame.channel === ShellChannel.Stdout) {
+      terminalOutput.write(frame.payload);
+    } else if (frame.channel === ShellChannel.Stderr) {
+      terminalOutput.write(frame.payload);
+    } else if (frame.channel === ShellChannel.Status) {
+      const status = parseShellStatus(frame.payload);
+      if (status.status === 'Failure') {
+        process.stderr.write(
+          `\r\nAgentCore Runtime shell reported an error: ` +
+            `${status.message ?? status.reason ?? 'unknown failure'}\r\n`,
+        );
+      }
+    } else if (frame.channel === ShellChannel.Heartbeat) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(frame.payload.length ? frame.payload : Buffer.from([ShellChannel.Heartbeat]));
+      }
     }
-    const text = buffer.toString('utf8');
-    if (!isControlMessage(text)) {
-      terminalOutput.write(text);
-    }
+    // CLOSE (0xFF) is handled by the WebSocket 'close' event, not here.
   };
   socket.on('message', outputListener);
   const stopTerminalOutput = (): void => {
@@ -227,11 +245,10 @@ async function runOneConnection(
     resizeListener = (): void => {
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(
-        JSON.stringify({
-          type: 'resize',
-          rows: clampDimension(process.stdout.rows ?? 24),
-          cols: clampDimension(process.stdout.columns ?? 80),
-        }),
+        encodeResize(
+          clampDimension(process.stdout.columns ?? 80),
+          clampDimension(process.stdout.rows ?? 24),
+        ),
       );
     };
     process.stdout.on('resize', resizeListener);
@@ -241,15 +258,18 @@ async function runOneConnection(
       const detachAt = data.indexOf(DETACH_BYTE);
       if (detachAt >= 0) {
         if (detachAt > 0 && socket.readyState === WebSocket.OPEN) {
-          socket.send(data.subarray(0, detachAt), { binary: true });
+          socket.send(encodeStdin(data.subarray(0, detachAt)));
         }
         localCloseRequested = true;
         options.detachRequested.value = true;
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(encodeClose());
+        }
         socket.close(1000, 'Client detached');
         return;
       }
       if (socket.readyState === WebSocket.OPEN) {
-        socket.send(data, { binary: true });
+        socket.send(encodeStdin(data));
       }
     };
     process.stdin.on('data', inputListener);
@@ -276,7 +296,7 @@ async function runOneConnection(
     ttlTimer.unref();
 
     if (options.bootstrapCommand && !options.alreadyBootstrapped) {
-      socket.send(options.bootstrapCommand, { binary: true });
+      socket.send(encodeStdin(options.bootstrapCommand));
       options.onBootstrapSent();
     }
     process.stderr.write(
@@ -375,22 +395,14 @@ function waitForSessionInitialization(socket: WebSocket): Promise<void> {
     }, 30_000);
     timeout.unref();
 
-    let graceTimer: NodeJS.Timeout | undefined;
-    const onOpen = (): void => {
-      graceTimer = setTimeout(() => {
+    const onMessage = (data: RawData): void => {
+      const frame = decodeShellFrame(asBuffer(data));
+      if (frame.channel !== ShellChannel.Status) return;
+      const status = parseShellStatus(frame.payload);
+      if (status.metadata?.shellId) {
         cleanup();
         resolve();
-      }, 1_500);
-      graceTimer.unref();
-    };
-    const onMessage = (data: RawData, isBinary: boolean): void => {
-      if (isBinary) {
-        cleanup();
-        resolve();
-        return;
       }
-      cleanup();
-      resolve();
     };
     const onClose = (): void => {
       cleanup();
@@ -414,30 +426,17 @@ function waitForSessionInitialization(socket: WebSocket): Promise<void> {
     };
     const cleanup = (): void => {
       clearTimeout(timeout);
-      if (graceTimer) clearTimeout(graceTimer);
-      socket.off('open', onOpen);
       socket.off('message', onMessage);
       socket.off('close', onClose);
       socket.off('error', onError);
       socket.off('unexpected-response', onUnexpectedResponse);
     };
 
-    socket.once('open', onOpen);
     socket.on('message', onMessage);
     socket.once('close', onClose);
     socket.once('error', onError);
     socket.once('unexpected-response', onUnexpectedResponse);
   });
-}
-
-function isControlMessage(text: string): boolean {
-  if (!text.startsWith('{')) return false;
-  try {
-    const value = JSON.parse(text) as unknown;
-    return isRecord(value) && typeof value.type === 'string';
-  } catch {
-    return false;
-  }
 }
 
 export function developerShellBootstrapCommand(): Buffer {

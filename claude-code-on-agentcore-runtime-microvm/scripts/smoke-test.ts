@@ -21,6 +21,12 @@ import {
   DescribeStacksCommand,
 } from '@aws-sdk/client-cloudformation';
 import WebSocket from 'ws';
+import {
+  decodeShellFrame,
+  encodeStdin,
+  parseShellStatus,
+  ShellChannel,
+} from '../client/src/shell-protocol.js';
 
 const args = process.argv.slice(2);
 if (args.includes('--help') || args.includes('-h')) {
@@ -48,29 +54,32 @@ const headers = await signShellUpgrade(url, region, sessionId);
 
 const socket = new WebSocket(url, { headers });
 let output = '';
+let connected = false;
 
 await new Promise<void>((resolve, reject) => {
   const timeout = setTimeout(() => {
     reject(new Error('Timed out waiting for the shell to respond'));
   }, 20_000);
 
-  socket.once('open', () => {
-    setTimeout(() => {
-      socket.send(Buffer.from('echo smoke-test-ok\n', 'utf8'), {
-        binary: true,
-      });
-      socket.send(Buffer.from('python3 --version\n', 'utf8'), {
-        binary: true,
-      });
-      setTimeout(() => {
-        clearTimeout(timeout);
-        resolve();
-      }, 3_000);
-    }, 1_500);
-  });
-  socket.on('message', (data, isBinary) => {
-    if (isBinary) {
-      output += Buffer.from(data as Buffer).toString('utf8');
+  socket.on('message', (data) => {
+    const frame = decodeShellFrame(Buffer.from(data as Buffer));
+    if (frame.channel === ShellChannel.Status) {
+      const status = parseShellStatus(frame.payload);
+      if (status.metadata?.shellId && !connected) {
+        connected = true;
+        setTimeout(() => {
+          socket.send(encodeStdin('echo smoke-test-ok\n'));
+          socket.send(encodeStdin('python3 --version\n'));
+          setTimeout(() => {
+            clearTimeout(timeout);
+            resolve();
+          }, 3_000);
+        }, 1_500);
+      }
+      return;
+    }
+    if (frame.channel === ShellChannel.Stdout || frame.channel === ShellChannel.Stderr) {
+      output += frame.payload.toString('utf8');
     }
   });
   socket.once('error', (error) => {
