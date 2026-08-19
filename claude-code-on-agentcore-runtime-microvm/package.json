@@ -1,0 +1,52 @@
+{
+  "name": "claude-code-on-agentcore-runtime-microvm",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Private, governed Claude Code development environments on Amazon Bedrock AgentCore Runtime",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "client": "tsx client/src/cli.ts",
+    "deploy": "tsx scripts/deploy.ts",
+    "provision-image": "tsx scripts/provision-agent-image.ts",
+    "smoke-test": "tsx scripts/smoke-test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "synth": "cdk synth",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-crypto/sha256-js": "5.2.0",
+    "@aws-sdk/client-bedrock-agentcore": "3.1113.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "3.1113.0",
+    "@aws-sdk/client-cloudformation": "3.1088.0",
+    "@aws-sdk/client-dynamodb": "3.1088.0",
+    "@aws-sdk/client-ecr": "3.1088.0",
+    "@aws-sdk/client-s3": "3.1088.0",
+    "@aws-sdk/credential-provider-node": "3.972.69",
+    "@aws-sdk/lib-dynamodb": "3.1088.0",
+    "@aws-sdk/s3-request-presigner": "3.1088.0",
+    "@smithy/protocol-http": "5.5.9",
+    "@smithy/signature-v4": "5.6.5",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "aws-cdk-lib": "2.260.0",
+    "constructs": "10.7.0",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.152",
+    "@types/node": "22.15.3",
+    "@types/ws": "8.18.1",
+    "aws-cdk": "2.1131.0",
+    "cdk-nag": "2.38.2",
+    "esbuild": "0.25.3",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3",
+    "vitest": "3.2.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
