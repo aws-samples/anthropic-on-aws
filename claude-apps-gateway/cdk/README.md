@@ -185,7 +185,8 @@ at `desiredCount 2` — no manual scale-up):
 ```bash
 npx cdk bootstrap -c imageReady=false    # first time only
 
-# Pass 1: ECR repo only
+# Pass 1: ECR repo only — FIRST DEPLOY ONLY (re-running it over a pass-2 stack
+# deletes the RDS instance and everything else; update via pass 2 alone).
 npx cdk deploy -c imageReady=false \
   -c publicUrl=https://claude-gateway.internal.company.com \
   -c zoneName=internal.company.com -c ingressCidr=10.0.0.0/8 \
@@ -249,7 +250,7 @@ All values come from `.env`. The CDK code reads them at deploy time.
 
 | Variable | What it is |
 |----------|-----------|
-| `GATEWAY_NAME` | Prefix for the stack's named resources (repo, cluster, service, secrets, log group); `deploy.sh` passes it to the `gatewayName` context so the stack matches |
+| `GATEWAY_NAME` | Prefix for the stack's named resources (repo, cluster, service, secrets, log group); `deploy.sh` passes it to the `gatewayName` context so the stack matches. **Fixed once deployed** — changing it replaces the ECR repo, so `deploy.sh` refuses; to rename, tear down and deploy fresh |
 | `GATEWAY_HOSTNAME` | The full DNS name developers connect to |
 | `HOSTED_ZONE_ID` | Route53 zone ID where the DNS record is created (optional if managing DNS externally) |
 | `HOSTED_ZONE_NAME` | Route53 zone name (optional if managing DNS externally) |
@@ -258,11 +259,11 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration; `deploy.sh` seeds it into Secrets Manager (never baked into the image) and refuses to deploy while it's still the placeholder |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
 | `BEDROCK_REGION` | Region whose Bedrock endpoint the gateway calls (the upstream `region:` + the inference-profile IAM ARN). Any region works — the gateway uses global inference profiles. See [Regions & data residency](#regions--data-residency) |
-| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. See [Regions](#regions) |
+| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. `deploy.sh` targets **one active region per account** (see the scope note at its Step 3). See [Regions](#regions) |
 | `CERT_ARN` | Imported ACM cert ARN for `GATEWAY_HOSTNAME` (required; `deploy.sh` maps it to the `certArn` context) |
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 | `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
-| `CREATE_VPC_ENDPOINTS` | Optional. Set `false` with `VPC_ID` when the reused VPC already has the interface endpoints; maps to `createVpcEndpoints` |
+| `CREATE_VPC_ENDPOINTS` | Optional. Set `false` with `VPC_ID` when the reused VPC already has the interface endpoints; maps to `createVpcEndpoints`. You must then authorize 443 from the task SG on those endpoints yourself — see [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
 
 ### CDK context variables
 
@@ -283,7 +284,7 @@ pass 2 (default) deploys the full stack.
 | `zoneId` | 2 | no | Hosted-zone id (looked up from `zoneName` if omitted) |
 | `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
 | `vpcId` | 2 | no | Import an existing VPC instead of creating one |
-| `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch/S3 endpoints — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy |
+| `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch interface endpoints (+ the S3 gateway endpoint) — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy. Then authorize 443 yourself: [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
 
 ### Regions & data residency
 
