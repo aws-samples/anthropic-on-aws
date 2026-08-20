@@ -281,6 +281,26 @@ See [`docs/deployment.md`](docs/deployment.md#telemetry) for deployment details.
 - The gateway itself does not log or store prompt/completion content
 - Configuring `telemetry.forward_to` automatically pushes OTEL environment variables to all connected clients
 
+**Where that attribution reaches — and where it stops.** Per-user attribution is a property
+of the *gateway's* records, not of the AWS audit trail. Three sources carry the developer's
+identity:
+
+| Source | What you get |
+|---|---|
+| Gateway audit log (`/claude-gateway/gateway`) | `inference` / `session.mint` events with user id, email, groups, client IP — including *denied* requests |
+| OTLP metrics | token counts, model, latency, tagged `user.id` / `user.email` / groups |
+| Admin API (opt-in, §5) | period-to-date spend per user via `/v1/organizations/spend_limits/effective` |
+
+> [!IMPORTANT]
+> **CloudTrail and Bedrock invocation logging see only the ECS task role**, not the
+> developer. That is inherent to the design: developers hold no AWS credentials, so the
+> gateway signs every Bedrock call with the one task role. If your controls require
+> per-individual attribution in the *native AWS* trail, read
+> [`docs/gotchas.md` §21](docs/gotchas.md#21-per-user-attribution-stops-at-the-gateway--cloudtrail-sees-only-the-task-role)
+> before you commit to this architecture — it covers the team-level workaround using tagged
+> Bedrock application inference profiles, and why per-user session names would require a
+> change in the gateway binary itself.
+
 ---
 
 ### 4. Routing: inference with failover
