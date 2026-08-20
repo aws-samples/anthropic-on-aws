@@ -483,3 +483,75 @@ claude gateway --config /tmp/probe.yaml
 
 `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` are the current examples: both need
 **≥ 2.1.227**. See [`upstream-watch.md`](upstream-watch.md) for the version-gate checklist.
+
+---
+
+## 21. Per-user attribution stops at the gateway — CloudTrail sees only the task role
+
+**Symptom:** the gateway gives you clean per-developer usage and spend numbers, but
+CloudTrail and Bedrock invocation logging attribute *every*
+`InvokeModelWithResponseStream` call to the same principal — the ECS task role. There is
+no per-user breakdown in the native AWS audit trail.
+
+**Why:** this is by design, and it's the point of the architecture. Developers hold no
+AWS credentials; the gateway holds the one upstream credential and calls Bedrock on their
+behalf. The upstream is configured with `auth: {}` (the AWS default credential chain), which
+on Fargate resolves to the single task role in `cdk/lib/claude-gateway-stack.ts`. Centralising
+the credential is exactly what makes offboarding an IdP operation — and it is also what
+collapses 200 developers into one IAM principal at the AWS API boundary.
+
+The gateway signs the SigV4 request itself, inside the `claude` binary. Its Bedrock `auth:`
+block accepts only static credentials — `aws_access_key_id`, `aws_secret_access_key`,
+`aws_session_token`, `aws_bearer_token` — with no role ARN, no `RoleSessionName`, and no
+mapping from an OIDC claim. So there is no config in this example that would stamp the
+developer's identity onto the AWS call, and no sidecar workaround either: the gateway sends
+no user-identity header upstream, so a re-signing proxy would have nothing to attribute
+against.
+
+**Where per-user attribution actually lives.** All three of these are per-developer today:
+
+| Source | What you get | Where |
+|---|---|---|
+| Gateway audit log | `inference` and `session.mint` events with user id, email, groups, client IP | task stderr → CloudWatch `/claude-gateway/gateway` |
+| OTLP metrics | token counts, model, latency, tagged `user.id` / `user.email` / groups | your collector (CloudWatch by default) |
+| Admin API | period-to-date spend per user, when the `admin:` block is enabled | `GET /v1/organizations/spend_limits/effective` |
+
+Treat the gateway audit log as the system of record for user-level attribution. It is the
+only one that records *denied* requests as well as served ones.
+
+**Partial fix if you need attribution in the native AWS trail.** Bedrock **application
+inference profiles** are taggable, and CloudTrail records the profile ARN on the call — so
+one profile per team, referenced from group-scoped `models:` entries, gives you team-level
+breakdowns in CloudTrail and Cost Explorer:
+
+```yaml
+managed:
+  policies:
+    - match: { groups: [team-platform] }
+      cli:
+        availableModels: [claude-sonnet-5-platform]
+models:
+  - id: claude-sonnet-5-platform
+    label: Claude Sonnet 5
+    upstream_model:
+      # application inference profile tagged team=platform
+      bedrock: arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abc123
+```
+
+**This needs a third ARN family in the task role.** The shipped policy grants
+`inference-profile/global.anthropic.*` and `foundation-model/anthropic.*` (see §9);
+`application-inference-profile/*` is a *separate* resource type and is not covered by either,
+so without adding it you get the same opaque 403 as §9. Add it alongside the other two in
+`cdk/lib/claude-gateway-stack.ts`:
+
+```
+arn:aws:bedrock:<region>:<acct>:application-inference-profile/*
+```
+
+This is **team-level, not per-individual**. A compliance requirement written per person
+(NERC CIP and similar) is not satisfied by it. Per-user `AssumeRole` with a
+`RoleSessionName` derived from the OIDC subject would have to come from the gateway binary
+itself — tracked upstream as
+[anthropics/claude-code](https://github.com/anthropics/claude-code/issues) and discussed in
+[aws-samples/anthropic-on-aws#279](https://github.com/aws-samples/anthropic-on-aws/issues/279).
+Don't plan a deployment around it landing.
