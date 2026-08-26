@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-26
+
+- [Evaluate any agent framework with Amazon Bedrock AgentCore Evaluations](https://aws.amazon.com/blogs/machine-learning/evaluate-any-agent-framework-with-amazon-bedrock-agentcore-evaluations/) — *AWS Machine Learning Blog* (Wed, 26 Aug 2026 19:13:35 +0000)
+
 ## 2026-08-19
 
 - [AWS Cost Anomaly Detection supports third-party models on Amazon Bedrock](https://aws.amazon.com/about-aws/whats-new/2026/08/aws-cost-anomaly-detection-bedrock-3P/) — *AWS What's New* (Wed, 19 Aug 2026 17:57:00 GMT)
