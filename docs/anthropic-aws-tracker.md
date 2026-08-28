@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-08-28
+
+- [Amazon Redshift integrates with Agent Toolkit for AWS for AI-assisted data warehouse management](https://aws.amazon.com/about-aws/whats-new/2026/08/redshift-agenttoolkit-for-ai-assisted-datawarehouse-mgmt) — *AWS What's New* (Thu, 27 Aug 2026 20:07:00 GMT)
+
 ## 2026-08-26
 
 - [Evaluate any agent framework with Amazon Bedrock AgentCore Evaluations](https://aws.amazon.com/blogs/machine-learning/evaluate-any-agent-framework-with-amazon-bedrock-agentcore-evaluations/) — *AWS Machine Learning Blog* (Wed, 26 Aug 2026 19:13:35 +0000)
