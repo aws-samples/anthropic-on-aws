@@ -194,19 +194,24 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-### After (CPOA — Worker with IAM Auth)
+### After (CPOA — Worker with IAM Auth via Short-Term Token)
+
+A natively SigV4-signing worker client is not a documented pattern. To authenticate a worker with IAM credentials, generate a short-term token from the AWS credential chain and pass it as the auth token (requires the `AnthropicSelfHostedEnvironmentAccess` IAM policy).
 
 ```python
 import asyncio
 import os
 from anthropic import AsyncAnthropic
 from anthropic.lib.environments import EnvironmentWorker
+from token_generator_for_aws_external_anthropic import TokenGenerator
 
 async def main() -> None:
-    # On CPOA: no environment key needed — authenticate via IAM
-    # Requires AnthropicSelfHostedEnvironmentAccess IAM policy
+    # On CPOA: no Claude Console environment key — derive a short-term token
+    # from IAM credentials. Tokens default to 12h and do not auto-refresh:
+    # long-running workers must regenerate and reconnect before expiry.
+    token = TokenGenerator(region=os.environ["AWS_REGION"]).get_token()
     environment_id = os.environ["ANTHROPIC_ENVIRONMENT_ID"]
-    async with AsyncAnthropic() as client:  # SigV4 via AWS credential chain
+    async with AsyncAnthropic(auth_token=token) as client:
         await EnvironmentWorker(
             client,
             environment_id=environment_id,
