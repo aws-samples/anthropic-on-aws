@@ -243,6 +243,33 @@ it also needs `bootstrapUrl` (→ `<public_url>/user/bootstrap`) in Desktop's ow
 configuration and a `desktop` key on the matching gateway policy — see the root
 [README](../README.md#claude-desktop) and the config reference.
 
+## Day-2 operations
+
+Two helper scripts cover the common post-deploy tasks. Both read `.env` like `deploy.sh` does.
+
+### Update the gateway config without touching infrastructure
+
+```bash
+./scripts/update-config.sh
+```
+
+The config is baked into the container image, so any `gateway.yaml.template` change (models, policies, OIDC claims, telemetry) needs an image rebuild — but not a CloudFormation run. `update-config.sh` stamps the template, rebuilds the image via the existing CodeBuild project, and rolls the ECS service. It never runs `cdk`, so the VPC, RDS, ALB, and secrets are untouched. Use `deploy.sh` instead when the change is to the stack itself (instance sizes, ingress CIDR, VPC endpoints).
+
+### Manage spend limits
+
+```bash
+export GATEWAY_URL=https://claude-gateway.internal.company.com
+./scripts/spend-limits.sh --help
+
+./scripts/spend-limits.sh set --scope organization --usd 50 --period monthly
+./scripts/spend-limits.sh set --scope rbac_group:<group-id> --usd 100 --period monthly
+./scripts/spend-limits.sh set --scope email:alice@company.com --usd 300 --period monthly
+./scripts/spend-limits.sh effective --period monthly --sort spend_desc
+./scripts/spend-limits.sh audit --limit 20
+```
+
+`spend-limits.sh` wraps all six endpoints of the gateway's [spend-limits Admin API](https://code.claude.com/docs/en/claude-apps-gateway-spend-limits) (`list`/`get`/`set`/`delete`/`effective`/`audit`), plus a declarative `apply -f caps.json` and an `email:` scope alias that resolves the address to the OIDC `sub` the API actually keys on. Amounts are converted from dollars with integer math (the wire format is whole-number cents strings), each endpoint's distinct pagination scheme is handled (`--all` follows every page), and destructive operations prompt unless `--yes`. Requires the [`admin:` block](https://code.claude.com/docs/en/claude-apps-gateway-config#admin) in `gateway.yaml` and a network path to the internal ALB; it authenticates with `--key`/`GATEWAY_ADMIN_KEY` (x-api-key), `--token`/`GATEWAY_BEARER_TOKEN`, or falls back to the session JWT the CLI stored at `claude /login`.
+
 ## Configuration reference
 
 All values come from `.env`. The CDK code reads them at deploy time.
