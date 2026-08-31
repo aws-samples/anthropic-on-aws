@@ -153,7 +153,7 @@ ALLOWED_EMAIL_DOMAINS=example.com \
 # Download the pinned linux-x64 binary and verify it (versions must match the
 # claudeVersion pin in bin/app.ts). setup.sh's phase 2 shows the full
 # GPG-signed-manifest verification; the abbreviated form:
-CLAUDE_VERSION=2.1.229
+CLAUDE_VERSION=2.1.251
 curl -fL -o claude "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude"
 curl -fsSL "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/manifest.json" \
   | jq -r '.platforms["linux-x64"].checksum' | xargs -I{} sh -c 'echo "{}  claude" | shasum -a 256 -c'
@@ -202,7 +202,7 @@ To roll a new image later: push a new tag, then re-run pass 2 with
 > editing `gateway.yaml.template` has no effect until you rebuild **and** point the
 > service at the new image. The tag above is the bare `CLAUDE_VERSION`, which does not
 > change when only the config does — so re-running the build would overwrite
-> `:2.1.229` in place, and re-running pass 2 with the same `-c imageTag` leaves the
+> `:2.1.251` in place, and re-running pass 2 with the same `-c imageTag` leaves the
 > task definition unchanged, meaning ECS may not redeploy at all. Either symptom looks
 > like a successful deploy that silently kept the old config.
 >
@@ -281,7 +281,7 @@ Claude Desktop connects to the same gateway, but through Desktop's own managed
 configuration and a different key — `bootstrapUrl`, pointed at `<public_url>/user/bootstrap`
 — plus a server-side opt-in: the policy matching the user must carry a `desktop` key or
 `/user/bootstrap` returns `404`. The gateway server must be on v2.1.203 or later (this
-example pins 2.1.229). Desktop then runs the same browser SSO and fetches its config from
+example pins 2.1.251). Desktop then runs the same browser SSO and fetches its config from
 the gateway; per-group model access and policy match the CLI's. The endpoint shares the
 gateway's host and port, so the ALB needs no extra listener rule. See the
 [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#claude-desktop-overlay)
