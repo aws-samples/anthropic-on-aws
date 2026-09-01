@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-01
+
+- [Claude Fable 5.1, Anthropic's new frontier model is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-fable-5-1-aws/) — *AWS What's New* (Tue, 01 Sep 2026 14:00:00 GMT)
+- [Introducing Claude Fable 5.1 on AWS](https://aws.amazon.com/blogs/machine-learning/introducing-claude-fable-5-1-on-aws/) — *AWS Machine Learning Blog* (Tue, 01 Sep 2026 19:12:43 +0000)
+
 ## 2026-08-28
 
 - [Amazon Redshift integrates with Agent Toolkit for AWS for AI-assisted data warehouse management](https://aws.amazon.com/about-aws/whats-new/2026/08/redshift-agenttoolkit-for-ai-assisted-datawarehouse-mgmt) — *AWS What's New* (Thu, 27 Aug 2026 20:07:00 GMT)
