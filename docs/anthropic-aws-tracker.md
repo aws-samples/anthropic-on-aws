@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-02
+
+- [Claude Fable 5.1, Anthropic's new frontier model is now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-fable-5-1-aws-govcloud/) — *AWS What's New* (Tue, 01 Sep 2026 14:00:00 GMT)
+
 ## 2026-09-01
 
 - [Claude Fable 5.1, Anthropic's new frontier model is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-fable-5-1-aws/) — *AWS What's New* (Tue, 01 Sep 2026 14:00:00 GMT)
