@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-03
+
+- [AI-driven development lifecycle using Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/ai-driven-development-lifecycle-using-amazon-bedrock-agentcore/) — *AWS Machine Learning Blog* (Thu, 03 Sep 2026 16:16:28 +0000)
+
 ## 2026-09-02
 
 - [Claude Fable 5.1, Anthropic's new frontier model is now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-fable-5-1-aws-govcloud/) — *AWS What's New* (Tue, 01 Sep 2026 14:00:00 GMT)
