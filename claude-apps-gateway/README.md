@@ -243,7 +243,7 @@ and unknown keys **fail gateway boot**:
 The table above is the full accepted key set as of 2.1.229. Three traps bite here — a
 banner that renders nothing, a silently missing Chat tab, and an unknown key that
 crash-loops the ECS task; all three are written up in
-[`docs/gotchas.md`](docs/gotchas.md#20-three-ways-the-desktop-block-itself-bites).
+[`docs/gotchas.md`](docs/gotchas.md#20-three-ways-the-desktop-block-itself-bites--hit-live).
 
 If you don't deploy Claude Desktop, leave `desktop` out entirely — `/user/bootstrap` then
 returns `404` for every user, which is the safe default. Either way, `/user/bootstrap` is
@@ -337,11 +337,11 @@ upstreams:
     auth: {}
 
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
+  - id: claude-opus-5
+    label: Claude Opus 5
     upstream_model:
       bedrock-pt: arn:aws:bedrock:us-east-1:111111111111:provisioned-model/abcdef
-      bedrock-od: us.anthropic.claude-opus-4-8
+      bedrock-od: us.anthropic.claude-opus-5
 ```
 
 **Key points:**
