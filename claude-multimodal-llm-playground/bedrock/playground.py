@@ -226,7 +226,7 @@ if submit:
     elif valid_files:
         for file in valid_files:
             image = Image.open(file)
-            st.image(image, caption=f"Uploaded Image: {file.name}", use_column_width=True)
+            st.image(image, caption=f"Uploaded Image: {file.name}", width="stretch")
             st.subheader(f"{selected_model_name} response:")
             
             # Concatenate prompts if both are provided, or use a default prompt

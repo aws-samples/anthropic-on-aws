@@ -213,7 +213,7 @@ if submit:
         full_prompt = " ".join(filter(None, [img_input_prompt1, img_input_prompt2]))
         for file in valid_files:
             image = Image.open(file)
-            st.image(image, caption=f"Uploaded Image: {file.name}", use_column_width=True)
+            st.image(image, caption=f"Uploaded Image: {file.name}", width="stretch")
             st.subheader(f"{selected_model_name} response:")
             response = get_claude_response_image(full_prompt, image, file.name, selected_model_id, max_tokens, system_prompt, temperature, tools)
             
