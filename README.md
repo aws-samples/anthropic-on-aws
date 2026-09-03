@@ -11,6 +11,16 @@
 
 This repo contains a collection of examples and notebooks for using Anthropic on AWS.
 
+## Dependencies and security
+
+The samples in this repo are point-in-time examples. They are not maintained as
+products, and their dependencies are **not** kept current after publication.
+Before deploying any sample, refresh its dependencies (`npm install`,
+`yarn upgrade`, `uv pip install -U -r requirements.txt`, or equivalent) and
+review the result. Dependabot alerts on unmaintained samples are dismissed as
+tolerable risk for this reason; in-range security fixes are still merged as
+Dependabot opens them.
+
 ## Notebooks
 - [Cookbooks](/cookbooks/README.md)
 
