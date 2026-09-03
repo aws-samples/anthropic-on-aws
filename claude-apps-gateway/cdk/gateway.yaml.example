@@ -193,7 +193,11 @@ managed:
       #
       # `desktop: {}` on its own is a complete opt-in. The keys below are optional
       # feature gates with no CLI equivalent; each one omitted keeps Desktop's own
-      # default, and an UNKNOWN key here fails gateway boot. The rest of the response
+      # default. As of gateway 2.1.232 this block accepts every released Claude
+      # Desktop setting and is validated at boot against Desktop's OWN schema, so
+      # an UNKNOWN key — or a recognized key with a value Desktop would reject, a
+      # legacy alias, or a key the gateway computes itself (inference connection,
+      # model list, OTLP relay) — fails gateway boot. The rest of the response
       # comes from the cli: block above — availableModels, bare tool-name
       # permissions.deny entries, sandbox.network.allowedDomains, and an OTLP endpoint
       # when telemetry.forward_to is set. hooks and scoped rules like Bash(npm *) have
@@ -210,6 +214,14 @@ managed:
       #   # these keys need gateway >= 2.1.227 — on an older pin they fail boot.
       #   chatTabEnabled: true
       #   chatAdvancedFileAnalysisEnabled: false  # no effect if permissions.deny blocks Bash
+      #   # These three need gateway >= 2.1.232. disabledBuiltinTools is UNIONED with
+      #   # the list derived from bare-tool-name permissions.deny above (so it can only
+      #   # disable more, never re-enable); coworkEgressAllowedHosts REPLACES the list
+      #   # derived from sandbox.network.allowedDomains. managedMcpServers is the only
+      #   # way to push MCP servers from a policy — the gateway rejects mcpServers
+      #   # inside the cli: block above, at boot.
+      #   disabledBuiltinTools: [WebSearch]
+      #   coworkEgressAllowedHosts: ["*.internal.example.com"]
       #   isDesktopExtensionEnabled: true
       #   isDesktopExtensionSignatureRequired: true
       #   isLocalDevMcpEnabled: false

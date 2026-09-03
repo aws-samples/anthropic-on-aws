@@ -109,7 +109,13 @@ Both the gateway server (Linux binary) and each developer's Claude Code CLI must
 
 Developers can update with `claude update`. The gateway server uses the same binary, downloaded from the Claude Code release page and packaged into a container image.
 
-Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot; v2.1.203 added the Claude Desktop bootstrap endpoint (`/user/bootstrap`); v2.1.227 added the `desktop` block's `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` keys, the `oidc.use_proxy` flag, and the `pricing:` block. The worked example in this repo pins **2.1.229**, which adds SSE keepalive pings on streaming responses so long thinking pauses don't trip an idle timeout on the Bedrock upstream — this example still raises the ALB idle timeout to 3600s as well, since the ALB has to outlast the stream either way. The pin also carries the earlier fix that prices Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates, directly relevant to this example's `global.anthropic.*` inference profiles. See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
+Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot; v2.1.203 added the Claude Desktop bootstrap endpoint (`/user/bootstrap`); v2.1.227 added the `desktop` block's `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` keys, the `oidc.use_proxy` flag, and the `pricing:` block; v2.1.229 added SSE keepalive pings on streaming responses so long thinking pauses don't trip an idle timeout on the Bedrock upstream (this example still raises the ALB idle timeout to 3600s as well, since the ALB has to outlast the stream either way), and carries the earlier fix that prices Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates, directly relevant to this example's `global.anthropic.*` inference profiles.
+
+The worked example in this repo pins **2.1.251**. Two server-side gates drove that pin past 2.1.229: **v2.1.232** widened the `desktop` block from 11 hand-listed keys to Claude Desktop's full settings schema (and added `disabledBuiltinTools`, `coworkEgressAllowedHosts`, `managedMcpServers`, plus boot-time rejection of empty `match.groups` / `admin.admin_groups` entries and malformed `email_domain` values — previously those silently matched no one or granted admin access), and **v2.1.233** made `400`/`413` responses from a cloud upstream carry the upstream's own message.
+
+**Developers benefit from being newer than the floor, independently of the pin.** The gateway-facing client fixes worth telling your fleet about: v2.1.237 and v2.1.248 fixed prompt caching on gateway sessions (the latter a roughly hourly cache miss caused by an OAuth token refresh); v2.1.248 fixed `/login` to a gateway hanging when the managed-settings approval dialog was required, and v2.1.251 stopped that dialog re-appearing on every re-sign-in and reduced it to only the settings that changed; v2.1.247 fixed first-run setup exiting with "Unable to connect to Anthropic services" when managed settings force gateway sign-in and Anthropic's own endpoints are unreachable — the normal case on a restricted-egress network. v2.1.251 also adds a **Spend limit** bar to `/usage` for developers behind a gateway with spend limits configured; that one needs v2.1.251 on the developer's machine but nothing newer than v2.1.225 on the server.
+
+See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
 
 ### 5. Device management (for pushing settings to developers)
 
@@ -202,7 +208,7 @@ that explicitly opt in. `/user/bootstrap` — the endpoint Desktop fetches its c
 returns `404` unless the matching policy carries a `desktop` key. An empty `desktop: {}`
 is enough to opt a policy in, and a `desktop` key on the `match: {}` base layer opts in
 every policy that inherits it. Requires the gateway server on **v2.1.203+** (this example
-pins 2.1.229). Pair it with `bootstrapUrl` on the client side — see
+pins 2.1.251). Pair it with `bootstrapUrl` on the client side — see
 ["How developers connect"](#claude-desktop).
 
 ```yaml
@@ -225,9 +231,13 @@ which fans out to your destinations. Keys with no Desktop equivalent are omitted
 `hooks` and scoped rules like `Bash(npm *)`; if a restriction matters for Desktop, express
 it as a bare tool name.
 
-The `desktop:` block itself holds only the Desktop-specific gates that have no CLI
+The `desktop:` block itself holds the Desktop-specific settings that have no CLI
 equivalent. Every key is optional (Desktop applies its own default for anything omitted),
-and unknown keys **fail gateway boot**:
+and unknown keys **fail gateway boot**. Since gateway **2.1.232** the block accepts every
+released Claude Desktop setting and is validated against Desktop's own schema, so the table
+below is the useful subset for a gateway deployment, not the whole accepted set — write any
+key from Claude Desktop's [managed configuration reference](https://claude.com/docs/third-party/claude-desktop/configuration)
+as a flat key name:
 
 | Key | Effect |
 |---|---|
@@ -239,10 +249,12 @@ and unknown keys **fail gateway boot**:
 | `isLocalDevMcpEnabled` | Allow locally defined MCP servers |
 | `disableAutoUpdates`, `autoUpdaterEnforcementHours` | Auto-update policy |
 | `banner` | Persistent banner in the app: `enabled`, `text`, `backgroundColor`, `textColor`, `linkUrl` |
+| `disabledBuiltinTools` | Extra tools to disable — **unioned** with the list derived from bare-name `permissions.deny`, so it can only disable more, never re-enable. Needs gateway **≥ 2.1.232** |
+| `coworkEgressAllowedHosts` | Cowork egress allowlist — **replaces** the list derived from `sandbox.network.allowedDomains`. Needs gateway **≥ 2.1.232** |
+| `managedMcpServers` | The only way to push MCP servers from a policy: the gateway rejects `mcpServers` inside a `cli` block at boot, but Desktop clients can receive them here. Needs gateway **≥ 2.1.232** |
 
-The table above is the full accepted key set as of 2.1.229. Three traps bite here — a
-banner that renders nothing, a silently missing Chat tab, and an unknown key that
-crash-loops the ECS task; all three are written up in
+Three traps bite here — a banner that renders nothing, a silently missing Chat tab, and an
+unknown key that crash-loops the ECS task; all three are written up in
 [`docs/gotchas.md`](docs/gotchas.md#20-three-ways-the-desktop-block-itself-bites).
 
 If you don't deploy Claude Desktop, leave `desktop` out entirely — `/user/bootstrap` then

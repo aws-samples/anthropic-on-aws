@@ -139,10 +139,13 @@ PROJECT="${PROJECT:-claude-gateway}"
 # managed.policies block). 2.1.198 added 404-failover across upstreams and the
 # anthropicAws (Claude Platform on AWS) provider, both referenced in
 # gateway.yaml.template; keep this >= 2.1.198 if you rely on either. 2.1.227 added
-# the desktop chatTabEnabled / chatAdvancedFileAnalysisEnabled keys, and 2.1.229
-# added SSE keepalive pings on streaming responses (Bedrock included). See the
-# README "Version coupling" note.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.229}"
+# the desktop chatTabEnabled / chatAdvancedFileAnalysisEnabled keys, 2.1.229 added
+# SSE keepalive pings on streaming responses (Bedrock included), 2.1.232 widened
+# the desktop block to Claude Desktop's full settings schema (and tightened boot
+# validation of match.groups / email_domain / admin_groups), and 2.1.233 made
+# 400/413 errors carry the upstream's own message. See the README "Version
+# coupling" note and docs/upstream-watch.md.
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.251}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).
