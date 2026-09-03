@@ -1,0 +1,4 @@
+# Intentionally empty: keeps the still-installed Mergify app from posting its
+# default merge-queue prompt on every PR. Automated merging is not used here.
+# Remove this file once the Mergify app is uninstalled from the repo.
+pull_request_rules: []
