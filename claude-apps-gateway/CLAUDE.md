@@ -92,9 +92,11 @@ No live AWS account is wired up here, so verification is local/static:
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
   ADOT telemetry sidecar, `createVpcEndpoints` opt-out, imported-cert TLS),
   `./test/stamp-config.test.sh`
-  (dependency-free bash: placeholder guard + Google scope auto-injection), and
+  (dependency-free bash: placeholder guard + Google scope auto-injection),
   `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool
-  detection / `--provenance` gating + the OIDC-secret preflight). None
+  detection / `--provenance` gating + the OIDC-secret preflight), and
+  `./test/deploy-helpers.test.sh` (deploy.sh's pass-1 gate — the destructive branch's
+  status allowlist, fail-closed status query, early bail on a wedged stack). None
   needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
 - Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).

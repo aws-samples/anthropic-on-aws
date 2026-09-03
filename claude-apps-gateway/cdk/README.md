@@ -115,10 +115,13 @@ validation never needs the hostname to be publicly resolvable.
 > by the [context variables below](#cdk-context-variables), with the image built
 > from the tracked distroless `Dockerfile` and SHA-verified binary. The
 > `.env` + `deploy.sh` flow in the steps below is a convenience path: `deploy.sh`
-> builds the image via CodeBuild using its own inline Dockerfile and config, and
-> maps your `.env` values onto the CDK context (`-c`) the stack requires, running
-> both deploy passes for you. Driving `npx cdk deploy` directly (Option B below)
-> means supplying that context yourself.
+> maps your `.env` values onto the CDK context (`-c`) the stack requires and runs both
+> deploy passes for you, building the image in CodeBuild (from this directory's tracked
+> `Dockerfile` and `stamp-config.sh`) so no local Docker is needed. It does not
+> download or SHA-verify the binary — stage that yourself, per
+> [prerequisite 5](#5-the-claude-code-linux-x64-binary) — and it pushes `:latest`.
+> Driving `npx cdk deploy` directly (Option B below) means supplying that context
+> yourself.
 
 ### Step 1: Configure
 
@@ -259,7 +262,7 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration; `deploy.sh` seeds it into Secrets Manager (never baked into the image) and refuses to deploy while it's still the placeholder |
 | `ALLOWED_EMAIL_DOMAINS` | Only users with these email domains can sign in |
 | `BEDROCK_REGION` | Region whose Bedrock endpoint the gateway calls (the upstream `region:` + the inference-profile IAM ARN). Any region works — the gateway uses global inference profiles. See [Regions & data residency](#regions--data-residency) |
-| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. `deploy.sh` targets **one active region per account** (see the scope note at its Step 3). See [Regions](#regions) |
+| `DEPLOY_REGION` | Optional. Region the **stack** deploys into (VPC/ALB/RDS/ECR/ECS/CodeBuild). Defaults to `BEDROCK_REGION`; `deploy.sh` exports it as `AWS_REGION`/`AWS_DEFAULT_REGION` so every `aws` call and CDK agree. `deploy.sh` targets **one active region per account** (see the scope note at its Step 3). See [Regions & data residency](#regions--data-residency) |
 | `CERT_ARN` | Imported ACM cert ARN for `GATEWAY_HOSTNAME` (required; `deploy.sh` maps it to the `certArn` context) |
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 | `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
@@ -317,8 +320,8 @@ region, and prompts/outputs may be processed or stored outside `BEDROCK_REGION` 
 may retain inputs/outputs in the destination region for abuse detection). If you need
 inference confined to a specific geography, switch the catalog off global:
 
-- Edit the `models:` block (in `deploy.sh`'s inline `gateway.yaml`, or your stamped
-  `gateway.yaml` on the hardened path) — replace each `global.` prefix with a geo
+- Edit the `models:` block in [`gateway.yaml.template`](gateway.yaml.template) (both
+  deploy paths stamp from it) — replace each `global.` prefix with a geo
   profile (`us.` / `eu.` / `au.`, and `jp.` for some models — geo coverage varies per
   model, so it isn't uniform across the catalog). Confirm the exact id per model with
   `aws bedrock list-inference-profiles --region <your-region>` — they're not a clean
@@ -334,8 +337,7 @@ opt-in**: on Bedrock it requires a non-default data-retention mode that isn't en
 in every region, so it returns `ValidationException: data retention mode 'default' is
 not available for this model` where the default three work. To add it, enable that
 prereq for your region, then uncomment `claude-fable-5` in both `availableModels` and
-the `models:` block (`gateway.yaml.template` / `.example`, or `deploy.sh`'s inline
-`gateway.yaml`).
+the `models:` block of `gateway.yaml.template` (or `.example`).
 
 > **Driving CDK by hand (Option B)?** The two-pass `cdk deploy` creates the OIDC
 > client secret with a generated placeholder — it does **not** seed your real
@@ -493,7 +495,7 @@ Remove everything the stack created:
 npx cdk destroy
 ```
 
-This deletes the ECS service, ALB, RDS database, ECR repository, IAM roles, security groups, DNS record, and log group. The S3 bucket and CodeBuild project used for image builds (if created by `deploy.sh`) are separate and may need manual cleanup.
+This deletes the ECS service, ALB, RDS database, ECR repository, IAM roles, security groups, DNS record, and log group. The S3 bucket, CodeBuild project, and build role (if created by `deploy.sh`) sit outside the stack — see [CodeBuild build artifacts](../docs/teardown.md#codebuild-build-artifacts-only-if-you-deployed-with-deploysh) for the commands.
 
 ## Cost
 

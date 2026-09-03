@@ -110,6 +110,7 @@ live on 2.1.229: with the `desktop` block enabled, Claude Desktop showed the Cha
    (keep them in sync — the example is a stamped copy of the template), plus the
    README's version notes.
 3. Re-run the local verification (`cd cdk && npm test`; `./test/stamp-config.test.sh`;
+   `./test/setup-helpers.test.sh`; `./test/deploy-helpers.test.sh`;
    `bash -n cdk/scripts/setup.sh`) and add a test case if you're fixing a deployment trap.
 4. Only move the "Validated on" line above after a **live** run: deploy, browser SSO
    sign-in, and one inference call per model in `availableModels`. Static checks can't

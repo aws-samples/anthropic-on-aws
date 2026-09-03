@@ -40,6 +40,8 @@ groups, and VPC endpoints — everything in the stack.
 - its **Route 53 validation CNAME** and the gateway **A-record** if you created it
   outside the stack
 - any **Client VPN** you stood up for laptop access
+- the **S3 build bucket, CodeBuild project, and build role** if you deployed with
+  `deploy.sh` — it creates them with the CLI, outside the stack
 
 ---
 
@@ -147,8 +149,16 @@ a few minutes to delete; its Elastic IP is only releasable afterward.
 # the VPC is yours to keep, whatever tags it carries. (A pre-existing VPC can legally
 # be tagged Project=claude-gateway — e.g. you built it for this project and put the
 # Client VPN in it — so the tag alone does NOT prove setup.sh created it.)
-VPC_REUSED=0
-[ -n "${VPC_ID:-}" ] && VPC_REUSED=1
+#
+# Decided once, on the FIRST paste, and remembered: the lookup below writes to VPC_ID
+# as well, so re-deriving this from VPC_ID would make a re-paste of this block (the
+# SG-straggler note after it asks for exactly that) read the looked-up id as "you
+# supplied it", conclude reuse, and skip delete-vpc on a VPC setup.sh created. To
+# start over in the same shell: unset VPC_REUSED VPC_ID.
+if [ -z "${VPC_REUSED:-}" ]; then
+  VPC_REUSED=0
+  [ -n "${VPC_ID:-}" ] && VPC_REUSED=1
+fi
 # For a setup.sh-created VPC this finds it by tag. For a REUSED VPC, export
 # VPC_ID=vpc-... yourself first (setup.sh doesn't tag a VPC it didn't create) —
 # the ${VPC_ID:-...} keeps a value you set instead of clobbering it with the lookup.
@@ -244,12 +254,36 @@ A `Project=$P` tag is a hint, not proof: `setup.sh` adopts a pre-existing subnet
 IGW, NAT, or SG that matches what it wants rather than creating one, and tags only
 resources it creates — so anything it adopted still carries your tags. Delete what
 you know you added; leave the rest. The four subnets `setup.sh` creates are
-`$P-public-a/b` and `$P-private-a/b`; its SGs are `$P-alb-sg`, `$P-task-sg`, and
-`$P-rds-sg`.
+`$P-public-a/b` and `$P-private-a/b`; its SGs are `$P-alb-sg`, `$P-task-sg`,
+`$P-rds-sg`, and `$P-vpce-sg` (created even when the endpoints themselves were
+adopted, so it may be unused — delete it either way).
 
 ---
 
 ## Shared cleanup (both tracks)
+
+### CodeBuild build artifacts (only if you deployed with `deploy.sh`)
+
+`cdk destroy` doesn't know about these — `deploy.sh` creates them with the CLI, outside
+the stack. The bucket holds your stamped `gateway.yaml` and the staged `claude` binary,
+so empty it rather than leaving it behind.
+
+```bash
+export AWS_REGION=us-east-1   # the region you deployed into
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+aws codebuild delete-project --name claude-gateway-build --region "$AWS_REGION"
+aws iam delete-role-policy --role-name claude-gateway-codebuild --policy-name build-perms
+aws iam delete-role --role-name claude-gateway-codebuild
+# the region-suffixed build bucket (one per region you deployed into)
+aws s3 rb "s3://claude-gateway-build-${ACCOUNT_ID}-${AWS_REGION}" --force
+```
+
+> The bucket name gained its `-$AWS_REGION` suffix when multi-region support landed
+> (CodeBuild requires its source bucket in the project's region). If you deployed with
+> an earlier `deploy.sh`, an unsuffixed `claude-gateway-build-<account-id>` bucket is
+> still sitting there, unused since your first re-run and still holding that run's
+> stamped config — `aws s3 rb s3://claude-gateway-build-${ACCOUNT_ID} --force` it too.
+> The role and project keep their fixed names across regions, so delete those once.
 
 ### ACM certificate + Route 53 records
 
