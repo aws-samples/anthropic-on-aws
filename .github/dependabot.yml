@@ -2,7 +2,8 @@
 #
 # This repo is a collection of independent experiments/samples. We do NOT want
 # a wave of routine version-bump PRs to maintain. So:
-#   - open-pull-requests-limit: 0  -> disables routine *version* updates.
+#   - open-pull-requests-limit: 0  -> disables routine *version* updates
+#     (except github-actions, see below).
 #   - Dependabot *security* updates still run (own internal track, unaffected by
 #     the 0 limit) and are batched into a single PR per ecosystem via `groups`
 #     with `applies-to: security-updates`.
@@ -38,16 +39,18 @@ updates:
         patterns:
           - "*"
 
+  # github-actions is the one ecosystem where routine version updates stay ON:
+  # actions are SHA-pinned in the workflows and Dependabot is what moves the
+  # pins. All bumps are batched into a single weekly PR.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(deps)"
     groups:
-      actions-security:
-        applies-to: security-updates
+      actions:
         patterns:
           - "*"
 
