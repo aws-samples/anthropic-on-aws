@@ -1,4 +1,10 @@
-# Intentionally empty: keeps the still-installed Mergify app from posting its
-# default merge-queue prompt on every PR. Automated merging is not used here.
-# Remove this file once the Mergify app is uninstalled from the repo.
+# Mergify is installed on this repo but not used for merging (aws-samples
+# policy: a human reviews and merges every PR). This config keeps the app
+# quiet: no rules, no queue-control checkbox, no status or merge-protection
+# comments.
 pull_request_rules: []
+merge_queue:
+  queue_controls_comment: false
+  status_comments: none
+merge_protections_settings:
+  post_comment: false
