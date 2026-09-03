@@ -80,6 +80,36 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
 - `setup.sh` is idempotent (describe-before-create); `set -euo pipefail`; `trap`-clean partial binary
   downloads. Mirror the env-var-with-defaults convention from the GCP `setup.sh`.
 
+## Scope guardrails: 1p-first (read before adding anything)
+
+This sample teaches the supported Anthropic path on AWS. Anything that lags a 1p change
+misleads readers, because sample code looks authoritative. Before adding code, a script, or a
+doc paragraph, check each of these. If any applies, don't build it; write a short doc note that
+links the published Anthropic docs instead.
+
+- **Wrapping or re-implementing an Anthropic product surface** (admin API client, gateway
+  config schema, CLI behavior, managed-settings keys). This becomes a second source of truth
+  that goes stale on every product release. Helper scripts and admin CLIs are DIY tooling that
+  customers own; they do not land in this tree. Moving them to `workshop/` or `docs/` is still
+  hosting them.
+- **Working around current product behavior**: reverse-engineered schemas, "until X ships
+  in-region" relays, version gates such as `Desktop >= x`, disabling a feature to dodge a
+  provider 400. If truly unavoidable, quarantine it in a clearly labeled temporary section
+  that names what supersedes it.
+- **Shipping a finished surface Anthropic may own**: dashboards, spend/usage UIs, management
+  views. Keep such layers thin and explicitly "example". Show the data exists; don't render it.
+- **Adding a capability rather than a fix.** A new mode or branch must (a) unlock something the
+  existing config can't already reach, (b) teach the 1p product rather than generic AWS, PKI,
+  or DNS plumbing, and (c) justify its permanent maintenance cost. Concretely: TLS stays the
+  single imported-cert `CERT_ARN` path, and the first-login fingerprint prompt is intended 1p
+  behavior, not something to engineer around.
+- **Prose restating product API behavior** (wire formats, pagination quirks, field semantics)
+  lags the same way code does. Keep notes thin and defer to the reference docs below as the
+  only authority.
+
+Fixes to real breakage (crash, broken link, failed deploy on a supported config) are always
+welcome and should not be bundled with a debatable feature in the same PR.
+
 ## Verification
 
 No live AWS account is wired up here, so verification is local/static:
