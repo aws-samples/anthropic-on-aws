@@ -18,6 +18,61 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers for the pass-1 safety gate (Step 1). Defined up here, before any config
+# or AWS call, so tests can source them in isolation — see the DEPLOY_SH_LIB_ONLY
+# gate below and test/deploy-helpers.test.sh. The gate decides whether to run a
+# deploy that DELETES a live data plane, so its string→branch logic is tested
+# rather than reasoned about.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# classify_stack_query — turn a `describe-stacks` result into a stack status.
+# Prints the status on success, prints NOTHING when the stack is genuinely absent,
+# and returns non-zero when the query failed for any OTHER reason — callers must
+# abort on that. This query is itself a safety control, so it must not fail open: a
+# throttle, an expired credential, or a network blip would otherwise look like "no
+# stack yet" and run the destructive pass against a live stack.
+#
+# stdout and stderr are passed in SEPARATELY on purpose. The CLI can print a
+# warning to stderr while still succeeding (urllib3's NotOpenSSLWarning on some
+# macOS Pythons); folding stderr into stdout would prepend that text to the status,
+# and a recoverable ROLLBACK_COMPLETE stack would then read as an unknown status and
+# skip the pass 1 it needs.
+classify_stack_query() {
+  local rc="$1" out="$2" err="$3"
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$out"
+    return 0
+  fi
+  case "$err" in
+    *ValidationError*"does not exist"*) return 0 ;;  # genuinely absent → first deploy
+    *) return 1 ;;
+  esac
+}
+
+# needs_pass_one — should the ECR-repo-only pass 1 run for this stack status?
+# Running pass 1 is the DESTRUCTIVE branch, so it gets the narrow allowlist: only a
+# stack that is absent or provably holds nothing. Every other status — including one
+# neither this script nor today's CloudFormation knows about — skips to pass 2,
+# which is always the safe default.
+needs_pass_one() {
+  case "$1" in
+    # "" is no stack at all. ROLLBACK_COMPLETE is a failed FIRST create (nothing
+    # provisioned); CDK deletes and recreates it. REVIEW_IN_PROGRESS is a
+    # change-set-only stack. DELETE_COMPLETE is listed because it belongs in the
+    # "holds nothing" set, but nothing relies on it: describe-stacks by NAME never
+    # returns a deleted stack (that needs the stack ID), so the arm is unreachable
+    # from the call site below.
+    ""|ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS|DELETE_COMPLETE) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Test hook: `DEPLOY_SH_LIB_ONLY=1 source deploy.sh` loads only the helpers above
+# (see test/deploy-helpers.test.sh) — no .env, no required env, no AWS calls.
+# shellcheck disable=SC2317  # the exit is the executed-not-sourced fallback
+if [ "${DEPLOY_SH_LIB_ONLY:-}" = "1" ]; then return 0 2>/dev/null || exit 0; fi
+
 # Load .env
 if [ ! -f .env ]; then
   echo "❌ .env file not found. Run: cp .env.example .env and fill in your values."
@@ -105,55 +160,69 @@ fi
 # which is also what preserves TaskSg and any 443 rules you authorized on reused
 # interface endpoints (see NO_ROLLBACK below).
 #
-# The status query itself is a safety control, so it must not fail open: a
-# throttle, expired credential, or network blip would yield an empty status, look
-# like "no stack yet", and run the destructive pass against a live one. Treat ONLY
-# an explicit not-found as absent, and abort on anything else.
+# Read the current status, keeping stderr out of the value (see classify_stack_query).
+STACK_ERR_FILE="$(mktemp)"
 set +e
-STACK_QUERY=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
-  --query 'Stacks[0].StackStatus' --output text 2>&1)
+STACK_OUT="$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
+  --query 'Stacks[0].StackStatus' --output text 2>"$STACK_ERR_FILE")"
 STACK_RC=$?
 set -e
-if [ "$STACK_RC" -eq 0 ]; then
-  STACK_STATUS="$STACK_QUERY"
+STACK_ERR="$(cat "$STACK_ERR_FILE")"
+rm -f "$STACK_ERR_FILE"
+
+STACK_STATUS="$(classify_stack_query "$STACK_RC" "$STACK_OUT" "$STACK_ERR")" || {
+  echo "❌ Could not determine the ClaudeGatewayStack status, so deploy.sh cannot"
+  echo "   tell a first deploy from an existing one — refusing to continue, because"
+  echo "   guessing wrong runs a repo-only deploy that would delete the RDS instance"
+  echo "   and the rest of the running stack. Fix the AWS call and re-run:"
+  echo "   $STACK_ERR"
+  exit 1
+}
+
+# Only the pass-1 decision is made here. Every other status is CDK's to report — this
+# script does not re-implement CloudFormation's status list. What that means in
+# practice, read off the pinned CDK (2.1129) rather than assumed:
+#   * *_IN_PROGRESS — cdk WAITS for the operation to settle, then deploys. Bailing
+#     here would turn a case that heals itself into a hard failure.
+#   * ROLLBACK_COMPLETE / ROLLBACK_FAILED — a failed FIRST create, so cdk deletes the
+#     stack and recreates it (StackStatus.isCreationFailure). ROLLBACK_COMPLETE is in
+#     the pass-1 allowlist above; ROLLBACK_FAILED is not, deliberately — its rollback
+#     failed, so resources may be orphaned, and it is rare enough not to justify
+#     widening the destructive branch. It stops with a clear message at the
+#     EcrRepositoryUri check in Step 2 instead.
+#   * CREATE_FAILED / UPDATE_FAILED / UPDATE_ROLLBACK_FAILED — cdk calls these
+#     "fail-paused" and ASKS to roll back before deploying. `--require-approval never`
+#     does NOT cover that prompt (it only waives security-group/IAM approval); only
+#     `--force` does. So an interactive run stops for a y/n and a non-TTY run fails
+#     with TtyNotAttached — in both cases AFTER the ~10-minute image build. Roll back
+#     first (`npx cdk rollback`) if you land there. NO_ROLLBACK=1 side-steps it for
+#     UPDATE_FAILED, which is the state that flag's retry path exists for.
+if needs_pass_one "$STACK_STATUS"; then
+  echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
+  npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
+  echo "✅ ECR repository created"
 else
-  case "$STACK_QUERY" in
-    *ValidationError*"does not exist"*)
-      STACK_STATUS=""   # genuinely absent → first deploy
-      ;;
-    *)
-      echo "❌ Could not determine the ClaudeGatewayStack status, so deploy.sh cannot"
-      echo "   tell a first deploy from an existing one — refusing to continue, because"
-      echo "   guessing wrong runs a repo-only deploy that would delete the RDS instance"
-      echo "   and the rest of the running stack. Fix the AWS call and re-run:"
-      echo "   $STACK_QUERY"
-      exit 1
-      ;;
-  esac
+  echo "Step 1/5: stack exists ($STACK_STATUS) — skipping pass 1 (a repo-only deploy would delete the ALB/RDS/service)."
 fi
-# Running pass 1 is the destructive branch, so IT gets the narrow allowlist: only a
-# stack that is absent or provably holds nothing. Every other status skips to pass 2,
-# which is always the safe default — if the stack is mid-operation or wedged, `cdk
-# deploy` says so itself instead of us enumerating CloudFormation's status list.
-case "$STACK_STATUS" in
-  # No stack, or one holding no resources. ROLLBACK_COMPLETE is a failed FIRST create
-  # (nothing provisioned); CDK deletes and recreates it. REVIEW_IN_PROGRESS is a
-  # change-set-only stack.
-  ""|ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS|DELETE_COMPLETE)
-    echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
-    npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
-    echo "✅ ECR repository created"
-    ;;
-  *)
-    echo "Step 1/5: stack exists ($STACK_STATUS) — skipping pass 1 (a repo-only deploy would delete the ALB/RDS/service)."
-    ;;
-esac
 echo ""
 
 # --- Step 2: Get outputs ---
 echo "Step 2/5: Reading stack outputs..."
 ECR_URI=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
   --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)
+# Now that pass 1 can be skipped, this can run against a stack that has no
+# EcrRepositoryUri output at all — and `--output text` prints the literal string
+# "None" for a query that matched nothing. Catch that here: left alone it flows into
+# REPO_NAME and the rename guard below blames a GATEWAY_NAME change that never
+# happened.
+if [ -z "$ECR_URI" ] || [ "$ECR_URI" = "None" ]; then
+  echo "❌ ClaudeGatewayStack has no EcrRepositoryUri output, so there is nowhere to"
+  echo "   push the image. This is NOT a GATEWAY_NAME problem: either the stack predates"
+  echo "   that output, or its pass 1 never completed. (Status before this run:"
+  echo "   ${STACK_STATUS:-absent}.) Deploy pass 2 by hand (docs/deployment.md, Track B)"
+  echo "   or tear down and deploy fresh (docs/teardown.md)."
+  exit 1
+fi
 # The repo name the stack actually created, taken from the URI — this is what the
 # CodeBuild IAM policy and docker tags must reference (never assume GATEWAY_NAME
 # alone, so a name mismatch with the stack can't break the push).
@@ -196,16 +265,34 @@ aws s3 mb "s3://$BUCKET" --region "$DEPLOY_REGION" 2>/dev/null || true
 # means concurrent deployments in multiple regions (or under different gateway
 # names) overwrite each other's policy — give the role + project per-region/-name
 # suffixes if you truly need them side by side. See cdk/README.md (DEPLOY_REGION).
+# A bare `|| true` here would also swallow "you may not create roles", which then
+# resurfaces as a baffling put-role-policy failure below. Tolerate ONLY "the role is
+# already there"; anything else aborts with the API's own message.
+ROLE_ERR_FILE="$(mktemp)"
+set +e
 aws iam create-role --role-name claude-gateway-codebuild \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' 2>/dev/null || true
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+  >/dev/null 2>"$ROLE_ERR_FILE"
+ROLE_RC=$?
+set -e
+if [ "$ROLE_RC" -ne 0 ] && ! grep -q 'EntityAlreadyExists' "$ROLE_ERR_FILE"; then
+  echo "❌ Could not create the CodeBuild role claude-gateway-codebuild:"
+  sed 's/^/   /' "$ROLE_ERR_FILE"
+  rm -f "$ROLE_ERR_FILE"
+  exit 1
+fi
+rm -f "$ROLE_ERR_FILE"
 
+# No 2>/dev/null: put-role-policy is quiet on success, and this now runs on EVERY
+# deploy — silencing it would turn a real IAM failure into the script dying right
+# after "Step 3/5" with nothing printed (set -e, no `|| true`).
 aws iam put-role-policy --role-name claude-gateway-codebuild --policy-name build-perms \
-  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::${BUCKET}\",\"arn:aws:s3:::${BUCKET}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}" 2>/dev/null
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::${BUCKET}\",\"arn:aws:s3:::${BUCKET}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}"
 
-# IAM is eventually consistent, so wait AFTER (re)asserting the policy — every run,
-# not only at project creation. A prior fix ran this sleep only when the project
-# was first created, so a policy change on an existing project (new repo/region)
-# could hit the build before it propagated → intermittent ECR AccessDenied.
+# IAM is eventually consistent, and the policy above is scoped to THIS deploy's ECR
+# repo and region — so any repo/region change rewrites it, on a run where the project
+# already exists. Wait after every (re)assertion, not only at project creation, or a
+# build can start against a policy that hasn't propagated → ECR AccessDenied.
 sleep 10  # IAM propagation for the (re)asserted role policy
 
 # The project's S3 source must track $BUCKET, so assert it on EVERY run — create it
@@ -322,6 +409,11 @@ echo ""
 # failure leaves the stack in UPDATE_FAILED, which you then have to either retry or
 # abandon by hand (`npx cdk rollback` / `aws cloudformation rollback-stack` —
 # continue-update-rollback does NOT apply, it only takes UPDATE_ROLLBACK_FAILED).
+#
+# Set it per-run (`NO_ROLLBACK=1 ./scripts/deploy.sh`), not exported in your shell or
+# .env: CloudFormation REFUSES an update that requires replacing a resource while
+# rollback is disabled, so a leftover NO_ROLLBACK=1 makes an unrelated later change
+# fail for a reason that has nothing to do with the change.
 CDK_DEPLOY_FLAGS=(--require-approval never)
 [ "${NO_ROLLBACK:-0}" = "1" ] && CDK_DEPLOY_FLAGS+=(--no-rollback)
 echo "Step 4/5: Pass 2 — deploying the full stack (CDK)..."
