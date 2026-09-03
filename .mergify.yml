@@ -1,4 +1,9 @@
-# Intentionally empty: keeps the still-installed Mergify app from posting its
-# default merge-queue prompt on every PR. Automated merging is not used here.
-# Remove this file once the Mergify app is uninstalled from the repo.
+# Intentionally minimal: keeps the still-installed Mergify app quiet. Automated
+# merging is not used here (aws-samples policy). Remove this file once the
+# Mergify app is uninstalled from the repo.
 pull_request_rules: []
+merge_queue:
+  queue_controls_comment: false
+  status_comments: none
+merge_protections_settings:
+  post_comment: false
