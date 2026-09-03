@@ -13,13 +13,13 @@ This repo contains a collection of examples and notebooks for using Anthropic on
 
 ## Dependencies and security
 
-The samples in this repo are point-in-time examples. They are not maintained as
-products, and their dependencies are **not** kept current after publication.
-Before deploying any sample, refresh its dependencies (`npm install`,
+The samples in this repo are point-in-time examples. Their dependencies are
+pinned at publication and are not continuously upgraded the way a product's
+would be. Before deploying any sample, refresh its dependencies (`npm install`,
 `yarn upgrade`, `uv pip install -U -r requirements.txt`, or equivalent) and
-review the result. Dependabot alerts on unmaintained samples are dismissed as
-tolerable risk for this reason; in-range security fixes are still merged as
-Dependabot opens them.
+review the result. In-range security fixes are merged as Dependabot opens them.
+Alerts that would require a major-version upgrade of a sample are dismissed as
+tolerable risk, with this note as the reason.
 
 ## Notebooks
 - [Cookbooks](/cookbooks/README.md)

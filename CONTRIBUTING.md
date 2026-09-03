@@ -54,12 +54,12 @@ opensource-codeofconduct@amazon.com with any additional questions or comments.
 If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
 
 ### Dependency updates and Dependabot alerts
-Samples here are not maintained after publication (see the
-[Dependencies and security](README.md#dependencies-and-security) note in the
-README). Dependabot security PRs are reviewed and merged by a maintainer;
-automated merging is not used. Alerts that require a major-version upgrade of an
-unmaintained sample are dismissed as tolerable risk rather than fixed. If you
-are updating a sample, refresh its lockfile in the same PR.
+Samples are point-in-time examples with dependencies pinned at publication (see
+[Dependencies and security](README.md#dependencies-and-security) in the README).
+Dependabot security PRs are reviewed and merged by a maintainer; automated
+merging is not used. Alerts that require a major-version upgrade of a sample are
+dismissed as tolerable risk rather than fixed. If you are updating a sample,
+refresh its lockfile in the same PR.
 
 
 ## Licensing
