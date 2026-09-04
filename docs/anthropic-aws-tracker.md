@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-04
+
+- [AWS MCP Server adds a serverless capability for AWS Lambda functions](https://aws.amazon.com/about-aws/whats-new/2026/09/aws-mcp-server-serverless/) — *AWS What's New* (Fri, 04 Sep 2026 16:31:00 GMT)
+
 ## 2026-09-03
 
 - [AI-driven development lifecycle using Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/ai-driven-development-lifecycle-using-amazon-bedrock-agentcore/) — *AWS Machine Learning Blog* (Thu, 03 Sep 2026 16:16:28 +0000)
