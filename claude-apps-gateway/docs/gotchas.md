@@ -483,3 +483,66 @@ claude gateway --config /tmp/probe.yaml
 
 `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` are the current examples: both need
 **≥ 2.1.227**. See [`upstream-watch.md`](upstream-watch.md) for the version-gate checklist.
+
+---
+
+## 21. Data residency costs 10% more than the spend meter counts
+
+**Symptom:** with the `admin:` block enabled (README §5), `period_to_date_spend` and every cap
+decision sit **~9% below** what the provider actually bills, so a $500/month cap admits about
+$550 of real spend. Nothing in the config, the boot log, or the audit events says so. Harmless
+on this example's shipped defaults; live the moment you pin inference to a geography.
+
+**Why:** the meter resolves **one rate per model** from the model ID and has no notion of where
+inference ran. Its built-in table is Anthropic USD list price, which is the *global*-routing
+rate. Every provider the gateway can talk to charges a **10% premium** for keeping inference in
+one geography, and the meter models none of it:
+
+| Upstream | What triggers the premium | Encoded in the model ID? |
+|---|---|---|
+| `bedrock` | `us.` / `eu.` / `au.` / `jp.` inference profiles, or a bare in-region model id | **Yes** — the prefix |
+| `vertex` | regional and multi-region endpoints | Yes — the endpoint |
+| `anthropic` (first-party) | `inference_geo: "us"`, per request or as a workspace `default_inference_geo` | **No** |
+| `anthropicAws` (Claude Platform on AWS) | same `inference_geo: "us"` | **No** |
+| `foundry` | the US Data Zone Standard deployment type | No |
+
+Sources: Anthropic's [pricing page](https://platform.claude.com/docs/en/about-claude/pricing#data-residency-pricing)
+(*"specifying US-only inference through the `inference_geo` parameter incurs a 1.1x multiplier
+on all token pricing categories"*, and *"Regional and multi-region endpoints include a 10%
+premium over global endpoints"*), [Claude in Amazon Bedrock](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock#regions),
+and the [Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/), which carries two
+Claude tables — "Global Cross-region Inference" and "Geo and In-region Cross-region Inference"
+— the second exactly 1.1× the first on input, output, cache read and cache write alike
+(us-east-1 and ap-southeast-2 checked 2026-09-07; Opus 5 $5.00/$25.00 vs $5.50/$27.50).
+
+**Fix, and where it runs out:**
+
+- **This example as shipped is fine.** The `models:` catalog maps every id to
+  `global.anthropic.*`, which is list price, so the meter already agrees with the bill.
+- **Bedrock geographic profiles** (swapped in for data residency — see the README's "Regions &
+  data residency"): correct it with `pricing.overrides` rows carrying the +10% rates. Not
+  `pricing.multiplier`, which is capped at `1` and can only discount. Recipe and the current
+  numbers: [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates).
+- **`inference_geo`-driven premiums** (`anthropic`, `anthropicAws`): **no config fixes this.**
+  `overrides` rows are keyed by `{upstream, model}`, but two requests to the same model on the
+  same upstream differ only by their `inference_geo`, so one row cannot price both. An org with
+  a US-only workspace default is metered ~9% light on every request with no supported
+  correction. The gateway does receive what it needs — the response `usage` object carries
+  `inference_geo`, and the pinned binary's usage schema parses it
+  (`inference_geo: nullable().optional()`) — the metering path just doesn't read it.
+- Either way the figure stays an estimate: a circuit breaker, not an invoice. Reconcile against
+  the provider's own usage reporting before treating it as billing.
+
+**Status upstream:** [anthropics/claude-code#83690](https://github.com/anthropics/claude-code/issues/83690)
+asked for tier-aware rates, operator rate overrides, or a documented disclosure of the skew.
+**2.1.227 shipped the overrides** — the `pricing:` block, general enough to cover private
+a negotiated discount on any provider, which is the right shape for that ask. The issue was
+auto-closed by the stale bot before the rest was triaged, and the direction that survived is the
+one that matters: caps that admit ~10% more than configured. The narrower, provider-general
+follow-up is [anthropics/claude-code#92751](https://github.com/anthropics/claude-code/issues/92751),
+which asks for any one of three fixes: allow `multiplier > 1`, allow `multiplier` per upstream
+(today it is one value for the whole gateway, so a failover stack spanning two tiers or a
+`bedrock` + first-party pair with separate discounts can't be priced), or apply the documented
+1.1× from the `usage.inference_geo` the meter is already handed. Watch that issue before
+building a per-model `overrides` table you may not need. Treat the 10% as a figure to
+re-verify, not a constant: check it against your own invoice, and re-check when the pin moves.

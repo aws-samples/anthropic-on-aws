@@ -51,7 +51,11 @@ exceeds our pin, we're behind on that feature. The ones we already track:
 - Claude Desktop bootstrap endpoint (`/user/bootstrap`, the `desktop` policy key) — **requires ≥ 2.1.203**
 - `desktop.chatTabEnabled` + `desktop.chatAdvancedFileAnalysisEnabled` — **require ≥ 2.1.227**
 - `oidc.use_proxy` (gateway's own IdP requests through `HTTPS_PROXY`) — **requires ≥ 2.1.227**
-- `pricing:` block (contracted rates for the spend meter; also needs `admin:`) — **requires ≥ 2.1.227**
+- `pricing:` block (contracted rates for the spend meter; also needs `admin:`) — **requires ≥ 2.1.227**.
+  Not needed on the shipped global profiles (list price already matches), but the only correction
+  available if the catalog moves to geographic profiles, which cost 10% more than the meter
+  counts. Re-verify that 10% and the `multiplier <= 1` ceiling on each bump:
+  [`gotchas.md` §21](gotchas.md#21-data-residency-costs-10-more-than-the-spend-meter-counts).
 - `model must be a string` → `400` — **added in 2.1.221**; `model is required` → **2.1.228**
 
 **The `desktop` block's key set is bounded by the pin, and the block is validated
