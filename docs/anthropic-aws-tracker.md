@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-07
+
+- [AWS Weekly Roundup: Claude Fable 5.1 on AWS, Amazon Linux 2027 preview, AWS Certified AI Business Strategist, and more (September 7, 2026)](https://aws.amazon.com/blogs/aws/aws-weekly-roundup-claude-fable-5-1-on-aws-amazon-linux-2027-preview-aws-certified-ai-business-strategist-and-more-september-7-2026/) — *AWS News Blog* (Mon, 07 Sep 2026 14:24:08 +0000)
+
 ## 2026-09-04
 
 - [AWS MCP Server adds a serverless capability for AWS Lambda functions](https://aws.amazon.com/about-aws/whats-new/2026/09/aws-mcp-server-serverless/) — *AWS What's New* (Fri, 04 Sep 2026 16:31:00 GMT)
