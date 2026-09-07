@@ -514,10 +514,88 @@ curl -X POST https://<gateway>/v1/organizations/spend_limits \
 **Key points:**
 - Amounts are in USD cents (50000 = $500)
 - Caps are per-seat defaults, not shared pools (each member gets their own limit)
-- Spend is estimated from token counts at list price (circuit breaker, not an invoice)
+- Spend is estimated from token counts at list price (circuit breaker, not an invoice) — which
+  matches Bedrock's **global** endpoints but under-counts regional ones by ~9%; see below
 - If Postgres is unavailable, enforcement fails open by default (inference continues)
 - Set `enforcement.fail_closed_on_error: true` to block all requests when Postgres is down
 - The admin API mirrors Anthropic's public Admin API, so existing SDK clients work with a base_url change
+
+#### Metering at your real Bedrock rate: endpoint tier and negotiated rates
+
+The meter resolves **one rate per model** from the model ID, with no notion of which Bedrock
+endpoint tier served the request, and its built-in table is Anthropic USD list price. Bedrock
+prices the two tiers differently:
+
+| Endpoint | Model IDs | Price | Opus 5 in/out per Mtok |
+|---|---|---|---|
+| **Global** | `global.anthropic.*` — what this example ships | List price, no premium | $5.00 / $25.00 |
+| **Geographic / in-region** | `us.` `eu.` `au.` `jp.`, or a bare in-region id | **+10% on every rate** | $5.50 / $27.50 |
+
+Anthropic states it directly — *"Regional endpoints carry a 10% pricing premium over global
+endpoints"* ([Claude in Amazon Bedrock](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock#regions))
+— and the [Bedrock pricing page](https://aws.amazon.com/bedrock/pricing/) carries two Claude
+tables, "Global Cross-region Inference" and "Geo and In-region Cross-region Inference", the
+second exactly 1.1× the first on input, output, cache read and cache write alike.
+
+So **on the global profiles this example ships, the meter is already correct** and you need
+nothing here. The trap is the *other* direction: switch the [`models:` catalog](cdk/gateway.yaml.template)
+to geographic profiles for data residency and real spend is 1.1× what the meter counts, so
+caps permit ~10% more than configured — the direction that defeats a circuit breaker.
+
+`pricing:` (gateway **≥ 2.1.227**, and it needs the `admin:` block above — only the spend
+meter reads it, so `pricing` without `admin` fails boot) is the correction. Uncomment it in
+**`cdk/gateway.yaml.template`** (not the generated `gateway.yaml`) and redeploy, same as
+step 3 above. Which key you need depends on the direction:
+
+- **A negotiated discount off list** — `multiplier`, a single number applied to every
+  metered amount:
+  ```yaml
+  pricing:
+    multiplier: 0.85   # bill 85% of list
+  ```
+- **The geographic +10% premium** — `multiplier` **cannot** express it (it is capped at `1`,
+  so it can only discount). Use `overrides` rows carrying the premium rates, USD per million
+  tokens; a model you don't list silently falls back to list price:
+  ```yaml
+  pricing:
+    overrides:   # us-east-1 geo tier, 2026-09-07 — re-check per region and model
+      - { upstream: bedrock, model: us.anthropic.claude-opus-5,   input: 5.50, output: 27.50, cache_read: 0.55, cache_write: 6.875 }
+      - { upstream: bedrock, model: us.anthropic.claude-sonnet-5,  input: 2.20, output: 11.00, cache_read: 0.22, cache_write: 2.75  }
+      - { upstream: bedrock, model: us.anthropic.claude-haiku-4-5, input: 1.10, output: 5.50,  cache_read: 0.11, cache_write: 1.375 }
+  ```
+- **Both at once** — if the discount is *bigger* than the 10% premium the product is still
+  ≤ 1, so one `multiplier` covers both: `1.1 × 0.85 = 0.935`. If it isn't, you need
+  `overrides` (and `multiplier` still applies on top of a row).
+- **More than one upstream** — `multiplier` is a single value for the whole gateway, so the
+  failover stacks the template sketches (an in-region primary with a global fallback, or
+  `bedrock` alongside a first-party upstream on its own rate card and its own discount) can't
+  be priced with one. Only `overrides`, whose rows are per-upstream, can separate them.
+
+The boot-time rules, verified against the pinned 2.1.229 binary:
+
+| Rule | Behaviour |
+|---|---|
+| `multiplier` range | `> 0` and `<= 1` — discount only. A rate *above* list needs an `overrides` row |
+| `multiplier` scope | Global to the gateway. There is no per-upstream form: a row-level `multiplier`, `pricing.upstreams` and `pricing.multipliers` are all rejected at boot |
+| All four rates required | Omit one and boot fails with the unhelpful `Expected number, received nan`; each must be `> 0`, so a zero-rated cache read is rejected |
+| One `cache_write` rate | Bedrock prices 5m and 1h cache writes apart (geo Opus 5: $6.875 vs $11.00); a row carries only one of them |
+| `upstream` | Must name an `upstreams[]` entry. The `bedrock` upstream here sets no explicit `name:`, so address it as its provider, `bedrock`; an unknown name fails boot |
+| `model` precedence | Exact string sent upstream → exact id the client sent → built-in model name |
+| Duplicate rows | A built-in name also covers that model's dated and `us.`-prefixed Bedrock spellings, so `claude-opus-5` + `us.anthropic.claude-opus-5` is a duplicate and fails boot |
+| `global.` / `eu.` / `apac.` | *Not* recognised as spellings of the built-in id, so a `global.` row and a `us.` row coexist on one upstream. Write both explicitly if one gateway serves both tiers |
+
+Either way the figure stays an estimate. Reconcile against Bedrock's own usage reporting
+before treating it as billing. The same 10% premium applies to *every* upstream the gateway
+supports, and on the first-party `anthropic` / `anthropicAws` providers it is driven by the
+per-request `inference_geo` parameter, which `overrides` rows cannot express at all.
+
+> [!NOTE]
+> The three limits above — `multiplier` rejecting values `> 1`, its being global rather than
+> per-upstream, and nothing reading the `inference_geo` the meter already parses — are raised
+> upstream as [anthropics/claude-code#92751](https://github.com/anthropics/claude-code/issues/92751).
+> Any one of them being fixed would replace the per-model `overrides` table above with a single
+> line, so check that issue before building one out. Background:
+> [`docs/gotchas.md` §21](docs/gotchas.md#21-data-residency-costs-10-more-than-the-spend-meter-counts).
 
 ---
 
