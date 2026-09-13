@@ -95,15 +95,48 @@ fi
 # The ECS service can't start until its image exists, so the stack splits the
 # deploy in two: pass 1 creates just the ECR repo; we build+push; pass 2 (below)
 # brings up the full stack. See cdk/README.md "CDK context variables".
-echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
-npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
-echo "✅ ECR repository created"
+# The check is on stack STATUS, not mere existence: a failed first deploy leaves
+# the stack in ROLLBACK_COMPLETE, which describe-stacks still finds — skipping
+# pass 1 then fails much later with a cryptic "None" repo. Fail early instead.
+STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
+  --region "${DEPLOY_REGION}" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "NONE")
+case "$STACK_STATUS" in
+  NONE)
+    echo "Step 1/5: Pass 1 — creating the ECR repository (CDK, first deploy)..."
+    npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
+    echo "✅ ECR repository created"
+    ;;
+  CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE)
+    echo "Step 1/5: Stack ClaudeGatewayStack already exists (${STACK_STATUS}) — SKIPPING pass 1"
+    echo "          (repo-only) to avoid tearing down the stack. Going straight to build + pass 2."
+    ;;
+  ROLLBACK_COMPLETE)
+    echo "❌ Stack ClaudeGatewayStack is ROLLBACK_COMPLETE (a failed FIRST deploy)."
+    echo "   CloudFormation cannot update a stack in this state. Delete it, then re-run:"
+    echo "     aws cloudformation delete-stack --stack-name ClaudeGatewayStack --region ${DEPLOY_REGION}"
+    echo "     aws cloudformation wait stack-delete-complete --stack-name ClaudeGatewayStack --region ${DEPLOY_REGION}"
+    exit 1
+    ;;
+  *)
+    echo "❌ Stack ClaudeGatewayStack is in state ${STACK_STATUS} — an operation is in"
+    echo "   progress or the stack needs attention. Wait for it to settle (CloudFormation"
+    echo "   console) and re-run."
+    exit 1
+    ;;
+esac
 echo ""
 
 # --- Step 2: Get outputs ---
 echo "Step 2/5: Reading stack outputs..."
 ECR_URI=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
   --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)
+# Guard: a stack without this output (partial/rolled-back deploy) yields "" or the
+# literal "None" — catching it here beats a cryptic CodeBuild/IAM failure later.
+if [ -z "$ECR_URI" ] || [ "$ECR_URI" = "None" ]; then
+  echo "❌ Could not read EcrRepositoryUri from stack outputs (got: '${ECR_URI:-<empty>}')."
+  echo "   The stack exists but has no ECR output — check its state in the CloudFormation console."
+  exit 1
+fi
 # The repo name the stack actually created, taken from the URI — this is what the
 # CodeBuild IAM policy and docker tags must reference (never assume GATEWAY_NAME
 # alone, so a name mismatch with the stack can't break the push).
@@ -214,7 +247,7 @@ while true; do
   if [ "$STATUS" = "SUCCEEDED" ]; then
     echo "✅ Image built and pushed to ECR"
     break
-  elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ]; then
+  elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ] || [ "$STATUS" = "FAULT" ] || [ "$STATUS" = "TIMED_OUT" ]; then
     echo "❌ Build failed: $STATUS"
     exit 1
   fi
@@ -227,6 +260,37 @@ echo ""
 # behind the internal ALB. cdk deploy blocks until the service is stable, so no
 # manual `update-service` scale-up is needed.
 echo "Step 4/5: Pass 2 — deploying the full stack (CDK)..."
+
+# Safety gate: abort if pass 2 would REMOVE or REPLACE any resource. A plain config
+# or image change shows no such lines. The match is precise on purpose: `^\[-\]` is a
+# resource removal (property-diff `[-]` lines are indented, so in-place edits don't
+# trip it), and "requires replacement"/"may be replaced" are real replacements. Do NOT
+# grep a bare "replace" — cdk prints "...accurate replacement information" on every run,
+# which would abort every deploy. NO_COLOR keeps removed-resource lines starting with [-].
+# Set FORCE_DESTRUCTIVE=1 to acknowledge an INTENTIONAL removal/replacement (e.g.
+# dropping VPC endpoints after setting CREATE_VPC_ENDPOINTS=false) and proceed anyway.
+# The capture uses `|| rc=$?` so a synth ERROR (bad context, code bug) still prints
+# the captured output before dying — a bare $( ) under set -e would exit silently.
+echo "   Checking pass-2 change set for destructive actions..."
+DIFF_RC=0
+DIFF_OUT="$(NO_COLOR=1 npx cdk diff -c imageReady=true "${CDK_CTX[@]}" 2>&1)" || DIFF_RC=$?
+echo "${DIFF_OUT}"
+if [ "$DIFF_RC" -ne 0 ]; then
+  echo "❌ cdk diff exited with ${DIFF_RC} (synth error?) — see the output above."
+  exit 1
+fi
+if echo "${DIFF_OUT}" | grep -Eq '^\[-\]|requires replacement|may be replaced'; then
+  if [ "${FORCE_DESTRUCTIVE:-0}" = "1" ]; then
+    echo "⚠️  Pass 2 REMOVES or REPLACES resources — proceeding because FORCE_DESTRUCTIVE=1."
+  else
+    echo "❌ Pass 2 would REMOVE or REPLACE resources. Aborting — review the diff above."
+    echo "   If this change is intentional, re-run with FORCE_DESTRUCTIVE=1."
+    exit 1
+  fi
+else
+  echo "✅ No destructive changes; proceeding."
+fi
+
 npx cdk deploy --require-approval never -c imageReady=true "${CDK_CTX[@]}"
 echo "✅ Full stack deployed"
 echo ""
