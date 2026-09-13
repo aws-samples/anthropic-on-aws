@@ -124,13 +124,17 @@ the cert SHA-256 fingerprint to publish to developers.
 Optional flags: `VPC_ID=vpc-...` (reuse an existing VPC). The full list with
 defaults is at the top of [`setup.sh`](../cdk/scripts/setup.sh).
 
+> Reusing a VPC with `VPC_ID` has constraints — fixed subnet CIDRs, and endpoint
+> security groups you must authorize yourself. See
+> [Reusing an existing VPC](#reusing-an-existing-vpc).
+
 ## Track B — CDK (two-pass)
 
 The stack is parameterized by **CDK context** (`-c key=value`); the full table is in
 [`../cdk/README.md`](../cdk/README.md#cdk-context-variables). Two passes because the
 ECS service needs the image to exist first.
 
-**Pass 1 — create the ECR repo:**
+**Pass 1 — create the ECR repo** (first deploy only):
 
 ```bash
 cd cdk
@@ -138,6 +142,13 @@ npm install
 npx cdk bootstrap -c imageReady=false    # first time in the account/region only
 npx cdk deploy -c imageReady=false
 ```
+
+> [!CAUTION]
+> Run pass 1 **only on a first deploy**. Its template holds one resource, so
+> deploying it over a stack that already reached pass 2 tells CloudFormation to
+> delete everything else — the RDS instance and its data included. To update an
+> existing deployment, build the image and run **pass 2 only**. (`deploy.sh` skips
+> pass 1 automatically when the stack exists.)
 
 **Between passes — build and push the image** to the ECR URI from the pass-1
 output. The stamped config and verified binary must sit next to the `Dockerfile` in
@@ -176,8 +187,10 @@ npx cdk deploy \
   -c ingressCidr=10.100.0.0/16
 ```
 
-> Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the
-> service endpoints, `-c createVpcEndpoints=false`.
+> Reusing a VPC: `-c vpcId=vpc-...` and, if it already has the service endpoints,
+> `-c createVpcEndpoints=false`. Read
+> [Reusing an existing VPC](#reusing-an-existing-vpc) first — the endpoint SGs need
+> authorizing by hand, and the ordering is fiddly.
 
 The stack creates `claude-gateway-oidc-client-secret` with a CDK-**generated**
 placeholder (a real secret can't ride in CDK context — it would land in
@@ -219,11 +232,65 @@ To roll a new image later: push a new tag, then re-run pass 2 with
 > ```
 
 > [!NOTE]
-> `cdk/scripts/deploy.sh` is a separate convenience script that builds the image
-> via CodeBuild using its own inline Dockerfile and config. It does **not** use the
-> hardened build path above (distroless image, SHA-verified binary, placeholder
-> guard) and does not pass CDK context, so this guide — not that script — is the
-> supported route.
+> `cdk/scripts/deploy.sh` is a separate convenience script that runs both passes
+> from `.env`: it maps your values onto the CDK context above and builds the image in
+> CodeBuild, so no local Docker is needed. It shares this track's tracked
+> `Dockerfile` and `stamp-config.sh` (distroless image, placeholder guard) and builds
+> the same `--platform=linux/amd64 --provenance=false` image. Two differences from the
+> walkthrough above: it uses whatever `claude` binary you have already staged rather
+> than downloading and SHA-verifying one itself, and it pushes `:latest` rather than a
+> config-hashed tag — so re-read the config-tag box above before treating `:latest` as
+> a record of what is deployed.
+
+## Reusing an existing VPC
+
+Both tracks can deploy into a VPC you already have — `VPC_ID=vpc-...` for `setup.sh`,
+`-c vpcId=vpc-...` for CDK — typically to keep an existing Client VPN association
+intact. Three things to know.
+
+**CIDR.** `setup.sh` creates subnets at fixed CIDRs (`10.20.0.0/24`, `10.20.1.0/24`,
+`10.20.10.0/24`, `10.20.11.0/24`), so the VPC must be `10.20.0.0/16` or a superset
+with those four ranges free; anything else fails at `create-subnet`. The CDK track
+imports the VPC's existing subnets instead, so any CIDR works.
+
+**Endpoint security groups.** If the VPC already has the Bedrock / Secrets Manager /
+ECR / CloudWatch **interface** endpoints, tell the CDK track not to recreate them with
+`CREATE_VPC_ENDPOINTS=false` (`deploy.sh`) or `-c createVpcEndpoints=false` (by hand)
+— AWS allows one private-DNS endpoint per service per VPC. `setup.sh` has no such
+flag and needs none: it describes before creating, so it adopts endpoints already in
+the VPC. Neither track then touches those endpoints' security groups, so **you** must
+allow 443 from the gateway task SG on each, or tasks time out fetching secrets,
+images, and logs. S3 is a *gateway* endpoint: no SG, no 443 — it just needs an
+association with the tasks' private route table.
+
+**Ordering, which differs by track.** `setup.sh` creates its task SG (`$P-task-sg`)
+before tasks start: authorize it, then re-run. CDK's `TaskSg` exists only in pass 2,
+so it can't be preauthorized — and a pass 2 that can't stabilize normally rolls back
+and *deletes* the SG you were about to authorize. Deploy that pass with rollback
+disabled so it survives:
+
+```bash
+npx cdk deploy --no-rollback ...   # by hand
+NO_ROLLBACK=1 ./scripts/deploy.sh  # or via deploy.sh
+```
+
+Then authorize 443 from `TaskSg` on the interface endpoints' SGs and deploy **pass 2
+only** — never re-run pass 1 (see the caution under [Track B](#track-b--cdk-two-pass));
+`deploy.sh` skips it for you.
+
+A `--no-rollback` failure leaves the stack in `UPDATE_FAILED`. From there, either
+retry the update (that redeploy) or abandon it with `npx cdk rollback` /
+`aws cloudformation rollback-stack`. `continue-update-rollback` does **not** apply —
+it only accepts `UPDATE_ROLLBACK_FAILED`. Having to make that call by hand is why
+neither path disables rollback by default.
+
+Set `NO_ROLLBACK=1` **per run**, as above — don't export it or put it in `.env`.
+CloudFormation refuses an update that requires *replacing* a resource while rollback
+is disabled, so a leftover `NO_ROLLBACK=1` makes some unrelated later change fail for
+a reason that has nothing to do with the change.
+
+Tearing down a reused VPC needs care too — see
+[Reused VPC](teardown.md#reused-vpc) in the teardown guide.
 
 ## Verify
 
