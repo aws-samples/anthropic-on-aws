@@ -40,7 +40,7 @@ a common failure:
    `global.anthropic.claude-haiku-4-5` is rejected as `ValidationException: invalid`.
    Run `aws bedrock list-inference-profiles` for the exact IDs. In `gateway.yaml`'s
    `models:` block the friendly name (`claude-haiku-4-5`) maps to the dated profile;
-   for data residency, swap the `global.` prefix for a geo profile (`us.`/`eu.`/`au.`, plus
+   for data residency, swap the `global.` prefix for a geo profile (`us.`/`eu.`/`au.`,
    and `jp.` for some models — geo coverage varies per model).
 2. **An ACM cert** for your gateway hostname, passed as `CERT_ARN` / `-c certArn`.
    On first `/login` the CLI pins the cert's SHA-256 fingerprint and prompts the

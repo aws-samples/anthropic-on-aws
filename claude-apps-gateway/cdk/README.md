@@ -437,9 +437,9 @@ upstreams:
 # Global inference profiles → region-agnostic (see "Regions & data residency")
 auto_include_builtin_models: false
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
-    upstream_model: { bedrock: global.anthropic.claude-opus-4-8 }
+  - id: claude-opus-5
+    label: Claude Opus 5
+    upstream_model: { bedrock: global.anthropic.claude-opus-5 }
 ```
 
 **5. Trust the self-signed cert:**

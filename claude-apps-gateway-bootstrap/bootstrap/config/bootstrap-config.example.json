@@ -1,6 +1,8 @@
 {
   "allowUserAddedMcpServers": false,
   "chatTabEnabled": true,
+  "coworkTabEnabled": true,
+  "isClaudeCodeForDesktopEnabled": true,
   "coworkWebSearchEnabled": false,
   "disableNonessentialTelemetry": true,
   "disabledBuiltinTools": [
