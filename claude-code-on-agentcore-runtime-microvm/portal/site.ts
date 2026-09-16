@@ -131,6 +131,19 @@ export const PORTAL_HTML = `<!doctype html>
   }
   main { max-width: 66rem; margin: 0 auto; padding: 2.5rem 2rem 4rem; }
   #sign-in { display: block; margin: 20vh auto 0; padding: .85rem 2.1rem; font-size: .92rem; }
+  /* render() below toggles this button's visibility by setting the
+     \`hidden\` IDL property, which the browser normally honors via its own
+     [hidden] { display: none } UA rule -- but an ID selector like the one
+     above beats that attribute selector on specificity, so \`display: block\`
+     kept winning even after the hidden attribute was correctly applied to
+     the DOM. Concretely: a signed-in user with real sessions loaded still
+     had this coral "Sign in" button floating in the middle of the page,
+     on top of their own environment table, on every single visit -- found
+     by rendering the signed-in state and inspecting it directly, not by
+     reading the JS in isolation. Restating the rule at matching specificity
+     (ID selector + attribute selector) here is what actually makes hidden
+     stick. */
+  #sign-in[hidden] { display: none; }
   .panel-head {
     display: flex;
     align-items: flex-end;
@@ -786,6 +799,17 @@ function setTerminalStatus(state, label) {
 function openTerminal(session) {
   clearError();
   setTerminalStatus('connecting', 'Connecting\u2026');
+  // Native <dialog> exposes an implicit ARIA dialog role, but it does not
+  // derive an accessible name from whatever happens to be visible inside
+  // it -- without this, a screen reader user gets only "dialog", with no
+  // indication this is a remote terminal or which workspace it is for.
+  // Set once per open, from the same session data the chrome bar/table
+  // already use, rather than pointing at #terminal-status-text (which
+  // changes every time the connection state changes, and would make the
+  // dialog's own name flicker instead of staying a stable description of
+  // what it is).
+  el('terminal-dialog').setAttribute(
+    'aria-label', 'Remote shell terminal for workspace ' + session.workspaceId);
   el('terminal-dialog').showModal();
   // Whether this session has ever had real activity before this connect,
   // used by connectTerminal() below to decide whether it's safe to send
