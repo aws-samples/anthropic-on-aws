@@ -490,8 +490,10 @@ claude gateway --config /tmp/probe.yaml
 
 **Symptom:** with the `admin:` block enabled (README §5), `period_to_date_spend` and every cap
 decision sit **~9% below** what the provider actually bills, so a $500/month cap admits about
-$550 of real spend. Nothing in the config, the boot log, or the audit events says so. Harmless
-on this example's shipped defaults; live the moment you pin inference to a geography.
+$550 of real spend. From gateway **2.1.268** the same rates are pushed to signed-in clients, so
+developers' `/cost` and your telemetry read low by the same margin. Nothing in the config, the
+boot log, or the audit events says so. Harmless on this example's shipped defaults; live the
+moment you pin inference to a geography.
 
 **Why:** the meter resolves **one rate per model** from the model ID and has no notion of where
 inference ran. Its built-in table is Anthropic USD list price, which is the *global*-routing
@@ -520,9 +522,12 @@ Claude tables — "Global Cross-region Inference" and "Geo and In-region Cross-r
 - **This example as shipped is fine.** The `models:` catalog maps every id to
   `global.anthropic.*`, which is list price, so the meter already agrees with the bill.
 - **Bedrock geographic profiles** (swapped in for data residency — see the README's "Regions &
-  data residency"): correct it with `pricing.overrides` rows carrying the +10% rates. Not
-  `pricing.multiplier`, which is capped at `1` and can only discount. Recipe and the current
-  numbers: [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates).
+  data residency"): one line corrects it on gateway **≥ 2.1.271** —
+  `pricing: {multiplier: 1.1}`. That release raised the ceiling from `1` to `10`
+  ("marked-up internal chargeback rates" in the changelog; mechanically the same knob), so the
+  per-model `pricing.overrides` table that earlier pins needed is now only for genuinely
+  per-model contracts or for separating two upstreams on different rate cards. Recipe and the
+  current numbers: [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates).
 - **`inference_geo`-driven premiums** (`anthropic`, `anthropicAws`): **no config fixes this.**
   `overrides` rows are keyed by `{upstream, model}`, but two requests to the same model on the
   same upstream differ only by their `inference_geo`, so one row cannot price both. An org with
@@ -540,9 +545,11 @@ a negotiated discount on any provider, which is the right shape for that ask. Th
 auto-closed by the stale bot before the rest was triaged, and the direction that survived is the
 one that matters: caps that admit ~10% more than configured. The narrower, provider-general
 follow-up is [anthropics/claude-code#92751](https://github.com/anthropics/claude-code/issues/92751),
-which asks for any one of three fixes: allow `multiplier > 1`, allow `multiplier` per upstream
-(today it is one value for the whole gateway, so a failover stack spanning two tiers or a
-`bedrock` + first-party pair with separate discounts can't be priced), or apply the documented
-1.1× from the `usage.inference_geo` the meter is already handed. Watch that issue before
-building a per-model `overrides` table you may not need. Treat the 10% as a figure to
-re-verify, not a constant: check it against your own invoice, and re-check when the pin moves.
+which asked for any one of three fixes. **The first shipped in 2.1.271:** `multiplier` now
+accepts values above `1`, up to `10`, which is what makes the Bedrock geographic case a
+one-liner. Two remain open — `multiplier` per upstream (it is still one value for the whole
+gateway, so a failover stack spanning two tiers or a `bedrock` + first-party pair with separate
+discounts can't be priced), and applying the documented 1.1× from the `usage.inference_geo` the
+meter is already handed, which is the only route that fixes `anthropic` / `anthropicAws`. Treat
+the 10% as a figure to re-verify, not a constant: check it against your own invoice, and
+re-check when the pin moves.

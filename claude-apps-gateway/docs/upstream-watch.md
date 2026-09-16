@@ -51,10 +51,13 @@ exceeds our pin, we're behind on that feature. The ones we already track:
 - Claude Desktop bootstrap endpoint (`/user/bootstrap`, the `desktop` policy key) — **requires ≥ 2.1.203**
 - `desktop.chatTabEnabled` + `desktop.chatAdvancedFileAnalysisEnabled` — **require ≥ 2.1.227**
 - `oidc.use_proxy` (gateway's own IdP requests through `HTTPS_PROXY`) — **requires ≥ 2.1.227**
-- `pricing:` block (contracted rates for the spend meter; also needs `admin:`) — **requires ≥ 2.1.227**.
-  Not needed on the shipped global profiles (list price already matches), but the only correction
-  available if the catalog moves to geographic profiles, which cost 10% more than the meter
-  counts. Re-verify that 10% and the `multiplier <= 1` ceiling on each bump:
+- `pricing:` block — **requires ≥ 2.1.227**, plus either `admin:` or a `managed:` block with at
+  least one policy (its two readers: the spend meter, and the `modelPricing` pushed to clients
+  since **2.1.268**). Not needed on the shipped global profiles (list price already matches), but
+  the correction if the catalog moves to geographic profiles, which cost 10% more than the meter
+  counts. `pricing.multiplier` accepts values above `1`, up to `10`, from **2.1.271** — before
+  that it was capped at `1` and the same correction needed a per-model `overrides` table.
+  Re-verify the 10% and the multiplier range on each bump:
   [`gotchas.md` §21](gotchas.md#21-data-residency-costs-10-more-than-the-spend-meter-counts).
 - `model must be a string` → `400` — **added in 2.1.221**; `model is required` → **2.1.228**
 
