@@ -59,6 +59,18 @@ export const PORTAL_HTML = `<!doctype html>
     from { opacity: 0; }
     to { opacity: 1; }
   }
+  @keyframes dialog-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: scale(.97) translateY(4px); }
+  }
+  @keyframes backdrop-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .3; }
+  }
   body {
     margin: 0;
     min-height: 100vh;
@@ -154,6 +166,10 @@ export const PORTAL_HTML = `<!doctype html>
   button:hover { border-color: var(--brand); transform: translateY(-1px); }
   button:active { transform: translateY(0); }
   button:disabled { opacity: .5; cursor: default; transform: none; }
+  button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(204, 120, 92, .35), 0 0 0 1px var(--brand);
+  }
   button.primary {
     background: var(--brand);
     border-color: var(--brand);
@@ -180,6 +196,14 @@ export const PORTAL_HTML = `<!doctype html>
     border: 1px solid var(--line);
     background: var(--panel);
     animation: fade-up .5s cubic-bezier(.16, 1, .3, 1) .1s both;
+    /* A manifest with 20 running environments should still feel like one
+       intentional panel, not an infinite page-scroll -- the panel itself
+       scrolls past a height budget, with its own header pinned, rather
+       than pushing the toolbar above it off-screen. overflow-x covers the
+       six-column table on narrow viewports without breaking layout. */
+    max-height: 64vh;
+    overflow-y: auto;
+    overflow-x: auto;
   }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: .7rem 1rem; font-size: .84rem; }
@@ -190,8 +214,12 @@ export const PORTAL_HTML = `<!doctype html>
     letter-spacing: .09em;
     text-transform: uppercase;
     color: var(--sub);
-    background: rgba(255, 255, 255, .015);
+    background-color: var(--panel);
+    background-image: linear-gradient(rgba(255, 255, 255, .015), rgba(255, 255, 255, .015));
     border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 1;
   }
   td { border-bottom: 1px solid var(--line); color: var(--ink); }
   #sessions td:nth-child(1), #sessions td:nth-child(2) {
@@ -260,6 +288,18 @@ export const PORTAL_HTML = `<!doctype html>
   }
   .storage-download::before { content: "\\2193 "; }
   .storage-download:hover { background: var(--brand); color: #1a0f0a; }
+  .storage-download:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(204, 120, 92, .35);
+  }
+  .manifest-empty {
+    text-align: center;
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .04em;
+    color: var(--faint);
+    padding: 2.4rem 1rem;
+  }
   #error {
     font-family: var(--mono);
     font-size: .82rem;
@@ -284,6 +324,13 @@ export const PORTAL_HTML = `<!doctype html>
     background: radial-gradient(circle at 50% 35%, rgba(204, 120, 92, .1), rgba(8, 7, 6, .85));
     animation: backdrop-in .3s ease both;
   }
+  /* Closing plays the reverse of the open moment instead of vanishing
+     instantly -- see closeTerminal()/teardownTerminal() in the script,
+     which add this class, wait out the animation, then call the dialog's
+     own native close(). Declared after dialog[open] so it wins the tie on
+     equal selector specificity once both are true mid-close. */
+  dialog.closing { animation: dialog-out .16s cubic-bezier(.4, 0, 1, 1) forwards; }
+  dialog.closing::backdrop { animation: backdrop-out .16s ease forwards; }
   .terminal-chrome { position: relative; display: flex; flex-direction: column; }
   .terminal-chrome-bar {
     display: flex;
@@ -304,6 +351,21 @@ export const PORTAL_HTML = `<!doctype html>
     box-shadow: 0 0 8px var(--good);
     margin-right: .55em;
     display: inline-block;
+    transition: background-color .2s ease, box-shadow .2s ease;
+  }
+  /* Reflects the actual WebSocket lifecycle (see setTerminalStatus() in
+     the script) instead of a dot that was previously hard-coded green
+     the instant the dialog opened -- true even while the /connect
+     request and socket handshake were still in flight, and even if they
+     failed outright. */
+  .terminal-chrome-label .dot.connecting {
+    background: var(--warn);
+    box-shadow: 0 0 8px var(--warn);
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  .terminal-chrome-label .dot.error {
+    background: var(--danger);
+    box-shadow: 0 0 8px var(--danger);
   }
   #terminal-close {
     border: 1px solid transparent;
@@ -361,7 +423,7 @@ export const PORTAL_HTML = `<!doctype html>
 <dialog id="terminal-dialog">
   <div class="terminal-chrome bracketed">
     <div class="terminal-chrome-bar">
-      <span class="terminal-chrome-label"><span class="dot"></span>Remote shell</span>
+      <span class="terminal-chrome-label"><span id="terminal-status-dot" class="dot connecting"></span><span id="terminal-status-text">Connecting\u2026</span></span>
       <button id="terminal-close">Close</button>
     </div>
     <div id="terminal-screen"></div>
@@ -537,6 +599,21 @@ function stateToneClass(state) {
 function renderSessions() {
   var body = el('sessions');
   body.replaceChildren();
+  // Round 1 left this table with no opinion about having zero rows -- an
+  // empty <tbody> under a full header row reads as broken/loading, not
+  // as "you have no environments", especially the very first time anyone
+  // signs in. Give the zero-session state the same considered voice as
+  // the rest of the manifest instead of silence.
+  if (sessions.length === 0) {
+    var emptyRow = document.createElement('tr');
+    var emptyCell = document.createElement('td');
+    emptyCell.colSpan = 6;
+    emptyCell.className = 'manifest-empty';
+    emptyCell.textContent = '// no environments yet -- create one above to get started';
+    emptyRow.appendChild(emptyCell);
+    body.appendChild(emptyRow);
+    return;
+  }
   sessions.forEach(function (session) {
     var row = document.createElement('tr');
 
@@ -688,9 +765,27 @@ async function startSession() {
 var terminal;
 var terminalSocket;
 var fitAddon;
+var terminalResizeObserver;
+
+// Drives the chrome-bar dot + label through the connection's real
+// lifecycle (connecting -> live, or connecting -> error) instead of the
+// dot round 1 shipped: a plain <span class="dot"> hard-coded to the
+// "good" color in markup, so it showed green the instant the dialog
+// opened whether or not a shell was actually attached yet -- including
+// while the /connect request and socket handshake were still in flight,
+// and even if they failed outright, which left the dot glowing green
+// over a terminal that never connected.
+function setTerminalStatus(state, label) {
+  var dot = el('terminal-status-dot');
+  var text = el('terminal-status-text');
+  if (!dot || !text) { return; }
+  dot.className = 'dot' + (state ? ' ' + state : '');
+  text.textContent = label;
+}
 
 function openTerminal(session) {
   clearError();
+  setTerminalStatus('connecting', 'Connecting\u2026');
   el('terminal-dialog').showModal();
   // Whether this session has ever had real activity before this connect,
   // used by connectTerminal() below to decide whether it's safe to send
@@ -759,6 +854,19 @@ function openTerminal(session) {
   fitAddon = new window.FitAddon.FitAddon();
   terminal.loadAddon(fitAddon);
   fitAddon.fit();
+  // Belt-and-suspenders alongside the window 'resize' listener further
+  // below: that listener only fires for changes to the *window's* size,
+  // but #terminal-screen's own box can change for reasons that never fire
+  // a window resize at all (a browser zoom step that some engines don't
+  // dispatch resize for, a devtools device-toolbar toggle, a dialog width
+  // that is itself a min(94vw, 68rem) viewport calculation settling one
+  // frame after showModal()). ResizeObserver watches the actual element
+  // FitAddon measures, so the dialog keeps fitting correctly no matter
+  // which of those triggers the change.
+  if (window.ResizeObserver) {
+    terminalResizeObserver = new ResizeObserver(function () { fitTerminal(); });
+    terminalResizeObserver.observe(el('terminal-screen'));
+  }
   connectTerminal(session);
 }
 
@@ -815,7 +923,13 @@ async function connectTerminal(session) {
     var socket = new WebSocket(connection.shellUrl);
     terminalSocket = socket;
     socket.binaryType = 'arraybuffer';
-    socket.addEventListener('open', function () { fitTerminal(); });
+    socket.addEventListener('open', function () {
+      fitTerminal();
+      setTerminalStatus('', 'Remote shell');
+    });
+    socket.addEventListener('error', function () {
+      setTerminalStatus('error', 'Connection error');
+    });
     // The developer-shell privilege-drop bootstrap used to be sent from
     // here, gated on various client-visible signals (a shell-protocol
     // reconnected flag, then a sessionStorage flag, then a
@@ -843,7 +957,16 @@ async function connectTerminal(session) {
         socket.send(new Uint8Array([SHELL_CHANNEL_HEARTBEAT]));
       }
     }, 20000);
-    socket.addEventListener('close', function () { clearInterval(heartbeatTimer); });
+    socket.addEventListener('close', function () {
+      clearInterval(heartbeatTimer);
+      // Only worth announcing if the dialog is still open -- if the user
+      // closed it themselves, teardownTerminal() already called this
+      // same socket.close(), and the dialog (and this status label) are
+      // already gone by the time this event actually fires.
+      if (el('terminal-dialog').open) {
+        setTerminalStatus('error', 'Disconnected');
+      }
+    });
     socket.addEventListener('message', function (event) {
       var frame = new Uint8Array(event.data);
       if (frame.length === 0) { return; }
@@ -872,12 +995,40 @@ async function connectTerminal(session) {
       }
     });
   } catch (error) {
+    setTerminalStatus('error', 'Connection failed');
     showError(error);
   }
 }
 
+// Closing used to be one function that called the dialog's native
+// close() and tore down the socket/terminal in the same breath, bound
+// only to the Close button's click handler. That missed the dialog's own
+// "cancel" event -- what actually fires when someone presses Escape --
+// so Escape closed the dialog visually while leaving the WebSocket
+// connected and the xterm.js instance alive underneath it: still
+// receiving output, still sending a heartbeat every 20s, invisible and
+// unbounded for as long as the tab stayed open. Splitting this into two
+// steps fixes that for every current and future way the dialog can
+// close, not just the button: closeTerminal() (bound to the Close button
+// and, below, to "cancel") plays the dialog-out/backdrop-out animation
+// and then calls the dialog's own close(); teardownTerminal() -- bound to
+// the dialog's "close" event, which the browser fires no matter how the
+// dialog got closed -- does the actual cleanup exactly once.
 function closeTerminal() {
-  el('terminal-dialog').close();
+  var dialog = el('terminal-dialog');
+  if (!dialog.open || dialog.classList.contains('closing')) { return; }
+  dialog.classList.add('closing');
+  setTimeout(function () {
+    dialog.classList.remove('closing');
+    dialog.close();
+  }, 160);
+}
+
+function teardownTerminal() {
+  if (terminalResizeObserver) {
+    terminalResizeObserver.disconnect();
+    terminalResizeObserver = undefined;
+  }
   if (terminalSocket) {
     terminalSocket.close(1000, 'Portal closing terminal');
     terminalSocket = undefined;
@@ -902,6 +1053,15 @@ function render() {
 el('start-session').addEventListener('click', startSession);
 el('refresh').addEventListener('click', refresh);
 el('terminal-close').addEventListener('click', closeTerminal);
+el('terminal-dialog').addEventListener('close', teardownTerminal);
+el('terminal-dialog').addEventListener('cancel', function (event) {
+  // Default behavior for Escape on <dialog> is an instant, unanimated
+  // close -- redirect it through the same animated closeTerminal() path
+  // the Close button uses, so Escape is not a jarring exception to the
+  // one considered close moment the rest of this dialog now has.
+  event.preventDefault();
+  closeTerminal();
+});
 el('sign-in').addEventListener('click', function () {
   login().catch(showError);
 });
