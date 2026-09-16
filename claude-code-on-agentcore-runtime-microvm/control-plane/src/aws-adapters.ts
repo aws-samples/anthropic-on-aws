@@ -31,6 +31,7 @@ import type {
   WorkspaceCheckpointAccess,
   WorkspaceCheckpointService,
   WorkspaceClaim,
+  WorkspaceInfo,
 } from './model.js';
 import { ACTIVE_STATES } from './model.js';
 
@@ -504,18 +505,51 @@ export class S3WorkspaceCheckpointService
     return { downloadUrl, uploadUrl };
   }
 
+  public async getInfo(
+    ownerHash: string,
+    workspaceId: string,
+  ): Promise<WorkspaceInfo> {
+    const key = workspaceCheckpointKey(ownerHash, workspaceId);
+    const head = await this.head(key);
+    if (!head) {
+      return { exists: false };
+    }
+    const downloadUrl = await getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucketName, Key: key }),
+      { expiresIn: this.expiresIn },
+    );
+    return {
+      exists: true,
+      sizeBytes: head.ContentLength,
+      lastModifiedAt: head.LastModified
+        ? Math.floor(head.LastModified.getTime() / 1000)
+        : undefined,
+      downloadUrl,
+    };
+  }
+
   private async exists(key: string): Promise<boolean> {
+    return (await this.head(key)) !== undefined;
+  }
+
+  private async head(
+    key: string,
+  ): Promise<{ ContentLength?: number; LastModified?: Date } | undefined> {
     try {
-      await this.client.send(
+      const result = await this.client.send(
         new HeadObjectCommand({ Bucket: this.bucketName, Key: key }),
       );
-      return true;
+      return {
+        ContentLength: result.ContentLength,
+        LastModified: result.LastModified,
+      };
     } catch (error) {
       if (
         isNotFound(error) ||
         (error instanceof Error && error.name === 'NotFound')
       ) {
-        return false;
+        return undefined;
       }
       throw error;
     }

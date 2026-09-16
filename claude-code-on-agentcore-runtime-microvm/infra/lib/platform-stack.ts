@@ -774,6 +774,9 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       const portalById = portalSessions.addResource('{sessionId}');
       portalById.addMethod('GET', integration, portalMethodOptions);
       portalById.addMethod('DELETE', integration, portalMethodOptions);
+      portalById
+        .addResource('workspace')
+        .addMethod('GET', integration, portalMethodOptions);
       for (const actionPath of ['connect', 'suspend', 'resume']) {
         portalById
           .addResource(actionPath)

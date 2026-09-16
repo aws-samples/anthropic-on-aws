@@ -100,6 +100,17 @@ export interface WorkspaceCheckpointAccess {
   uploadUrl: string;
 }
 
+// Portal-facing, read-only view of a workspace's persisted checkpoint --
+// deliberately never carries an upload URL (that stays runtime-role-only,
+// see assertRuntimeExecutionCaller in handler.ts) so a browser session can
+// see and download what has been saved, but cannot overwrite it.
+export interface WorkspaceInfo {
+  exists: boolean;
+  sizeBytes?: number;
+  lastModifiedAt?: number;
+  downloadUrl?: string;
+}
+
 export type CreateSessionResult =
   | { created: true }
   | { created: false; record: SessionRecord };
@@ -166,4 +177,5 @@ export interface WorkspaceCheckpointService {
     ownerHash: string,
     workspaceId: string,
   ): Promise<WorkspaceCheckpointAccess>;
+  getInfo(ownerHash: string, workspaceId: string): Promise<WorkspaceInfo>;
 }

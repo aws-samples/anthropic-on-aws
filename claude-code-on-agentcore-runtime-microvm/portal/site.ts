@@ -93,6 +93,15 @@ export const PORTAL_HTML = `<!doctype html>
     border-bottom: 1px solid var(--line);
   }
   td { border-bottom: 1px solid var(--line); }
+  .storage-cell { font-size: .82rem; color: var(--sub); white-space: nowrap; }
+  .storage-summary { color: var(--ink); margin-right: .6rem; }
+  .storage-empty { color: var(--sub); font-style: italic; }
+  .storage-download {
+    color: var(--brand);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .storage-download:hover { text-decoration: underline; }
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:hover { background: #fafbfa; }
   dialog {
@@ -136,7 +145,7 @@ export const PORTAL_HTML = `<!doctype html>
     </div>
     <table>
       <thead>
-        <tr><th>Session</th><th>Workspace</th><th>State</th><th>Updated</th><th></th></tr>
+        <tr><th>Session</th><th>Workspace</th><th>State</th><th>Updated</th><th>Storage</th><th></th></tr>
       </thead>
       <tbody id="sessions"></tbody>
     </table>
@@ -318,6 +327,15 @@ function renderSessions() {
       cell.textContent = text;
       row.appendChild(cell);
     });
+    // Persistent-storage cell: filled in async below once the workspace
+    // route resolves, since it is a separate request per row rather than
+    // part of the sessions list payload (that payload is shared with the
+    // CLI's /sessions route, which has no reason to carry S3 metadata).
+    var storageCell = document.createElement('td');
+    storageCell.className = 'storage-cell';
+    storageCell.textContent = 'Checking\u2026';
+    row.appendChild(storageCell);
+    loadWorkspaceInfo(session, storageCell);
     var actions = document.createElement('td');
     var connectButton = document.createElement('button');
     connectButton.textContent = 'Connect';
@@ -328,6 +346,72 @@ function renderSessions() {
     row.appendChild(actions);
     body.appendChild(row);
   });
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) { return bytes + ' B'; }
+  var units = ['KB', 'MB', 'GB'];
+  var value = bytes;
+  var unitIndex = -1;
+  do {
+    value = value / 1024;
+    unitIndex += 1;
+  } while (value >= 1024 && unitIndex < units.length - 1);
+  return value.toFixed(1) + ' ' + units[unitIndex];
+}
+
+function formatRelativeTime(unixSeconds) {
+  var deltaSeconds = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds);
+  if (deltaSeconds < 60) { return 'just now'; }
+  var minutes = Math.floor(deltaSeconds / 60);
+  if (minutes < 60) { return minutes + 'm ago'; }
+  var hours = Math.floor(minutes / 60);
+  if (hours < 24) { return hours + 'h ago'; }
+  return Math.floor(hours / 24) + 'd ago';
+}
+
+// Phase 1 of surfacing persistent per-workspace storage in the portal:
+// a read-only view of the same checkpoint archive the runtime itself
+// checkpoints to/from on suspend and terminate (see agent-runtime/agent.py
+// and control-plane/src/service.ts's workspaceInfo()). This route never
+// returns an upload URL -- only the runtime's own IAM role can write a
+// checkpoint -- so a portal user can see and download what has been
+// saved for a workspace, but never overwrite it from here.
+function loadWorkspaceInfo(session, cell) {
+  api('GET', 'sessions/' + session.sessionId + '/workspace')
+    .then(function (info) {
+      cell.textContent = '';
+      if (!info.exists) {
+        var none = document.createElement('span');
+        none.className = 'storage-empty';
+        none.textContent = 'No files saved yet';
+        cell.appendChild(none);
+        return;
+      }
+      var summary = document.createElement('span');
+      summary.className = 'storage-summary';
+      summary.textContent =
+        formatBytes(info.sizeBytes || 0) +
+        (info.lastModifiedAt
+          ? ' \u00b7 saved ' + formatRelativeTime(info.lastModifiedAt)
+          : '');
+      cell.appendChild(summary);
+      if (info.downloadUrl) {
+        var link = document.createElement('a');
+        link.className = 'storage-download';
+        link.href = info.downloadUrl;
+        link.textContent = 'Download';
+        link.setAttribute('download', session.workspaceId + '.tar.gz');
+        cell.appendChild(link);
+      }
+    })
+    .catch(function () {
+      cell.textContent = '';
+      var errorLabel = document.createElement('span');
+      errorLabel.className = 'storage-empty';
+      errorLabel.textContent = 'Unavailable';
+      cell.appendChild(errorLabel);
+    });
 }
 
 async function refresh() {

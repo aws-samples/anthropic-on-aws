@@ -13,6 +13,7 @@ import type {
   StartConfiguration,
   WorkspaceCheckpointAccess,
   WorkspaceCheckpointService,
+  WorkspaceInfo,
 } from '../src/model.js';
 import { ACTIVE_STATES } from '../src/model.js';
 import { ControlError, ControlService } from '../src/service.js';
@@ -182,8 +183,21 @@ class FakeAgentRuntimeService implements AgentRuntimeService {
 }
 
 class FakeCheckpointService implements WorkspaceCheckpointService {
+  public archiveExists = false;
+
   public async createAccess(): Promise<WorkspaceCheckpointAccess> {
     return { uploadUrl: 'https://bucket.s3.us-east-1.amazonaws.com/key' };
+  }
+
+  public async getInfo(): Promise<WorkspaceInfo> {
+    return this.archiveExists
+      ? {
+          exists: true,
+          sizeBytes: 4096,
+          lastModifiedAt: 1_700_000_000,
+          downloadUrl: 'https://bucket.s3.us-east-1.amazonaws.com/key',
+        }
+      : { exists: false };
   }
 }
 

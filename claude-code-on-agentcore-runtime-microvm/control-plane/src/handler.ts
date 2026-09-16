@@ -128,6 +128,17 @@ export async function handler(
         publicSession(await service.get(ownerPrincipal, sessionId)),
       );
     }
+    if (
+      method === 'GET' &&
+      portal &&
+      path === '/sessions/{sessionId}/workspace'
+    ) {
+      if (!sessionId) {
+        throw new ControlError(404, 'Route not found');
+      }
+      const info = await service.workspaceInfo(ownerPrincipal, sessionId);
+      return response(200, { ...info });
+    }
     if (method === 'POST' && path === '/sessions/{sessionId}/connect') {
       const result = await service.connect(ownerPrincipal, sessionId);
       const shellUrl = portal
