@@ -244,6 +244,73 @@ managed:
 #   # secrets must be minted and injected in the SAME deploy or the container
 #   # crash-loops with "undefined env var in config". Full steps: README §5.
 #
+# Meter at YOUR Bedrock rate instead of USD list price. Requires gateway >= 2.1.227, plus
+# either an admin: block above or a managed: block with at least one policy — those two are
+# its only readers (the spend meter, and the modelPricing pushed to clients since 2.1.268),
+# and `pricing` with neither fails boot naming both. Amounts stay estimates either way: a
+# circuit breaker, not an invoice. Reconcile against Bedrock's own usage reporting.
+#
+# WHEN THIS EXAMPLE NEEDS IT — the meter resolves ONE rate per model from the model id, with
+# no notion of which Bedrock endpoint tier served the request, and its built-in table is
+# Anthropic USD list price. Bedrock prices the two tiers differently:
+#   global.anthropic.*  — list price, NO premium. This is what the models: catalog below uses.
+#   us./eu./au./jp. or a bare in-region model id — a 10% PREMIUM over global, on every rate
+#   (input, output, cache read and cache write alike).
+# Source: Anthropic states it outright ("Regional endpoints carry a 10% pricing premium over
+# global endpoints") at platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock#regions,
+# and aws.amazon.com/bedrock/pricing/ carries two Claude tables, "Global Cross-region
+# Inference" and "Geo and In-region Cross-region Inference", the second exactly 1.1x the first.
+#
+# So ON THE SHIPPED GLOBAL PROFILES THE METER IS ALREADY RIGHT and you need nothing here.
+# Swap to geo/in-region profiles for data residency and the meter under-counts real spend by
+# ~9% (a cap then permits ~10% more than configured) — the direction that defeats a cap. On
+# gateway >= 2.1.271 the whole correction is `multiplier: 1.1`. See docs/gotchas.md §21.
+#
+# pricing:
+#   # Scales EVERY metered amount, list-priced or overridden, web search included. Range is
+#   # > 0 and <= 10 as of 2.1.271 (it was <= 1 through 2.1.270, discount-only), so ONE line
+#   # covers both directions: 1.1 for the geo tier's premium, 0.85 for a negotiated discount,
+#   # or the product of the two (1.1 * 0.85 = 0.935) when both apply.
+#   # TWO version floors for a value ABOVE 1, and they differ: the GATEWAY needs >= 2.1.271 to
+#   # accept it at all, and a DEVELOPER'S CLI needs >= 2.1.270 to honour it — older clients
+#   # ignore a markup and show /cost at list price, though caps and the gateway's own spend
+#   # records are still correct. The gateway warns about both at boot. A discount (< 1) has no
+#   # client floor. Note a markup also makes developers hit existing caps ~10% sooner.
+#   # It is GLOBAL: one value for the whole gateway, with no per-upstream form (a row-level
+#   # `multiplier`, `pricing.upstreams` and `pricing.multipliers` are all rejected at boot). So
+#   # the failover stacks sketched in upstreams: above — an in-region primary with a global
+#   # fallback, or bedrock plus a first-party upstream on a separate rate card and a separate
+#   # discount — cannot be priced by one multiplier. Use `overrides` rows per upstream instead.
+#   multiplier: 1.1
+#   # Per-model rates, USD per MILLION tokens. Only needed for a genuinely per-model contract
+#   # or to separate two upstreams on different rate cards — a flat tier premium or discount is
+#   # the multiplier above. The values below are the us-east-1 geo tier on 2026-09-15
+#   # (list x 1.1); re-check yours per region and per model before trusting them, and note a
+#   # model you DON'T list silently keeps falling back to list price.
+#   overrides:
+#     - { upstream: bedrock, model: us.anthropic.claude-opus-5,   input: 5.50, output: 27.50, cache_read: 0.55, cache_write: 6.875 }
+#     - { upstream: bedrock, model: us.anthropic.claude-sonnet-5,  input: 2.20, output: 11.00, cache_read: 0.22, cache_write: 2.75  }
+#     - { upstream: bedrock, model: us.anthropic.claude-haiku-4-5, input: 1.10, output: 5.50,  cache_read: 0.11, cache_write: 1.375 }
+#   # All four rates are REQUIRED and each must be > 0 — omit one and boot fails with the
+#   # unhelpful "Expected number, received nan", and a zero-rated cache read is rejected.
+#   # There is only ONE cache_write rate, but Bedrock prices 5m and 1h cache writes apart
+#   # (geo-tier Opus 5: 6.875 vs 11.00), so a row can carry only one of the two.
+#   # `upstream` must name an upstreams[] entry; the bedrock entry above sets no explicit
+#   # `name:`, so it is addressable as its provider, `bedrock`. An unknown name fails boot
+#   # with "references unknown upstream '...'".
+#   # `model` matches most-specific-first: the exact string sent upstream, then the exact id
+#   # the client sent, then a built-in model name (which also covers that model's dated and
+#   # us.-prefixed Bedrock spellings — so `claude-opus-5` plus `us.anthropic.claude-opus-5`
+#   # is a duplicate row and fails boot). global./eu./apac. prefixes are NOT recognised as
+#   # spellings of the built-in id, so a global. row and a us. row coexist on one upstream —
+#   # write BOTH explicitly if one gateway serves both tiers, or the us. row (which occupies
+#   # the built-in key) also catches global traffic. `multiplier` applies on top of a row.
+#   # Verified against the pinned 2.1.272 binary; see docs/gotchas.md §21.
+#   # Still open upstream (https://github.com/anthropics/claude-code/issues/92751): `multiplier`
+#   # being global rather than per-upstream, and the unread `usage.inference_geo` — the only
+#   # route that would fix the first-party anthropic/anthropicAws providers, where the premium
+#   # is per-request and no static rate is right. The `multiplier > 1` ask shipped in 2.1.271.
+#
 # Model catalog. Each id maps to a GLOBAL cross-region inference profile
 # (global.anthropic.*), which resolves from ANY Bedrock region — so this config is
 # region-agnostic. For data residency, swap global. for a geo profile (us./eu./au.,
