@@ -3,6 +3,16 @@
 // only the Terminal access mode is implemented in this sample (see
 // docs/deployment-guide.md), so the page only needs session lifecycle
 // controls and an xterm.js terminal dialog -- no VS Code tunnel UI.
+//
+// Visual direction ("field terminal / technical dossier"): a dark,
+// blueprint-adjacent workspace built for the people who actually use this
+// thing -- engineers spinning up governed shells, not a marketing page.
+// IBM Plex Mono carries data/labels (session ids, state, timestamps) so the
+// table reads like a manifest; IBM Plex Sans carries prose. Claude's own
+// rust/orange (#cc785c) is promoted from "a button color" to the one true
+// accent, and reused verbatim for the terminal's own ANSI theme below so
+// the chrome and the terminal it wraps feel like one designed object
+// instead of two unrelated layers.
 
 export const PORTAL_HTML = `<!doctype html>
 <html lang="en">
@@ -11,125 +21,315 @@ export const PORTAL_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude AgentCore Runtime portal</title>
 <link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="xterm.css">
 <style>
   :root {
-    color-scheme: light;
-    font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
-    --ink: #16211f;
-    --sub: #5b6b68;
-    --line: #dde4e2;
-    --bg: #f6f8f7;
-    --card: #ffffff;
+    color-scheme: dark;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+    --bg: #100e0b;
+    --panel: #17130f;
+    --panel-raised: #1d1712;
+    --grid-line: rgba(239, 232, 223, .05);
+    --line: #2b241d;
+    --ink: #efe7dd;
+    --sub: #9c9186;
+    --faint: #6c6459;
     --brand: #cc785c;
-    --brand-dark: #a85c42;
-    --danger: #b42318;
-    --danger-bg: #fdf1ef;
+    --brand-bright: #e8664a;
+    --brand-dim: #5a3324;
+    --good: #4caf7d;
+    --warn: #e0b84a;
+    --danger: #e8664a;
+    --danger-bg: rgba(232, 102, 74, .12);
   }
   * { box-sizing: border-box; }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes dialog-in {
+    from { opacity: 0; transform: scale(.96) translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
   body {
     margin: 0;
-    background: var(--bg);
+    min-height: 100vh;
     color: var(--ink);
-    line-height: 1.5;
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 460px at 12% -12%, rgba(204, 120, 92, .12), transparent 60%),
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: auto, 42px 42px, 42px 42px;
   }
   header {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.75rem;
+    padding: 1.1rem 2rem;
     border-bottom: 1px solid var(--line);
-    background: var(--card);
+    background: linear-gradient(180deg, var(--panel), rgba(23, 19, 15, .35));
+    animation: fade-up .5s cubic-bezier(.16, 1, .3, 1) both;
+  }
+  header::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--brand-dim), transparent);
+  }
+  .brand { display: flex; align-items: baseline; gap: .7rem; }
+  .brand-mark {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--brand);
+    border: 1px solid var(--brand-dim);
+    border-radius: 2px;
+    padding: .2rem .45rem;
   }
   header h1 {
-    font-size: 1.15rem;
-    font-weight: 600;
+    font-family: var(--mono);
+    font-size: 1rem;
+    font-weight: 500;
     margin: 0;
-    letter-spacing: -0.01em;
+    letter-spacing: -.01em;
+    color: var(--ink);
   }
-  header div { display: flex; align-items: center; gap: .75rem; font-size: .9rem; color: var(--sub); }
-  main { padding: 2rem 1.75rem; max-width: 62rem; margin: 0 auto; }
-  #app > div {
+  header h1 .accent { color: var(--brand); }
+  .session-meta {
     display: flex;
     align-items: center;
+    gap: 1rem;
+    font-size: .82rem;
+    color: var(--sub);
+    font-family: var(--mono);
+  }
+  main { max-width: 66rem; margin: 0 auto; padding: 2.5rem 2rem 4rem; }
+  #sign-in { display: block; margin: 20vh auto 0; padding: .85rem 2.1rem; font-size: .92rem; }
+  .panel-head {
+    display: flex;
+    align-items: flex-end;
     justify-content: space-between;
-    margin-bottom: 1.25rem;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.4rem;
+    animation: fade-up .5s cubic-bezier(.16, 1, .3, 1) .05s both;
   }
-  #app > div > div { display: flex; gap: .6rem; }
+  .eyebrow {
+    display: block;
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--brand);
+  }
+  .panel-sub { margin: .35rem 0 0; color: var(--sub); font-size: .85rem; max-width: 34rem; }
+  .toolbar { display: flex; gap: .6rem; }
   button {
+    font-family: var(--sans);
     border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--card);
+    border-radius: 3px;
+    background: var(--panel-raised);
     color: var(--ink);
-    padding: .5rem .9rem;
-    font-size: .875rem;
+    padding: .55rem 1.05rem;
+    font-size: .82rem;
     font-weight: 500;
+    letter-spacing: .01em;
     cursor: pointer;
-    transition: border-color .15s, background .15s;
+    transition: border-color .15s ease, background-color .15s ease, transform .1s ease, box-shadow .15s ease;
   }
-  button:hover { border-color: var(--brand); }
-  button:disabled { opacity: .55; cursor: default; }
+  button:hover { border-color: var(--brand); transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button:disabled { opacity: .5; cursor: default; transform: none; }
   button.primary {
     background: var(--brand);
-    color: #fff;
     border-color: var(--brand);
-  }
-  button.primary:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  th, td { text-align: left; padding: .65rem .9rem; font-size: .875rem; }
-  th {
-    color: var(--sub);
+    color: #1a0f0a;
     font-weight: 600;
-    font-size: .78rem;
+  }
+  button.primary:hover {
+    background: var(--brand-bright);
+    border-color: var(--brand-bright);
+    box-shadow: 0 0 0 3px rgba(204, 120, 92, .18);
+  }
+  .bracketed { position: relative; }
+  .bracketed::before, .bracketed::after {
+    content: "";
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .bracketed::before { top: 0; left: 0; border-top: 2px solid var(--brand); border-left: 2px solid var(--brand); }
+  .bracketed::after { bottom: 0; right: 0; border-bottom: 2px solid var(--brand); border-right: 2px solid var(--brand); }
+  .manifest {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    animation: fade-up .5s cubic-bezier(.16, 1, .3, 1) .1s both;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .7rem 1rem; font-size: .84rem; }
+  th {
+    font-family: var(--mono);
+    font-size: .66rem;
+    font-weight: 500;
+    letter-spacing: .09em;
     text-transform: uppercase;
-    letter-spacing: .04em;
+    color: var(--sub);
+    background: rgba(255, 255, 255, .015);
     border-bottom: 1px solid var(--line);
   }
-  td { border-bottom: 1px solid var(--line); }
-  .storage-cell { font-size: .82rem; color: var(--sub); white-space: nowrap; }
-  .storage-summary { color: var(--ink); margin-right: .6rem; }
-  .storage-empty { color: var(--sub); font-style: italic; }
+  td { border-bottom: 1px solid var(--line); color: var(--ink); }
+  #sessions td:nth-child(1), #sessions td:nth-child(2) {
+    font-family: var(--mono);
+    font-size: .8rem;
+    color: var(--sub);
+  }
+  tbody tr {
+    position: relative;
+    transition: background-color .15s ease;
+    animation: fade-up .35s ease both;
+  }
+  tbody tr:nth-child(1) { animation-delay: .02s; }
+  tbody tr:nth-child(2) { animation-delay: .05s; }
+  tbody tr:nth-child(3) { animation-delay: .08s; }
+  tbody tr:nth-child(4) { animation-delay: .11s; }
+  tbody tr:nth-child(5) { animation-delay: .14s; }
+  tbody tr:nth-child(6) { animation-delay: .17s; }
+  tbody tr:nth-child(n+7) { animation-delay: .2s; }
+  tbody tr::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0; width: 2px;
+    background: transparent;
+    transition: background-color .15s ease;
+  }
+  tbody tr:hover { background: rgba(204, 120, 92, .06); }
+  tbody tr:hover::before { background: var(--brand); }
+  tbody tr:last-child td { border-bottom: none; }
+  .manifest td button {
+    padding: .35rem .8rem;
+    font-size: .78rem;
+    background: transparent;
+    border-color: var(--line);
+  }
+  .manifest td button:hover { border-color: var(--brand); color: var(--brand); background: rgba(204, 120, 92, .08); }
+  .state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .45em;
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: .18rem .55rem;
+    border-radius: 2px;
+    border: 1px solid var(--line);
+  }
+  .state-pill::before { content: ""; width: .4em; height: .4em; border-radius: 50%; background: currentColor; flex: none; }
+  .state-tone-good { color: var(--good); background: rgba(76, 175, 125, .12); border-color: rgba(76, 175, 125, .32); }
+  .state-tone-warn { color: var(--warn); background: rgba(224, 184, 74, .12); border-color: rgba(224, 184, 74, .32); }
+  .state-tone-bad { color: var(--danger); background: var(--danger-bg); border-color: rgba(232, 102, 74, .35); }
+  .state-tone-neutral { color: var(--sub); background: rgba(255, 255, 255, .04); border-color: var(--line); }
+  .storage-cell { font-family: var(--mono); font-size: .78rem; color: var(--sub); white-space: nowrap; }
+  .storage-summary { color: var(--ink); margin-right: .7rem; }
+  .storage-empty { color: var(--faint); }
   .storage-download {
+    display: inline-block;
     color: var(--brand);
     text-decoration: none;
     font-weight: 600;
+    border: 1px solid var(--brand-dim);
+    border-radius: 2px;
+    padding: .15rem .55rem;
+    transition: background-color .15s ease, color .15s ease;
   }
-  .storage-download:hover { text-decoration: underline; }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr:hover { background: #fafbfa; }
-  dialog {
-    width: min(92vw, 64rem);
-    border: none;
-    border-radius: 10px;
-    padding: 0;
-    box-shadow: 0 20px 60px rgba(0,0,0,.25);
-  }
-  dialog::backdrop { background: rgba(15, 20, 19, .55); }
-  #terminal-screen { height: 62vh; background: #141a1f; padding: .6rem; border-radius: 10px 10px 0 0; }
-  #terminal-dialog button { border-radius: 0 0 10px 10px; width: 100%; border: none; background: #1c2429; color: #cfd8d6; padding: .6rem; }
-  #terminal-dialog button:hover { background: #262f35; border-color: transparent; }
+  .storage-download::before { content: "\\2193 "; }
+  .storage-download:hover { background: var(--brand); color: #1a0f0a; }
   #error {
+    font-family: var(--mono);
+    font-size: .82rem;
     color: var(--danger);
     background: var(--danger-bg);
-    border: 1px solid #f3d4d0;
-    border-radius: 6px;
-    padding: .6rem .9rem;
-    margin-top: 1rem;
-    font-size: .875rem;
+    border: 1px solid rgba(232, 102, 74, .3);
+    border-radius: 3px;
+    padding: .65rem 1rem;
+    margin-top: 1.2rem;
   }
+  dialog {
+    width: min(94vw, 68rem);
+    border: none;
+    border-radius: 3px;
+    padding: 0;
+    background: var(--panel);
+    color: var(--ink);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .55), 0 0 0 1px var(--line);
+  }
+  dialog[open] { animation: dialog-in .3s cubic-bezier(.16, 1, .3, 1); }
+  dialog::backdrop {
+    background: radial-gradient(circle at 50% 35%, rgba(204, 120, 92, .1), rgba(8, 7, 6, .85));
+    animation: backdrop-in .3s ease both;
+  }
+  .terminal-chrome { position: relative; display: flex; flex-direction: column; }
+  .terminal-chrome-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--sub);
+  }
+  .terminal-chrome-label { display: flex; align-items: center; }
+  .terminal-chrome-label .dot {
+    width: .5em; height: .5em; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 8px var(--good);
+    margin-right: .55em;
+    display: inline-block;
+  }
+  #terminal-close {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--sub);
+    font-family: var(--mono);
+    font-size: .78rem;
+    letter-spacing: .04em;
+    padding: .25rem .6rem;
+  }
+  #terminal-close:hover {
+    color: var(--danger);
+    background: var(--danger-bg);
+    border-color: transparent;
+    transform: none;
+  }
+  #terminal-screen { flex: 1 1 auto; min-height: 62vh; background: #0c0a08; padding: .75rem; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Claude AgentCore Runtime</h1>
-  <div>
+  <div class="brand">
+    <span class="brand-mark">AgentCore</span>
+    <h1>Claude Runtime <span class="accent">Portal</span></h1>
+  </div>
+  <div class="session-meta">
     <span id="who"></span>
     <button id="sign-out" hidden>Sign out</button>
   </div>
@@ -137,24 +337,35 @@ export const PORTAL_HTML = `<!doctype html>
 <main>
   <button id="sign-in" class="primary">Sign in</button>
   <section id="app" hidden>
-    <div>
+    <div class="panel-head">
       <div>
+        <span class="eyebrow">Environments</span>
+        <p class="panel-sub">Ephemeral Claude Code microVMs, provisioned on demand and torn down when idle.</p>
+      </div>
+      <div class="toolbar">
         <button id="start-session" class="primary">Create environment</button>
         <button id="refresh">Refresh</button>
       </div>
     </div>
-    <table>
-      <thead>
-        <tr><th>Session</th><th>Workspace</th><th>State</th><th>Updated</th><th>Storage</th><th></th></tr>
-      </thead>
-      <tbody id="sessions"></tbody>
-    </table>
+    <div class="manifest bracketed">
+      <table>
+        <thead>
+          <tr><th>Session</th><th>Workspace</th><th>State</th><th>Updated</th><th>Storage</th><th></th></tr>
+        </thead>
+        <tbody id="sessions"></tbody>
+      </table>
+    </div>
     <p id="error" hidden></p>
   </section>
 </main>
 <dialog id="terminal-dialog">
-  <div id="terminal-screen"></div>
-  <button id="terminal-close">Close</button>
+  <div class="terminal-chrome bracketed">
+    <div class="terminal-chrome-bar">
+      <span class="terminal-chrome-label"><span class="dot"></span>Remote shell</span>
+      <button id="terminal-close">Close</button>
+    </div>
+    <div id="terminal-screen"></div>
+  </div>
 </dialog>
 <script src="terminal-vendor.js"></script>
 <script src="app.js"></script>
@@ -311,22 +522,43 @@ function clearError() {
   el('error').hidden = true;
 }
 
+// Maps backend session states (see control-plane/src/model.ts's
+// ACTIVE_STATES) to one of four visual tones for the state pill. Ties the
+// portal chrome's palette back to the exact ANSI colors the terminal
+// itself uses (openTerminal() below), so "healthy/transitional/failed"
+// reads the same way in the table as it does inside a shell.
+function stateToneClass(state) {
+  if (state === 'RUNNING') { return 'state-tone-good'; }
+  if (state === 'FAILED') { return 'state-tone-bad'; }
+  if (state === 'TERMINATED') { return 'state-tone-neutral'; }
+  return 'state-tone-warn';
+}
+
 function renderSessions() {
   var body = el('sessions');
   body.replaceChildren();
   sessions.forEach(function (session) {
     var row = document.createElement('tr');
-    var cells = [
-      session.sessionId.slice(0, 8),
-      session.workspaceId,
-      session.state,
-      new Date(session.updatedAt * 1000).toLocaleString()
-    ];
-    cells.forEach(function (text) {
-      var cell = document.createElement('td');
-      cell.textContent = text;
-      row.appendChild(cell);
-    });
+
+    var idCell = document.createElement('td');
+    idCell.textContent = session.sessionId.slice(0, 8);
+    row.appendChild(idCell);
+
+    var workspaceCell = document.createElement('td');
+    workspaceCell.textContent = session.workspaceId;
+    row.appendChild(workspaceCell);
+
+    var stateCell = document.createElement('td');
+    var statePill = document.createElement('span');
+    statePill.className = 'state-pill ' + stateToneClass(session.state);
+    statePill.textContent = session.state;
+    stateCell.appendChild(statePill);
+    row.appendChild(stateCell);
+
+    var updatedCell = document.createElement('td');
+    updatedCell.textContent = new Date(session.updatedAt * 1000).toLocaleString();
+    row.appendChild(updatedCell);
+
     // Persistent-storage cell: filled in async below once the workspace
     // route resolves, since it is a separate request per row rather than
     // part of the sessions list payload (that payload is shared with the
@@ -336,6 +568,7 @@ function renderSessions() {
     storageCell.textContent = 'Checking\u2026';
     row.appendChild(storageCell);
     loadWorkspaceInfo(session, storageCell);
+
     var actions = document.createElement('td');
     var connectButton = document.createElement('button');
     connectButton.textContent = 'Connect';
@@ -344,6 +577,7 @@ function renderSessions() {
     });
     actions.appendChild(connectButton);
     row.appendChild(actions);
+
     body.appendChild(row);
   });
 }
@@ -453,6 +687,7 @@ async function startSession() {
 
 var terminal;
 var terminalSocket;
+var fitAddon;
 
 function openTerminal(session) {
   clearError();
@@ -469,7 +704,7 @@ function openTerminal(session) {
     Number(session.lastActivityAt) > Number(session.createdAt) + 5;
   terminal = new window.Terminal({
     convertEol: true,
-    fontFamily: '"SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace',
+    fontFamily: '"IBM Plex Mono", "SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace',
     fontSize: 13,
     lineHeight: 1.35,
     cursorBlink: true,
@@ -485,22 +720,24 @@ function openTerminal(session) {
     // orange undertone, so any 16-color fallback path still looked red
     // instead of on-brand. Nudging ansi red toward Claude's actual brand
     // rust/orange (#CC785C-ish) fixes that without touching how genuine
-    // truecolor output renders.
+    // truecolor output renders. These same hexes drive the portal
+    // chrome's own state-pill colors (see stateToneClass above), so the
+    // dialog and the table it's launched from share one palette.
     theme: {
-      background: '#141a1f',
-      foreground: '#e8ecee',
+      background: '#0c0a08',
+      foreground: '#efe7dd',
       cursor: '#e8664a',
-      cursorAccent: '#141a1f',
-      selectionBackground: '#2a3a42',
-      black: '#141a1f',
+      cursorAccent: '#0c0a08',
+      selectionBackground: '#3a2a20',
+      black: '#0c0a08',
       red: '#e8664a',
       green: '#4caf7d',
       yellow: '#e0b84a',
       blue: '#5b9bd5',
       magenta: '#b98cce',
       cyan: '#4dbfbf',
-      white: '#e8ecee',
-      brightBlack: '#5a6670',
+      white: '#efe7dd',
+      brightBlack: '#6c6459',
       brightRed: '#f08a70',
       brightGreen: '#6fce9c',
       brightYellow: '#efc96b',
@@ -511,6 +748,17 @@ function openTerminal(session) {
     },
   });
   terminal.open(el('terminal-screen'));
+  // xterm.js renders at a fixed default grid (its own hard-coded cols/rows)
+  // unless something actively measures the container and calls resize() --
+  // it does not observe its own container's size on its own. FitAddon is
+  // that "something": it reads #terminal-screen's real box and resizes the
+  // buffer to match, both right after open() and on every window resize
+  // (see fitTerminal() below), and the browser-side RESIZE frame lets the
+  // shell on the other end match the same cols/rows via the same
+  // channel-prefixed wire format client/src/shell-protocol.ts already uses.
+  fitAddon = new window.FitAddon.FitAddon();
+  terminal.loadAddon(fitAddon);
+  fitAddon.fit();
   connectTerminal(session);
 }
 
@@ -525,6 +773,7 @@ var SHELL_CHANNEL_STDIN = 0x00;
 var SHELL_CHANNEL_STDOUT = 0x01;
 var SHELL_CHANNEL_STDERR = 0x02;
 var SHELL_CHANNEL_STATUS = 0x03;
+var SHELL_CHANNEL_RESIZE = 0x04;
 var SHELL_CHANNEL_HEARTBEAT = 0x05;
 
 function encodeStdinFrame(text) {
@@ -535,12 +784,38 @@ function encodeStdinFrame(text) {
   return frame;
 }
 
+// Mirrors client/src/shell-protocol.ts's encodeResize() exactly (same
+// channel byte, same {width, height} JSON shape) so the shell side needs
+// no protocol changes to accept resizes from the browser terminal too.
+function encodeResizeFrame(cols, rows) {
+  var body = new TextEncoder().encode(JSON.stringify({ width: cols, height: rows }));
+  var frame = new Uint8Array(body.length + 1);
+  frame[0] = SHELL_CHANNEL_RESIZE;
+  frame.set(body, 1);
+  return frame;
+}
+
+// Re-fits the terminal to its (possibly just-resized) container and, if
+// the shell connection is live, tells the far end the new size. Called
+// once right after open (openTerminal), again once the socket actually
+// reaches OPEN (connectTerminal -- fit() before connect can under-measure
+// if webfonts/layout haven't settled), and on every window resize while
+// the dialog is showing (see the resize listener below).
+function fitTerminal() {
+  if (!fitAddon || !terminal) { return; }
+  fitAddon.fit();
+  if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
+    terminalSocket.send(encodeResizeFrame(terminal.cols, terminal.rows));
+  }
+}
+
 async function connectTerminal(session) {
   try {
     var connection = await api('POST', 'sessions/' + session.sessionId + '/connect', {});
     var socket = new WebSocket(connection.shellUrl);
     terminalSocket = socket;
     socket.binaryType = 'arraybuffer';
+    socket.addEventListener('open', function () { fitTerminal(); });
     // The developer-shell privilege-drop bootstrap used to be sent from
     // here, gated on various client-visible signals (a shell-protocol
     // reconnected flag, then a sessionStorage flag, then a
@@ -611,6 +886,7 @@ function closeTerminal() {
     terminal.dispose();
     terminal = undefined;
   }
+  fitAddon = undefined;
 }
 
 function render() {
@@ -630,6 +906,14 @@ el('sign-in').addEventListener('click', function () {
   login().catch(showError);
 });
 el('sign-out').addEventListener('click', signOut);
+
+// The terminal only re-fits on its own open() call and on connect --
+// without this, resizing the browser window (or rotating a tablet) leaves
+// the xterm.js grid at whatever size it was created with, inside a
+// container that has since changed shape.
+window.addEventListener('resize', function () {
+  if (el('terminal-dialog').open) { fitTerminal(); }
+});
 
 completeLogin()
   .then(render)
