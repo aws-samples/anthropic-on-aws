@@ -264,6 +264,11 @@ managed:
 #   # > 0 and <= 10 as of 2.1.271 (it was <= 1 through 2.1.270, discount-only), so ONE line
 #   # covers both directions: 1.1 for the geo tier's premium, 0.85 for a negotiated discount,
 #   # or the product of the two (1.1 * 0.85 = 0.935) when both apply.
+#   # TWO version floors for a value ABOVE 1, and they differ: the GATEWAY needs >= 2.1.271 to
+#   # accept it at all, and a DEVELOPER'S CLI needs >= 2.1.270 to honour it — older clients
+#   # ignore a markup and show /cost at list price, though caps and the gateway's own spend
+#   # records are still correct. The gateway warns about both at boot. A discount (< 1) has no
+#   # client floor. Note a markup also makes developers hit existing caps ~10% sooner.
 #   # It is GLOBAL: one value for the whole gateway, with no per-upstream form (a row-level
 #   # `multiplier`, `pricing.upstreams` and `pricing.multipliers` are all rejected at boot). So
 #   # the failover stacks sketched in upstreams: above — an in-region primary with a global

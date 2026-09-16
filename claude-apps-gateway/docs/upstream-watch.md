@@ -59,6 +59,12 @@ exceeds our pin, we're behind on that feature. The ones we already track:
   that it was capped at `1` and the same correction needed a per-model `overrides` table.
   Re-verify the 10% and the multiplier range on each bump:
   [`gotchas.md` §21](gotchas.md#21-data-residency-costs-10-more-than-the-spend-meter-counts).
+  **This gate has a client half on a different release**, one of the few places the two floors
+  disagree: a `multiplier` above `1` is only honoured by CLIs on **≥ 2.1.270**, so on an older
+  fleet the caps are corrected while developers' `/cost` still shows list price. The gateway
+  states it at boot — *"Claude Code clients older than v2.1.270 ignore a multiplier above 1 and
+  show costs without the markup"* — so read the boot log after setting one. A discount below `1`
+  has no client floor.
 - `model must be a string` → `400` — **added in 2.1.221**; `model is required` → **2.1.228**
 
 **The `desktop` block's key set is bounded by the pin, and the block is validated
