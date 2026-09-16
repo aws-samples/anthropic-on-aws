@@ -21,6 +21,34 @@ Run it **before each version bump** and **when a gateway release ships**.
 
 Update the "Pinned version" line here whenever `CLAUDE_VERSION` changes.
 
+### Why this pin
+
+The README deliberately carries **no per-feature "requires ≥ 2.1.x" notes** — it documents the
+pinned version's behaviour and points here instead, so a bump edits the pin plus this file rather
+than the same fact in five places. This section is that record: the server-side gates that argued
+each move, and the per-feature gates live in check 2's tripwire list below. They matter to two
+readers — anyone adapting this example onto a gateway they already run at an older version, and
+whoever does the next bump.
+
+Gates that drove the pin from `2.1.229` to `2.1.272`:
+
+| Release | Server-side change | Why this example cares |
+|---|---|---|
+| **2.1.232** | The `desktop` block went from 11 hand-listed keys to Claude Desktop's full settings schema, adding `disabledBuiltinTools`, `coworkEgressAllowedHosts` and `managedMcpServers`. Empty `match.groups` / `admin.admin_groups` entries and malformed `email_domain` values now fail at boot | This example ships a `desktop` block; the rejected values previously matched no one silently, or granted admin access |
+| **2.1.233** | `400`/`413` from a cloud upstream carries the upstream's own message | Legible Bedrock failures instead of a generic status |
+| **2.1.260** | An aborted request's input tokens are counted through Bedrock's free `CountTokens` API, with a `max_tokens:1` invoke as the fallback | The task role grants `bedrock:CountTokens` for it. A soft gate — see the tripwire entry below |
+| **2.1.261** | Client IP fixed when a trusted proxy appends a port to `X-Forwarded-For`; an unreadable access-list entry now gets `403` | This example sits behind an ALB, so every client IP arrives via `X-Forwarded-For` |
+| **2.1.265** | The OTLP relay no longer pauses all forwarding for 30s after rejecting a payload; sessions can export straight to a collector named in `OTEL_EXPORTER_OTLP_ENDPOINT` instead of through the relay | This example ships the relay and an ADOT sidecar |
+| **2.1.268** | `pricing:` rates reach signed-in clients through managed settings; a startup warning fires when `access_control.allow_cidrs` is empty | `pricing:` is no longer spend-meter-only, and the warning fires on the shipped config |
+| **2.1.271** | The `pricing.multiplier` ceiling went from 1 to 10 | Makes the data-residency premium a one-line correction instead of a per-model rate table |
+
+**Why 2.1.272 rather than 2.1.271**, which is the release that actually carries the change:
+pinning the newest release leaves no successor to fix it, and this repo has watched three large
+releases take a same-week follow-up (2.1.266←265, 2.1.270←269, 2.1.272←271). 2.1.272 is
+"bug fixes and reliability improvements" and inherits the ceiling change — confirmed by probing
+the 2.1.272 binary, not assumed from the changelog. Also avoid pinning **2.1.265** (the
+`CLAUDE_CODE_USE_GATEWAY` regression) and **2.1.269** (a git-permission regression).
+
 Things the 2.1.251 and 2.1.272 validation runs turned up that are worth knowing before you
 hand-test:
 
@@ -96,6 +124,11 @@ exceeds our pin, we're behind on that feature. The ones we already track:
   `capability_rejected:` token) — **requires ≥ 2.1.233**
 - `forward_user_identity` on an `anthropic` upstream (per-user attribution at a proxy
   *behind* the gateway; not applicable to a Bedrock upstream) — **requires ≥ 2.1.233**
+- SSE keepalive pings on streaming responses, so a long thinking pause doesn't trip an idle
+  timeout on the Bedrock upstream — **added in 2.1.229**. This example still raises the ALB
+  idle timeout to 3600s regardless, since the ALB has to outlast the stream either way. The
+  same release prices Bedrock application-inference-profile ARNs and other config-mapped
+  upstream model IDs at the configured model's rates
 - `oidc.scope_on_refresh` (for IdPs that return an `id_token` on refresh only when asked
   for `openid` again) — **requires ≥ 2.1.260**
 - `bedrock:CountTokens` in the **task role** — **worth granting from 2.1.260**, where an
