@@ -83,7 +83,7 @@ You need an AWS account where they can create the following resources:
 - **Compute**: ECS cluster (Fargate), EKS cluster, or EC2 instances
 - **Database**: An RDS PostgreSQL instance (db.t4g.micro is sufficient; the gateway stores only a few KB of sign-in state)
 - **Networking**: A VPC with private subnets, an internal ALB, and an imported ACM TLS certificate (use a public ACM cert to skip the first-login fingerprint prompt — see [`cdk/README.md`](cdk/README.md))
-- **IAM role**: The gateway's task role needs `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` permissions on inference-profile and foundation-model ARNs
+- **IAM role**: The gateway's task role needs `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream` and `bedrock:CountTokens` permissions on inference-profile and foundation-model ARNs
 - **Model access**: A **one-time, account-level** enablement of each Claude model you list — a Bedrock *console/admin* action, **not** an IAM grant or a gateway responsibility. On Bedrock, Anthropic's models are AWS Marketplace offerings, so first use requires a subscription. Until it's done, invokes return a `403` (often naming `aws-marketplace:ViewSubscriptions` / `aws-marketplace:Subscribe`) even though the IAM policy above is correct. Enable it once as an admin; **do not** add Marketplace permissions to the task role (see [`docs/gotchas.md`](docs/gotchas.md) §8 for why). This is the single most common Bedrock-through-gateway failure.
 
 The IAM policy for the task role looks like:
@@ -92,7 +92,8 @@ The IAM policy for the task role looks like:
   "Effect": "Allow",
   "Action": [
     "bedrock:InvokeModel",
-    "bedrock:InvokeModelWithResponseStream"
+    "bedrock:InvokeModelWithResponseStream",
+    "bedrock:CountTokens"
   ],
   "Resource": [
     "arn:aws:bedrock:<region>:<account>:inference-profile/global.anthropic.*",
@@ -100,6 +101,8 @@ The IAM policy for the task role looks like:
   ]
 }
 ```
+
+`bedrock:CountTokens` is worth adding from gateway **2.1.260** on, where an aborted request's input tokens are counted through Bedrock's free `CountTokens` API. It is not load-bearing: when the call fails the gateway logs one warning per upstream and falls back to a `max_tokens:1` invoke, so the tokens are still counted — you just pay for the probe. Two limits are worth knowing before you expect the free path (both verified against Bedrock on 2026-09-15): `CountTokens` accepts only a **bare foundation-model id**, not an inference profile (the gateway strips the `global.`/`us.` prefix itself), and of this example's catalog only `anthropic.claude-haiku-4-5-20251001-v1:0` supports it — `anthropic.claude-opus-5` and `anthropic.claude-sonnet-5` return `ValidationException: The provided model doesn't support counting tokens`. Those two therefore take the fallback whatever the IAM policy says.
 
 The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-5`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`au.`, and `jp.` for some models, since geo coverage varies per model — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
 
@@ -111,9 +114,23 @@ Developers can update with `claude update`. The gateway server uses the same bin
 
 Some gateway behaviour is version-gated: v2.1.198 added cross-upstream failover on `404` and the `anthropicAws` (Claude Platform on AWS) provider — earlier gateway builds reject that provider at boot; v2.1.203 added the Claude Desktop bootstrap endpoint (`/user/bootstrap`); v2.1.227 added the `desktop` block's `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` keys, the `oidc.use_proxy` flag, and the `pricing:` block; v2.1.229 added SSE keepalive pings on streaming responses so long thinking pauses don't trip an idle timeout on the Bedrock upstream (this example still raises the ALB idle timeout to 3600s as well, since the ALB has to outlast the stream either way), and carries the earlier fix that prices Bedrock application-inference-profile ARNs and other config-mapped upstream model IDs at the configured model's rates, directly relevant to this example's `global.anthropic.*` inference profiles.
 
-The worked example in this repo pins **2.1.251**. Two server-side gates drove that pin past 2.1.229: **v2.1.232** widened the `desktop` block from 11 hand-listed keys to Claude Desktop's full settings schema (and added `disabledBuiltinTools`, `coworkEgressAllowedHosts`, `managedMcpServers`, plus boot-time rejection of empty `match.groups` / `admin.admin_groups` entries and malformed `email_domain` values — previously those silently matched no one or granted admin access), and **v2.1.233** made `400`/`413` responses from a cloud upstream carry the upstream's own message.
+The worked example in this repo pins **2.1.272**. The server-side gates that drove the pin past 2.1.229:
 
-**Developers benefit from being newer than the floor, independently of the pin.** The gateway-facing client fixes worth telling your fleet about: v2.1.237 and v2.1.248 fixed prompt caching on gateway sessions (the latter a roughly hourly cache miss caused by an OAuth token refresh); v2.1.248 fixed `/login` to a gateway hanging when the managed-settings approval dialog was required, and v2.1.251 stopped that dialog re-appearing on every re-sign-in and reduced it to only the settings that changed; v2.1.247 fixed first-run setup exiting with "Unable to connect to Anthropic services" when managed settings force gateway sign-in and Anthropic's own endpoints are unreachable — the normal case on a restricted-egress network. v2.1.251 also adds a **Spend limit** bar to `/usage` for developers behind a gateway with spend limits configured; that one needs v2.1.251 on the developer's machine but nothing newer than v2.1.225 on the server.
+| Release | Server-side change | Why this example cares |
+|---|---|---|
+| **v2.1.232** | The `desktop` block went from 11 hand-listed keys to Claude Desktop's full settings schema, adding `disabledBuiltinTools`, `coworkEgressAllowedHosts` and `managedMcpServers`. Empty `match.groups` / `admin.admin_groups` entries and malformed `email_domain` values now fail at boot | This example ships a `desktop` block; the rejected values previously matched no one silently, or granted admin access |
+| **v2.1.233** | `400`/`413` from a cloud upstream carries the upstream's own message | Legible Bedrock failures instead of a generic status |
+| **v2.1.260** | An aborted request's input tokens are counted through Bedrock's free `CountTokens` API, with a `max_tokens:1` invoke as the fallback | The task role here now grants `bedrock:CountTokens` alongside the two invoke actions, so the free path is available where Bedrock supports it (today: Haiku 4.5 only — see prerequisite 3) |
+| **v2.1.261** | Client IP fixed when a trusted proxy appends a port to `X-Forwarded-For`; an unreadable access-list entry now gets `403` | This example sits behind an ALB, so every client IP arrives via `X-Forwarded-For` |
+| **v2.1.265** | The OTLP relay no longer pauses all forwarding for 30s after rejecting a payload; sessions can export straight to a collector named in `OTEL_EXPORTER_OTLP_ENDPOINT` instead of through the relay | This example ships the relay and an ADOT sidecar |
+| **v2.1.268** | `pricing:` rates reach signed-in clients through managed settings, so `/cost` and telemetry match the spend meter; a startup warning fires when `access_control.allow_cidrs` is empty | `pricing:` is no longer spend-meter-only — see §5 |
+| **v2.1.271** | The `pricing.multiplier` ceiling went from 1 to 10 | Makes the data-residency premium a one-line correction instead of a per-model rate table — see §5 |
+
+**2.1.272** itself is only "bug fixes and reliability improvements". It is the pin rather than 2.1.271 because pinning the newest release leaves no successor to fix it.
+
+**Developers benefit from being newer than the floor, independently of the pin.** The gateway-facing client fixes worth telling your fleet about: v2.1.237 and v2.1.248 fixed prompt caching on gateway sessions (the latter a roughly hourly cache miss caused by an OAuth token refresh); v2.1.248 fixed `/login` to a gateway hanging when the managed-settings approval dialog was required, and v2.1.251 stopped that dialog re-appearing on every re-sign-in and reduced it to only the settings that changed; v2.1.247 fixed first-run setup exiting with "Unable to connect to Anthropic services" when managed settings force gateway sign-in and Anthropic's own endpoints are unreachable — the normal case on a restricted-egress network; v2.1.260 fixed Bedrock model discovery, token counting and AWS SSO/STS calls failing with "unable to get local issuer certificate" when the corporate root CA is only in the OS certificate store. v2.1.251 also adds a **Spend limit** bar to `/usage` for developers behind a gateway with spend limits configured; that one needs v2.1.251 on the developer's machine but nothing newer than v2.1.225 on the server.
+
+**One client version to skip: 2.1.265.** It made the undocumented `CLAUDE_CODE_USE_GATEWAY` variable force Cloud-gateway sign-in on its own, so machines that set it alongside an API key, `apiKeyHelper` or custom auth headers failed every request with "Not signed in to the Cloud gateway". v2.1.266 restored the old behaviour with no configuration change needed.
 
 See [`docs/upstream-watch.md`](docs/upstream-watch.md) for a checklist to stay across gateway releases.
 
@@ -208,7 +225,7 @@ that explicitly opt in. `/user/bootstrap` — the endpoint Desktop fetches its c
 returns `404` unless the matching policy carries a `desktop` key. An empty `desktop: {}`
 is enough to opt a policy in, and a `desktop` key on the `match: {}` base layer opts in
 every policy that inherits it. Requires the gateway server on **v2.1.203+** (this example
-pins 2.1.251). Pair it with `bootstrapUrl` on the client side — see
+pins 2.1.272). Pair it with `bootstrapUrl` on the client side — see
 ["How developers connect"](#claude-desktop).
 
 ```yaml

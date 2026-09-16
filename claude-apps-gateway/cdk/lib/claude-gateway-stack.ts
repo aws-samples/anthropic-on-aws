@@ -248,7 +248,20 @@ export class GatewayStack extends cdk.Stack {
     });
     taskRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+          // From 2.1.260 the gateway counts an ABORTED request's input tokens with
+          // Bedrock's free CountTokens API. It is not load-bearing: on failure the
+          // gateway logs one warning and falls back to a max_tokens:1 invoke, so the
+          // grant buys a free path instead of a billable probe. Verified 2026-09-15:
+          // Bedrock's CountTokens takes only a BARE foundation-model id (the gateway
+          // strips the global./us. prefix itself), and of this catalog only
+          // anthropic.claude-haiku-4-5-20251001-v1:0 supports it — Opus 5 and Sonnet 5
+          // return "The provided model doesn't support counting tokens", so they take
+          // the fallback whatever IAM says.
+          'bedrock:CountTokens',
+        ],
         resources: [
           // GLOBAL cross-region inference profiles (gateway.yaml uses global.anthropic.*).
           // The profile ARN is scoped to the source (bedrock) region; global profiles

@@ -19,7 +19,7 @@ This CDK stack creates all the AWS infrastructure needed to run it:
 | **ACM certificate** | Free TLS certificate for the ALB. Auto-renews. |
 | **RDS PostgreSQL (db.t4g.micro)** | Stores short-lived sign-in state (device codes, rate limits). Smallest tier is sufficient. |
 | **ECR repository** | Holds the gateway container image you build and push. |
-| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`). No static keys. |
+| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`, plus `CountTokens`, which 2.1.260+ uses to count aborted requests for free where Bedrock supports it). No static keys. |
 | **IAM execution role** | Lets ECS pull the image from ECR and write logs to CloudWatch. |
 | **Security groups** | Network rules: ALB accepts HTTPS (443), ECS accepts traffic from ALB only (8080), RDS accepts traffic from ECS only (5432). |
 | **Route53 A record** | Points your gateway hostname at the ALB so developers can reach it by name. |

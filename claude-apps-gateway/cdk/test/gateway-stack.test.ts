@@ -21,7 +21,7 @@ const REGION = 'us-east-1';
 const PASS2: GatewayStackProps = {
   env: { account: ACCOUNT, region: REGION },
   imageReady: true,
-  imageTag: '2.1.251',
+  imageTag: '2.1.272',
   publicUrl: 'https://claude-gateway.example.com',
   certArn: `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/abc-123`,
   zoneName: 'example.com',
@@ -36,7 +36,7 @@ function synth(props: GatewayStackProps): Template {
 }
 
 describe('pass 1 (imageReady: false) — ECR repo only', () => {
-  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.251' });
+  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.272' });
 
   test('creates the ECR repository', () => {
     template.resourceCountIs('AWS::ECR::Repository', 1);
@@ -61,6 +61,9 @@ describe('pass 2 (imageReady: true) — full stack', () => {
     // calls out, so pin both into the policy. Asserted as two single-element
     // arrayWith matches: mixing a literal and a stringLikeRegexp inside ONE
     // arrayWith doesn't match reliably, so check each ARN family separately.
+    // CountTokens rides the same statement: from 2.1.260 the gateway counts an
+    // aborted request's input tokens through it, falling back to a max_tokens:1
+    // invoke when the call fails — so the grant buys the free path.
     const invokeStatement = (resource: unknown) =>
       Match.objectLike({
         PolicyDocument: {
@@ -69,6 +72,7 @@ describe('pass 2 (imageReady: true) — full stack', () => {
               Action: [
                 'bedrock:InvokeModel',
                 'bedrock:InvokeModelWithResponseStream',
+                'bedrock:CountTokens',
               ],
               Resource: Match.arrayWith([resource]),
             }),
