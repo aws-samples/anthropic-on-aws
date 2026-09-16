@@ -135,6 +135,13 @@ this pin. The current one to know: the **Spend limit** bar in `/usage` and the
 but nothing newer than **2.1.225 on the gateway server**. Don't bump the container for a
 client-side gate.
 
+**One gate has halves on two different releases, so check both axes for it:** a
+`pricing.multiplier` above `1` needs **≥ 2.1.271 on the server** to be accepted at all, and
+**≥ 2.1.270 on the developer's machine** to be honoured. Below that the client ignores the
+markup and shows `/cost` at list price, while caps and the gateway's own spend records are
+already corrected. The gateway names the client floor at boot, so read the boot log after
+setting one. A discount below `1` has no client floor.
+
 One client release to keep a fleet off: **2.1.265** made the undocumented
 `CLAUDE_CODE_USE_GATEWAY` variable force Cloud-gateway sign-in on its own, so a machine
 setting it alongside an API key, `apiKeyHelper` or custom auth headers failed every request
