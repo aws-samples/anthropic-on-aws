@@ -324,7 +324,7 @@ export const PORTAL_HTML = `<!doctype html>
     margin-top: 1.2rem;
   }
   dialog {
-    width: min(94vw, 68rem);
+    width: min(92vw, 54rem);
     border: none;
     border-radius: 3px;
     padding: 0;
@@ -395,7 +395,22 @@ export const PORTAL_HTML = `<!doctype html>
     border-color: transparent;
     transform: none;
   }
-  #terminal-screen { flex: 1 1 auto; min-height: 62vh; background: #0c0a08; padding: .75rem; }
+  // #terminal-screen used to size itself off the viewport (min-height:
+  // 62vh, dialog width min(94vw, 68rem)) so it grew or shrank with
+  // whatever monitor happened to be open, and on a large display that
+  // meant a terminal grid far bigger than any real desktop terminal
+  // app defaults to -- reported live as "edge to edge is weird", correctly:
+  // a real terminal window has a comfortable fixed-ish size (roughly
+  // 80-110 columns by 28-32 rows) regardless of screen size, not a
+  // viewport-maximized one. FitAddon's own behavior (fit the character
+  // grid to whatever box it's given) was never the problem; the box
+  // itself was sized wrong. Fixed by giving the box a fixed, rem-based
+  // height instead of a viewport-relative one, alongside the dialog's
+  // width already being capped in rem above -- both now describe "a
+  // terminal-sized window" independent of the viewport, the same way a
+  // real terminal emulator's default window size does not change just
+  // because the desktop it's opened on is bigger.
+  #terminal-screen { flex: 1 1 auto; height: 30rem; background: #0c0a08; padding: .75rem; }
 </style>
 </head>
 <body>
