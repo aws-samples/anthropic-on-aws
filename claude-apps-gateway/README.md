@@ -563,6 +563,19 @@ discount and this premium needed a per-model rate table instead. A negotiated di
 same knob (`multiplier: 0.85`), and one value covers both directions at once —
 `1.1 × 0.85 = 0.935`.
 
+A markup above `1` has **two different version floors**, and the client one is easy to miss:
+
+| Side | Floor | What it gates |
+|---|---|---|
+| Gateway server | **≥ 2.1.271** | Accepting `multiplier` above `1` at all. Earlier builds fail boot with `Number must be less than or equal to 1` |
+| Developer's CLI | **≥ 2.1.270** | *Honouring* a markup received through managed settings. The gateway says so at boot: *"Claude Code clients older than v2.1.270 ignore a multiplier above 1 and show costs without the markup"* |
+
+So caps and the gateway's own spend records are corrected the moment the server is on 2.1.271+,
+but a developer on an older CLI still sees `/cost` at list price. That split only matters for a
+markup: a discount (`multiplier` below `1`) is honoured by any client that reads `modelPricing`.
+The same boot log also warns that spend limits now count 1.1× the price, so developers reach
+existing caps sooner — raise them if that isn't what you want.
+
 `overrides` rows, USD per million tokens, are still what you need in two cases:
 
 - **Per-model rates** — a contract that prices Opus differently from Haiku, rather than one

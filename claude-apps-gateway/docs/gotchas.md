@@ -539,6 +539,11 @@ Claude tables — "Global Cross-region Inference" and "Geo and In-region Cross-r
   per-model `pricing.overrides` table that earlier pins needed is now only for genuinely
   per-model contracts or for separating two upstreams on different rate cards. Recipe and the
   current numbers: [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates).
+  **Mind the second, lower floor:** a markup is only *honoured* by CLIs on **2.1.270+**, so
+  until the fleet catches up the caps and the gateway's own spend records are corrected while
+  developers' `/cost` still reads list price. The gateway states this at boot: *"Claude Code
+  clients older than v2.1.270 ignore a multiplier above 1 and show costs without the markup."*
+  A discount needs no client floor.
 - **`inference_geo`-driven premiums** (`anthropic`, `anthropicAws`): **no config fixes this.**
   `overrides` rows are keyed by `{upstream, model}`, but two requests to the same model on the
   same upstream differ only by their `inference_geo`, so one row cannot price both. An org with
