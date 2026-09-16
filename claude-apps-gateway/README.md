@@ -67,6 +67,11 @@ In practice, this means:
 
 Example: `claude-gateway.internal.company.com` resolving to `10.0.1.50`
 
+If your organization numbers its *internal* network from public IPv4 space, the
+`gatewayInternalNetworks` managed setting (client **v2.1.268**+) lets `/login` accept a gateway
+there. It does not remove the VPN — the signing-in machine's own address must also fall inside
+the declared block, so an RFC 1918 VPN pool still fails.
+
 ### 2. An OIDC identity provider
 
 The gateway authenticates developers using the OpenID Connect (OIDC) protocol. Register one OAuth application in their IdP with the redirect URI set to `https://<gateway-hostname>/oauth/callback`.

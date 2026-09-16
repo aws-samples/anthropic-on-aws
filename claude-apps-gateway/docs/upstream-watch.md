@@ -152,8 +152,14 @@ exceeds our pin, we're behind on that feature. The ones we already track:
 - `pricing:` rates delivered to signed-in clients through managed settings, so `/cost` and
   telemetry agree with the spend meter — **added in 2.1.268**. Before this, `pricing:` was
   read only by the spend meter
-- `gatewayInternalNetworks` managed setting (lets `/login` accept a gateway on the
-  organization's own public IPv4 block) and the empty-`access_control.allow_cidrs` startup
+- `gatewayInternalNetworks` managed setting, allowing `/login` to a gateway on a declared
+  **public** IPv4 block — **requires ≥ 2.1.268**. Up to 4 non-overlapping CIDRs, `/8`–`/32`,
+  entirely outside private space. Three conditions all hold or sign-in fails: every resolved
+  address inside a block, **the client's own address inside the same block** (so an RFC 1918 VPN
+  pool fails), and a direct connection (`HTTPS_PROXY` is refused — use `NO_PROXY`).
+  Admin-managed sources only, IPv4 only, fails closed. Not applicable to this example's
+  RFC 1918 ALB
+- The empty-`access_control.allow_cidrs` startup
   warning — **2.1.268**. The warning **fires on this example's shipped config**, which sets
   no `allow_cidrs` and relies on the internal ALB plus its security group. Confirmed in the
   2.1.272 boot log; it is advisory, not a boot failure. Set `access_control.allow_cidrs` to
