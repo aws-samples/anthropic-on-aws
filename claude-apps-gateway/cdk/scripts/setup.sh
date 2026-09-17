@@ -145,7 +145,7 @@ PROJECT="${PROJECT:-claude-gateway}"
 # validation of match.groups / email_domain / admin_groups), and 2.1.233 made
 # 400/413 errors carry the upstream's own message. See the README "Version
 # coupling" note and docs/upstream-watch.md.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.272}"
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.274}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).
@@ -814,6 +814,12 @@ GW_TASKDEF="$(jq -n \
         name: "gateway",
         image: $image,
         essential: true,
+        # On SIGTERM the gateway lets in-flight requests finish for up to 25s
+        # (2.1.274+, CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS) instead of cutting every open
+        # stream. ECS SIGKILLs at stopTimeout, so anything below ~25s truncates that
+        # drain and a rolling deploy severs live streaming responses again. The ECS
+        # default is 30s, which only just covers it — pin it with headroom.
+        stopTimeout: 40,
         portMappings: [{containerPort: 8080, protocol: "tcp"}],
         environment: [
           {name: "CLAUDE_GATEWAY_LOG_LEVEL", value: $logLevel},

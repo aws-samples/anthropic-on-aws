@@ -113,7 +113,7 @@ The gateway uses **global** cross-region inference profiles (e.g., `global.anthr
 
 ### 4. Claude Code versions: one pin, two axes
 
-**This example is built and validated on Claude Code `2.1.272`.** That single version is the
+**This example is built and validated on Claude Code `2.1.274`.** That single version is the
 gateway server: it sets `CLAUDE_VERSION` in [`cdk/scripts/setup.sh`](cdk/scripts/setup.sh) and
 `claudeVersion` in [`cdk/bin/app.ts`](cdk/bin/app.ts), drives the binary download, and is baked
 into the container image. Everything documented in this README describes that version's

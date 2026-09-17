@@ -440,7 +440,7 @@ config, so a fleet that only uses the CLI is never accidentally exposing a Deskt
 base layer to opt in everyone who inherits it. `desktop: {}` alone is enough; the optional
 feature gates (`isLocalDevMcpEnabled`, `banner`, …) are documented on capability 2 in the
 [README](../README.md#claude-desktop-overlay). The gateway server must be on **v2.1.203+**
-(this example pins 2.1.272). The template ships this block commented out —
+(this example pins 2.1.274). The template ships this block commented out —
 [`cdk/gateway.yaml.template`](../cdk/gateway.yaml.template), under the `match: {}` policy.
 
 **Not the same as** `parentSettingsBehavior: "merge"`. That key governs a *different*
@@ -476,7 +476,7 @@ end, but the default still costs you the tab.
 The block is validated *strictly* and what it accepts is bounded by the pinned gateway
 version, so a key copied from the docs page for a newer release fails boot — the container
 exits, ECS restarts it, and the service never stabilises. As of **2.1.232** (this example
-pins 2.1.272) the block takes every released Claude Desktop setting and is checked against
+pins 2.1.274) the block takes every released Claude Desktop setting and is checked against
 Desktop's *own* schema, which widens what's accepted but also what can fail: besides an
 unknown key, boot also fails on a recognized key whose value Desktop would reject or
 silently drop (an empty value, a misspelled sub-key inside `banner`), a legacy alias of a

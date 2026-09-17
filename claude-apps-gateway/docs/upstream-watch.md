@@ -10,8 +10,8 @@ Run it **before each version bump** and **when a gateway release ships**.
 
 ## Current pin
 
-- **Pinned version:** `2.1.272` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
-- **Validated on:** `2.1.272` (live end-to-end: in-place image swap on the running Fargate
+- **Pinned version:** `2.1.274` (see `CLAUDE_VERSION` in `cdk/scripts/setup.sh` and `claudeVersion` in `cdk/bin/app.ts`)
+- **Validated on:** `2.1.274` (live end-to-end: in-place image swap on the running Fargate
   service, clean boot on both replicas, browser SSO sign-in, and one Bedrock inference call
   per model in `availableModels` — `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5`,
   all `200` with a matching `inference` event. `/user/bootstrap` returns `401` rather than
@@ -30,7 +30,7 @@ each move, and the per-feature gates live in check 2's tripwire list below. They
 readers — anyone adapting this example onto a gateway they already run at an older version, and
 whoever does the next bump.
 
-Gates that drove the pin from `2.1.229` to `2.1.272`:
+Gates that drove the pin from `2.1.229` to `2.1.274`:
 
 | Release | Server-side change | Why this example cares |
 |---|---|---|
@@ -41,15 +41,23 @@ Gates that drove the pin from `2.1.229` to `2.1.272`:
 | **2.1.265** | The OTLP relay no longer pauses all forwarding for 30s after rejecting a payload; sessions can export straight to a collector named in `OTEL_EXPORTER_OTLP_ENDPOINT` instead of through the relay | This example ships the relay and an ADOT sidecar |
 | **2.1.268** | `pricing:` rates reach signed-in clients through managed settings; a startup warning fires when `access_control.allow_cidrs` is empty | `pricing:` is no longer spend-meter-only, and the warning fires on the shipped config |
 | **2.1.271** | The `pricing.multiplier` ceiling went from 1 to 10 | Makes the data-residency premium a one-line correction instead of a per-model rate table |
+| **2.1.273** | `allowManagedMcpServersOnly`, `deniedMcpServers` and `disableClaudeAiConnectors` set via MDM or `managed-settings.json` are no longer ignored when server-managed settings are also present | This topology **always** has server-managed settings present, so those three MDM keys were silently inert on exactly the machines this example targets |
+| **2.1.274** | **SIGTERM no longer cuts every open stream** — in-flight requests get up to 25s to finish (`CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS`) | The headline. Below this, every ECS rolling deploy severs live streaming responses, which is the failure the 3600s ALB idle timeout exists to prevent. Pairs with the container `stopTimeout` (see the tripwire below) |
+| **2.1.274** | `store.connect_timeout_seconds` (default 5s), a boot error naming `store.postgres_url`, and the first Postgres connection retried 3× before exit | RDS sits in private subnets here and can be reachable a few seconds after the task starts; that used to be a boot crash-loop |
+| **2.1.274** | Spend-limit checks take one database round trip instead of four, and an unhandled promise rejection when Postgres drops a connection mid-spend-check is fixed | Both are on the spend-meter path this example documents in README §5 |
+| **2.1.274** | A warning when a replica exceeds the 256 requests it sends upstream at once, plus a startup log line showing the limit | Capacity signal worth knowing against `DESIRED_COUNT` (2 here). The boot line names the knob the changelog doesn't: `upstream requests: at most 256 at once per process (set BUN_CONFIG_MAX_HTTP_REQUESTS to change)` |
 
-**Why 2.1.272 rather than 2.1.271**, which is the release that actually carries the change:
-pinning the newest release leaves no successor to fix it, and this repo has watched three large
-releases take a same-week follow-up (2.1.266←265, 2.1.270←269, 2.1.272←271). 2.1.272 is
-"bug fixes and reliability improvements" and inherits the ceiling change — confirmed by probing
-the 2.1.272 binary, not assumed from the changelog. Also avoid pinning **2.1.265** (the
-`CLAUDE_CODE_USE_GATEWAY` regression) and **2.1.269** (a git-permission regression).
+**Why the pin is 2.1.274, which was `latest` at the time — a deliberate exception.** The rule
+this section otherwise follows is *never pin the newest release*: a large release has repeatedly
+needed a same-week follow-up (2.1.266←265, 2.1.270←269, 2.1.272←271), so pinning head leaves no
+successor to fix it. 2.1.274 is a large release and had nothing above it when this pin was
+chosen, so it breaks that rule on purpose: it repairs a defect in **this example's own
+deployment shape** — a rolling ECS deploy cutting live streams — and no earlier release does.
+The trade is stated rather than hidden; if you are pinning fresh and a 2.1.275+ exists, prefer
+it. Also avoid pinning **2.1.265** (the `CLAUDE_CODE_USE_GATEWAY` regression) and **2.1.269**
+(a git-permission regression).
 
-Things the 2.1.251 and 2.1.272 validation runs turned up that are worth knowing before you
+Things the 2.1.251 and 2.1.274 validation runs turned up that are worth knowing before you
 hand-test:
 
 - `--model claude-haiku-4-5` silently ran on the session default instead (the gateway logged
@@ -60,9 +68,9 @@ hand-test:
 - With more than one replica, each task writes its **own** log stream. Tailing one stream and
   concluding a request never arrived is a false negative; check every `gateway/web/*` stream
   for the service.
-- **`client_ip` in the audit events is the load balancer, not the developer.** On 2.1.272 the
-  `session.mint` event recorded `client_ip: 10.20.10.165` — an ALB ENI — while the signing-in
-  laptop was on the VPN at `10.200.0.130`. The boot log says why: `client IPs: TCP peer
+- **`client_ip` in the audit events is the load balancer, not the developer.** On 2.1.274 the
+  `session.mint` event recorded `client_ip: 10.20.10.186` — an ALB ENI — while the signing-in
+  laptop was on the VPN at `10.200.0.x`. The boot log says why: `client IPs: TCP peer
   address (listen.trusted_proxies empty)`. Anything keyed on client IP (per-IP sign-in rate
   limits, `access_control.allow_cidrs`, audit attribution) therefore sees one address for the
   whole fleet until `listen.trusted_proxies` names the ALB subnets. Set that **first** if you
@@ -124,6 +132,20 @@ exceeds our pin, we're behind on that feature. The ones we already track:
   `capability_rejected:` token) — **requires ≥ 2.1.233**
 - `forward_user_identity` on an `anthropic` upstream (per-user attribution at a proxy
   *behind* the gateway; not applicable to a Bedrock upstream) — **requires ≥ 2.1.233**
+- **Graceful shutdown: in-flight requests get up to 25s on SIGTERM, tunable with
+  `CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS` — added in 2.1.274.** Below this the gateway cut every open
+  stream the moment ECS sent SIGTERM, so a rolling deploy killed live streaming responses. Two
+  things to keep in step with it, both now pinned in the CDK stack and `setup.sh`: the container
+  **`stopTimeout` must outlast the drain window** (ECS SIGKILLs at `stopTimeout`; its default of
+  30s only just covers 25s, so this example sets **40s** explicitly and a CDK test asserts it is
+  above 25), and if you raise `CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS` you must raise `stopTimeout` with
+  it (Fargate's ceiling is 120s). `strings` on the 2.1.272 and 2.1.273 binaries returns **0 hits**
+  for the variable and it is present in 2.1.274, so the gate is exactly 2.1.274
+- `store.connect_timeout_seconds` (lengthens the Postgres connect timeout, default 5s) —
+  **requires ≥ 2.1.274**; the same release retries the first connection 3× before exiting and
+  makes the unreachable-database boot error name `store.postgres_url` and the timeout. Relevant
+  because RDS here is in private subnets and can answer a few seconds after the task starts. Also
+  0 hits on 2.1.272 and 2.1.273
 - SSE keepalive pings on streaming responses, so a long thinking pause doesn't trip an idle
   timeout on the Bedrock upstream — **added in 2.1.229**. This example still raises the ALB
   idle timeout to 3600s regardless, since the ALB has to outlast the stream either way. The
@@ -162,7 +184,7 @@ exceeds our pin, we're behind on that feature. The ones we already track:
 - The empty-`access_control.allow_cidrs` startup
   warning — **2.1.268**. The warning **fires on this example's shipped config**, which sets
   no `allow_cidrs` and relies on the internal ALB plus its security group. Confirmed in the
-  2.1.272 boot log; it is advisory, not a boot failure. Set `access_control.allow_cidrs` to
+  2.1.274 boot log; it is advisory, not a boot failure. Set `access_control.allow_cidrs` to
   your private ranges to silence it and add defence in depth
 - `pricing.multiplier` above `1`, up to `10` — **requires ≥ 2.1.271**. Through `2.1.270` the
   ceiling was `1`, so the block could only discount; boot-probed both sides. This is what
@@ -250,7 +272,7 @@ live on 2.1.229: with the `desktop` block enabled, Claude Desktop showed the Cha
   `aws bedrock list-inference-profiles --query "inferenceProfileSummaries[?contains(inferenceProfileId,'<model>')]"`,
   then one `aws bedrock-runtime converse --model-id global.anthropic.<model>` per entry.
   Done for the 2.1.229 catalog: `global.anthropic.claude-opus-5` is ACTIVE and all three
-  shipped models return 200. **Open on the 2.1.272 pin:** 2.1.251 raised Sonnet 5's default
+  shipped models return 200. **Open on the 2.1.274 pin:** 2.1.251 raised Sonnet 5's default
   auto-compact threshold to its full 1M context (~967K tokens, up from ~934K). Confirm
   `global.anthropic.claude-sonnet-5` actually serves a 1M window on Bedrock before relying
   on it — a client-side threshold above what the profile serves fails near the top of a

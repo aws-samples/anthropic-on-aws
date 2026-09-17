@@ -327,6 +327,20 @@ export class GatewayStack extends cdk.Stack {
       },
     });
 
+    // Give the gateway's SIGTERM drain room to finish. From 2.1.274 the gateway lets
+    // in-flight requests complete for up to 25s before exiting
+    // (CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS) instead of cutting every open stream; ECS
+    // SIGKILLs the container at stopTimeout, so a value below that window truncates
+    // the drain and a rolling deploy severs live streaming responses again — the very
+    // thing the 3600s ALB idle timeout above exists to prevent. The ECS default is 30s,
+    // which only just covers 25s, so pin it explicitly with headroom.
+    // ApplicationLoadBalancedFargateService's taskImageOptions exposes no stopTimeout,
+    // hence the property override. Index 0 is the taskImageOptions container ("web");
+    // the ADOT sidecar added below is index 1. The CDK test asserts the container
+    // named "web" is the one carrying it, so a reordering can't silently move it.
+    const cfnGatewayTaskDef = fargate.taskDefinition.node.defaultChild as ecs.CfnTaskDefinition;
+    cfnGatewayTaskDef.addPropertyOverride('ContainerDefinitions.0.StopTimeout', 40);
+
     // Restrict the ALB's 443 ingress to the VPN/corp client CIDR (not 0.0.0.0/0).
     // openListener:false above suppressed the pattern's default wide-open rule.
     fargate.loadBalancer.connections.allowFrom(

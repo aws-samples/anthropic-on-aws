@@ -21,7 +21,7 @@ const REGION = 'us-east-1';
 const PASS2: GatewayStackProps = {
   env: { account: ACCOUNT, region: REGION },
   imageReady: true,
-  imageTag: '2.1.272',
+  imageTag: '2.1.274',
   publicUrl: 'https://claude-gateway.example.com',
   certArn: `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/abc-123`,
   zoneName: 'example.com',
@@ -36,7 +36,7 @@ function synth(props: GatewayStackProps): Template {
 }
 
 describe('pass 1 (imageReady: false) — ECR repo only', () => {
-  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.272' });
+  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.274' });
 
   test('creates the ECR repository', () => {
     template.resourceCountIs('AWS::ECR::Repository', 1);
@@ -129,6 +129,22 @@ describe('pass 2 (imageReady: true) — full stack', () => {
         { Key: 'idle_timeout.timeout_seconds', Value: '3600' },
       ]),
     });
+  });
+
+  test('the gateway container stopTimeout outlasts the 25s SIGTERM drain', () => {
+    // From 2.1.274 the gateway finishes in-flight requests for up to 25s on SIGTERM
+    // instead of cutting every open stream. ECS SIGKILLs at stopTimeout, so a value
+    // at or below 25s truncates the drain and a rolling deploy cuts live streams
+    // again. Asserted on the container NAMED "web" rather than on an index, so the
+    // escape hatch in the stack (which does address index 0) can't silently drift
+    // onto the ADOT sidecar if container order ever changes.
+    const taskDefs = template.findResources('AWS::ECS::TaskDefinition');
+    const gatewayContainers = Object.values(taskDefs)
+      .flatMap((td) => (td.Properties?.ContainerDefinitions ?? []) as Array<Record<string, unknown>>)
+      .filter((c) => c.Name === 'web');
+
+    expect(gatewayContainers).toHaveLength(1);
+    expect(gatewayContainers[0].StopTimeout as number).toBeGreaterThan(25);
   });
 
   test('telemetry forwards via ADOT collector sidecar — no separate service or :4318 ALB listener', () => {

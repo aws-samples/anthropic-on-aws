@@ -188,7 +188,11 @@ managed:
         # gateway get policy from that file alone. Left off by default because it also
         # lets ANY launching host (Agent SDK app, IDE extension) supply parent settings;
         # the filter is restrictive-only except for allow rules and sandbox allowlists,
-        # so pair it with the allowManaged*Only locks. See the README.
+        # so pair it with the allowManaged*Only locks. See the README. NOTE those locks
+        # need gateway-served clients on 2.1.273+: through 2.1.272 allowManagedMcpServersOnly,
+        # deniedMcpServers and disableClaudeAiConnectors set via MDM or managed-settings.json
+        # were IGNORED whenever server-managed settings were also present — which is always
+        # true here — so on older clients the pairing above was silently inert.
         # parentSettingsBehavior: merge
       #
       # CLAUDE DESKTOP, part 2 of 2 — the /user/bootstrap opt-in. Presence of a

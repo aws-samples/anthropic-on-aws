@@ -58,6 +58,13 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
   pass provisions and prints the ALB hostname; set it as `public_url` (and register
   `<public_url>/oauth/callback` on the OIDC client), then redeploy.
 - **Raise the ALB idle timeout** (e.g. 3600s) or long streaming responses get cut off.
+- **The container `stopTimeout` must outlast the gateway's SIGTERM drain.** From 2.1.274 the
+  gateway lets in-flight requests finish for up to 25s before exiting
+  (`CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS`); ECS SIGKILLs at `stopTimeout`, so a shorter value
+  truncates the drain and a rolling deploy severs live streams â€” the same failure the raised
+  ALB idle timeout exists to prevent. Both tracks pin it to **40s** (CDK: a property override,
+  since `taskImageOptions` exposes no `stopTimeout`; `setup.sh`: in the task-def JSON), and a
+  CDK test asserts the `web` container's value is above 25. Raise both together, never one.
 - **Config secret guard:** `setup.sh` must refuse to publish `gateway.yaml` while any `REPLACE_ME`
   placeholder remains.
 - **Container image:** distroless glibc base (`gcr.io/distroless/cc-debian12:nonroot`) around the
