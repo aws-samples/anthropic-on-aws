@@ -410,7 +410,11 @@ export const PORTAL_HTML = `<!doctype html>
   // terminal-sized window" independent of the viewport, the same way a
   // real terminal emulator's default window size does not change just
   // because the desktop it's opened on is bigger.
-  #terminal-screen { flex: 1 1 auto; height: 30rem; background: #0c0a08; padding: .75rem; }
+  // .75rem read as barely-there once actually screenshotted side by side
+  // with a real terminal app -- text sat almost flush against the left
+  // edge of the black area. 1.1rem is closer to what Terminal.app/iTerm2
+  // actually reserve around their text grid.
+  #terminal-screen { flex: 1 1 auto; height: 30rem; background: #0c0a08; padding: 1.1rem; }
 </style>
 </head>
 <body>
