@@ -139,10 +139,14 @@ PROJECT="${PROJECT:-claude-gateway}"
 # managed.policies block). 2.1.198 added 404-failover across upstreams and the
 # anthropicAws (Claude Platform on AWS) provider, both referenced in
 # gateway.yaml.template; keep this >= 2.1.198 if you rely on either. 2.1.227 added
-# the desktop chatTabEnabled / chatAdvancedFileAnalysisEnabled keys, and 2.1.229
-# added SSE keepalive pings on streaming responses (Bedrock included). See the
-# README "Version coupling" note.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.229}"
+# the desktop chatTabEnabled / chatAdvancedFileAnalysisEnabled keys, 2.1.229 added
+# SSE keepalive pings on streaming responses (Bedrock included), 2.1.232 widened
+# the desktop block to Claude Desktop's full settings schema (and tightened boot
+# validation of match.groups / email_domain / admin_groups), and 2.1.233 made
+# 400/413 errors carry the upstream's own message. See the README "Claude Code
+# versions: one pin, two axes"; Anthropic's CHANGELOG is the source of truth
+# for these gates.
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.274}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).
@@ -637,14 +641,19 @@ EXEC_ROLE_ARN="$(aws iam get-role --role-name "${EXEC_ROLE}" --query Role.Arn --
 # inference-profile (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or
 # invoke 403s. Matches gateway.yaml.template's global.anthropic.* model catalog, so
 # any region works. auth: {} in gateway.yaml picks this up via the ECS creds endpoint.
-# Also grants cloudwatch:PutMetricData so the ADOT sidecar can push OTLP metrics
-# to CloudWatch via SigV4 (PutMetricData takes no resource scope, hence "*").
+# bedrock:CountTokens: from 2.1.260 the gateway counts an ABORTED request's input tokens
+# with Bedrock's free CountTokens API, falling back to a max_tokens:1 invoke (plus one
+# warning) when the call fails — so the grant buys a free path, it doesn't fix a metering
+# gap. Bedrock takes only a BARE foundation-model id here, and of this catalog only
+# anthropic.claude-haiku-4-5-20251001-v1:0 supports it today; Opus 5 and Sonnet 5 fall
+# back regardless. Also grants cloudwatch:PutMetricData so the ADOT sidecar can push
+# OTLP metrics to CloudWatch via SigV4 (PutMetricData takes no resource scope, hence "*").
 TASK_ROLE="${PROJECT}-task-role"
 ensure_role "${TASK_ROLE}"
 BEDROCK_POLICY=$(cat <<JSON
 {"Version":"2012-10-17","Statement":[
   {"Effect":"Allow",
-   "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"],
+   "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream","bedrock:CountTokens"],
    "Resource":[
      "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/global.anthropic.*",
      "arn:aws:bedrock:*::foundation-model/anthropic.*"
@@ -806,6 +815,12 @@ GW_TASKDEF="$(jq -n \
         name: "gateway",
         image: $image,
         essential: true,
+        # On SIGTERM the gateway lets in-flight requests finish for up to 25s
+        # (2.1.274+, CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS) instead of cutting every open
+        # stream. ECS SIGKILLs at stopTimeout, so anything below ~25s truncates that
+        # drain and a rolling deploy severs live streaming responses again. The ECS
+        # default is 30s, which only just covers it — pin it with headroom.
+        stopTimeout: 40,
         portMappings: [{containerPort: 8080, protocol: "tcp"}],
         environment: [
           {name: "CLAUDE_GATEWAY_LOG_LEVEL", value: $logLevel},

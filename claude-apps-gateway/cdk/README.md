@@ -19,7 +19,7 @@ This CDK stack creates all the AWS infrastructure needed to run it:
 | **ACM certificate** | Free TLS certificate for the ALB. Auto-renews. |
 | **RDS PostgreSQL (db.t4g.micro)** | Stores short-lived sign-in state (device codes, rate limits). Smallest tier is sufficient. |
 | **ECR repository** | Holds the gateway container image you build and push. |
-| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`). No static keys. |
+| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`, plus `CountTokens`, which 2.1.260+ uses to count aborted requests for free where Bedrock supports it). No static keys. |
 | **IAM execution role** | Lets ECS pull the image from ECR and write logs to CloudWatch. |
 | **Security groups** | Network rules: ALB accepts HTTPS (443), ECS accepts traffic from ALB only (8080), RDS accepts traffic from ECS only (5432). |
 | **Route53 A record** | Points your gateway hostname at the ALB so developers can reach it by name. |
@@ -81,10 +81,13 @@ npm install -g aws-cdk
 
 ### 5. The Claude Code linux-x64 binary
 
-The gateway container needs the Linux build of Claude Code. Download it from the public releases endpoint:
+The gateway container needs the Linux build of Claude Code, **at the version this example
+pins**. Take it from `setup.sh` rather than resolving a release channel: `stable` and
+`latest` move independently of the pin, so either one bakes a binary the CDK and `setup.sh`
+do not describe.
 
 ```bash
-VERSION=$(curl -fsSL https://downloads.claude.ai/claude-code-releases/stable)
+VERSION=$(sed -n 's/^CLAUDE_VERSION="${CLAUDE_VERSION:-\(.*\)}"$/\1/p' scripts/setup.sh)
 mkdir -p linux-x64
 curl -fL -o linux-x64/claude \
   "https://downloads.claude.ai/claude-code-releases/${VERSION}/linux-x64/claude"

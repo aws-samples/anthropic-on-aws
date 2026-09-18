@@ -197,7 +197,9 @@ endpoint region.
 **Fix:** as an account admin, enable model access **once** — Bedrock console →
 *Model access* (or the API) — for each Claude model you list in `availableModels`,
 per region global may route to. After that the 403 is gone permanently and the task
-role only ever needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream`.
+role only ever needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream`
+(plus `bedrock:CountTokens`, which gateway 2.1.260+ uses to count aborted requests for
+free where Bedrock supports it, falling back to a `max_tokens:1` invoke where it doesn't).
 This is the **#1 Bedrock-through-gateway failure** and it's easy to miss because IAM
 looks correct.
 
@@ -438,7 +440,7 @@ config, so a fleet that only uses the CLI is never accidentally exposing a Deskt
 base layer to opt in everyone who inherits it. `desktop: {}` alone is enough; the optional
 feature gates (`isLocalDevMcpEnabled`, `banner`, …) are documented on capability 2 in the
 [README](../README.md#claude-desktop-overlay). The gateway server must be on **v2.1.203+**
-(this example pins 2.1.229). The template ships this block commented out —
+(this example pins 2.1.274). The template ships this block commented out —
 [`cdk/gateway.yaml.template`](../cdk/gateway.yaml.template), under the `match: {}` policy.
 
 **Not the same as** `parentSettingsBehavior: "merge"`. That key governs a *different*
@@ -471,15 +473,24 @@ fixed in 2.1.227, which this example now pins past). It's now a choice rather th
 end, but the default still costs you the tab.
 
 **An unknown key crash-loops the ECS task.**
-The block is validated *strictly* and the accepted key set is bounded by the pinned gateway
+The block is validated *strictly* and what it accepts is bounded by the pinned gateway
 version, so a key copied from the docs page for a newer release fails boot — the container
-exits, ECS restarts it, and the service never stabilises. The README's table is the full set
-as of 2.1.229. Probe a new key against the pinned binary before shipping it:
+exits, ECS restarts it, and the service never stabilises. As of **2.1.232** (this example
+pins 2.1.274) the block takes every released Claude Desktop setting and is checked against
+Desktop's *own* schema, which widens what's accepted but also what can fail: besides an
+unknown key, boot also fails on a recognized key whose value Desktop would reject or
+silently drop (an empty value, a misspelled sub-key inside `banner`), a legacy alias of a
+current key, a key Desktop reads only from MDM such as `bootstrapUrl`, and a key the gateway
+computes itself (the inference connection, the model list, the OTLP relay). Probe a new key
+against the pinned binary before shipping it:
 
 ```bash
 # reports `Unrecognized key(s) in object: '<key>'` if the pin doesn't know it
 claude gateway --config /tmp/probe.yaml
 ```
 
-`chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` are the current examples: both need
-**≥ 2.1.227**. See [`upstream-watch.md`](upstream-watch.md) for the version-gate checklist.
+The probe is the reliable answer, because it asks *your* pin rather than a list that drifts.
+For which keys are gated and from which release, read the
+[config reference](https://code.claude.com/docs/en/claude-apps-gateway-config) and the
+[changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md) — this example
+doesn't keep a second copy of Anthropic's version gates.

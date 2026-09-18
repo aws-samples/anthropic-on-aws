@@ -181,7 +181,11 @@ managed:
         # gateway get policy from that file alone. Left off by default because it also
         # lets ANY launching host (Agent SDK app, IDE extension) supply parent settings;
         # the filter is restrictive-only except for allow rules and sandbox allowlists,
-        # so pair it with the allowManaged*Only locks. See the README.
+        # so pair it with the allowManaged*Only locks. See the README. NOTE those locks
+        # need gateway-served clients on 2.1.273+: through 2.1.272 allowManagedMcpServersOnly,
+        # deniedMcpServers and disableClaudeAiConnectors set via MDM or managed-settings.json
+        # were IGNORED whenever server-managed settings were also present — which is always
+        # true here — so on older clients the pairing above was silently inert.
         # parentSettingsBehavior: merge
       #
       # CLAUDE DESKTOP, part 2 of 2 — the /user/bootstrap opt-in. Presence of a
@@ -193,7 +197,11 @@ managed:
       #
       # `desktop: {}` on its own is a complete opt-in. The keys below are optional
       # feature gates with no CLI equivalent; each one omitted keeps Desktop's own
-      # default, and an UNKNOWN key here fails gateway boot. The rest of the response
+      # default. As of gateway 2.1.232 this block accepts every released Claude
+      # Desktop setting and is validated at boot against Desktop's OWN schema, so
+      # an UNKNOWN key — or a recognized key with a value Desktop would reject, a
+      # legacy alias, or a key the gateway computes itself (inference connection,
+      # model list, OTLP relay) — fails gateway boot. The rest of the response
       # comes from the cli: block above — availableModels, bare tool-name
       # permissions.deny entries, sandbox.network.allowedDomains, and an OTLP endpoint
       # when telemetry.forward_to is set. hooks and scoped rules like Bash(npm *) have
@@ -210,6 +218,16 @@ managed:
       #   # these keys need gateway >= 2.1.227 — on an older pin they fail boot.
       #   chatTabEnabled: true
       #   chatAdvancedFileAnalysisEnabled: false  # no effect if permissions.deny blocks Bash
+      #   # These three need gateway >= 2.1.232. disabledBuiltinTools is UNIONED with
+      #   # the list derived from bare-tool-name permissions.deny above (so it can only
+      #   # disable more, never re-enable); coworkEgressAllowedHosts REPLACES the list
+      #   # derived from sandbox.network.allowedDomains. managedMcpServers HERE is
+      #   # Desktop-only and takes an ARRAY; to push MCP servers to CLI clients set
+      #   # managedMcpServers (an OBJECT keyed by server name) in the cli: block
+      #   # above instead, which needs 2.1.259+. Only the .mcp.json spelling
+      #   # mcpServers is rejected in a cli: block, at boot.
+      #   disabledBuiltinTools: [WebSearch]
+      #   coworkEgressAllowedHosts: ["*.internal.example.com"]
       #   isDesktopExtensionEnabled: true
       #   isDesktopExtensionSignatureRequired: true
       #   isLocalDevMcpEnabled: false

@@ -248,7 +248,20 @@ export class GatewayStack extends cdk.Stack {
     });
     taskRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+          // From 2.1.260 the gateway counts an ABORTED request's input tokens with
+          // Bedrock's free CountTokens API. It is not load-bearing: on failure the
+          // gateway logs one warning and falls back to a max_tokens:1 invoke, so the
+          // grant buys a free path instead of a billable probe. Verified 2026-09-15:
+          // Bedrock's CountTokens takes only a BARE foundation-model id (the gateway
+          // strips the global./us. prefix itself), and of this catalog only
+          // anthropic.claude-haiku-4-5-20251001-v1:0 supports it — Opus 5 and Sonnet 5
+          // return "The provided model doesn't support counting tokens", so they take
+          // the fallback whatever IAM says.
+          'bedrock:CountTokens',
+        ],
         resources: [
           // GLOBAL cross-region inference profiles (gateway.yaml uses global.anthropic.*).
           // The profile ARN is scoped to the source (bedrock) region; global profiles
@@ -313,6 +326,20 @@ export class GatewayStack extends cdk.Stack {
         logDriver: ecs.LogDrivers.awsLogs({ streamPrefix: 'gateway', logGroup }),
       },
     });
+
+    // Give the gateway's SIGTERM drain room to finish. From 2.1.274 the gateway lets
+    // in-flight requests complete for up to 25s before exiting
+    // (CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS) instead of cutting every open stream; ECS
+    // SIGKILLs the container at stopTimeout, so a value below that window truncates
+    // the drain and a rolling deploy severs live streaming responses again — the very
+    // thing the 3600s ALB idle timeout above exists to prevent. The ECS default is 30s,
+    // which only just covers 25s, so pin it explicitly with headroom.
+    // ApplicationLoadBalancedFargateService's taskImageOptions exposes no stopTimeout,
+    // hence the property override. Index 0 is the taskImageOptions container ("web");
+    // the ADOT sidecar added below is index 1. The CDK test asserts the container
+    // named "web" is the one carrying it, so a reordering can't silently move it.
+    const cfnGatewayTaskDef = fargate.taskDefinition.node.defaultChild as ecs.CfnTaskDefinition;
+    cfnGatewayTaskDef.addPropertyOverride('ContainerDefinitions.0.StopTimeout', 40);
 
     // Restrict the ALB's 443 ingress to the VPN/corp client CIDR (not 0.0.0.0/0).
     // openListener:false above suppressed the pattern's default wide-open rule.
