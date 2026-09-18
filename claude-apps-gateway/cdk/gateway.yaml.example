@@ -221,9 +221,11 @@ managed:
       #   # These three need gateway >= 2.1.232. disabledBuiltinTools is UNIONED with
       #   # the list derived from bare-tool-name permissions.deny above (so it can only
       #   # disable more, never re-enable); coworkEgressAllowedHosts REPLACES the list
-      #   # derived from sandbox.network.allowedDomains. managedMcpServers is the only
-      #   # way to push MCP servers from a policy — the gateway rejects mcpServers
-      #   # inside the cli: block above, at boot.
+      #   # derived from sandbox.network.allowedDomains. managedMcpServers HERE is
+      #   # Desktop-only and takes an ARRAY; to push MCP servers to CLI clients set
+      #   # managedMcpServers (an OBJECT keyed by server name) in the cli: block
+      #   # above instead, which needs 2.1.259+. Only the .mcp.json spelling
+      #   # mcpServers is rejected in a cli: block, at boot.
       #   disabledBuiltinTools: [WebSearch]
       #   coworkEgressAllowedHosts: ["*.internal.example.com"]
       #   isDesktopExtensionEnabled: true

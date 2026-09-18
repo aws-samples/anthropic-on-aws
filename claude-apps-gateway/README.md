@@ -275,7 +275,7 @@ as a flat key name:
 | `banner` | Persistent banner in the app: `enabled`, `text`, `backgroundColor`, `textColor`, `linkUrl` |
 | `disabledBuiltinTools` | Extra tools to disable — **unioned** with the list derived from bare-name `permissions.deny`, so it can only disable more, never re-enable |
 | `coworkEgressAllowedHosts` | Cowork egress allowlist — **replaces** the list derived from `sandbox.network.allowedDomains` |
-| `managedMcpServers` | The only way to push MCP servers from a policy: the gateway rejects `mcpServers` inside a `cli` block at boot, but Desktop clients can receive them here |
+| `managedMcpServers` | Desktop-only, and an **array** of entries — not the CLI's object, so don't copy one into the other. To push MCP servers to *CLI* clients, set `managedMcpServers` (an object keyed by server name) in the `cli` block instead; that needs **≥ 2.1.259**, which this pin satisfies. Only the `.mcp.json` spelling `mcpServers` is rejected in a `cli` block |
 
 Three traps bite here — a banner that renders nothing, a silently missing Chat tab, and an
 unknown key that crash-loops the ECS task; all three are written up in
