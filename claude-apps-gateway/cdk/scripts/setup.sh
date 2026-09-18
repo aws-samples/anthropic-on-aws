@@ -143,8 +143,9 @@ PROJECT="${PROJECT:-claude-gateway}"
 # SSE keepalive pings on streaming responses (Bedrock included), 2.1.232 widened
 # the desktop block to Claude Desktop's full settings schema (and tightened boot
 # validation of match.groups / email_domain / admin_groups), and 2.1.233 made
-# 400/413 errors carry the upstream's own message. See the README "Version
-# coupling" note and docs/upstream-watch.md.
+# 400/413 errors carry the upstream's own message. See the README "Claude Code
+# versions: one pin, two axes"; Anthropic's CHANGELOG is the source of truth
+# for these gates.
 CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.274}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"

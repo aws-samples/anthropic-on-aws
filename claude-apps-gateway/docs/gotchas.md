@@ -489,7 +489,8 @@ against the pinned binary before shipping it:
 claude gateway --config /tmp/probe.yaml
 ```
 
-The gated keys to know: `chatTabEnabled` and `chatAdvancedFileAnalysisEnabled` need
-**≥ 2.1.227**; `disabledBuiltinTools`, `coworkEgressAllowedHosts`, and `managedMcpServers`
-need **≥ 2.1.232**. See [`upstream-watch.md`](upstream-watch.md) for the version-gate
-checklist.
+The probe is the reliable answer, because it asks *your* pin rather than a list that drifts.
+For which keys are gated and from which release, read the
+[config reference](https://code.claude.com/docs/en/claude-apps-gateway-config) and the
+[changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md) — this example
+doesn't keep a second copy of Anthropic's version gates.

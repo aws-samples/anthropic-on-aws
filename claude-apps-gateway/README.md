@@ -119,9 +119,10 @@ gateway server: it sets `CLAUDE_VERSION` in [`cdk/scripts/setup.sh`](cdk/scripts
 into the container image. Everything documented in this README describes that version's
 behaviour, so there are deliberately **no per-feature "requires ≥ 2.1.x" notes below** — the pin
 satisfies them all. If you are adapting this example onto a gateway you already run at an older
-version, the per-feature gates and the rationale for this pin are kept in
-[`docs/upstream-watch.md`](docs/upstream-watch.md), which is also the checklist for staying
-across new releases.
+version, look each feature's floor up at the source rather than trusting a copy here: the
+[config reference](https://code.claude.com/docs/en/claude-apps-gateway-config) marks the gated
+options, and the [changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md)
+dates them.
 
 **Your developers' CLIs are the second axis, and the pin does not govern them.** A laptop needs
 **v2.1.195** at minimum — the first release with the `claude gateway` subcommand and the gateway
