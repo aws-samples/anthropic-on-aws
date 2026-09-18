@@ -81,10 +81,13 @@ npm install -g aws-cdk
 
 ### 5. The Claude Code linux-x64 binary
 
-The gateway container needs the Linux build of Claude Code. Download it from the public releases endpoint:
+The gateway container needs the Linux build of Claude Code, **at the version this example
+pins**. Take it from `setup.sh` rather than resolving a release channel: `stable` and
+`latest` move independently of the pin, so either one bakes a binary the CDK and `setup.sh`
+do not describe.
 
 ```bash
-VERSION=$(curl -fsSL https://downloads.claude.ai/claude-code-releases/stable)
+VERSION=$(sed -n 's/^CLAUDE_VERSION="${CLAUDE_VERSION:-\(.*\)}"$/\1/p' scripts/setup.sh)
 mkdir -p linux-x64
 curl -fL -o linux-x64/claude \
   "https://downloads.claude.ai/claude-code-releases/${VERSION}/linux-x64/claude"
