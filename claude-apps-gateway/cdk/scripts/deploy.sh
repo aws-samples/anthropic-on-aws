@@ -382,13 +382,17 @@ aws s3 cp "$LINUX_BINARY" "s3://$BUCKET/claude" --quiet
 echo "   Starting build..."
 BUILD_ID=$(aws codebuild start-build --project-name claude-gateway-build --query "build.id" --output text)
 
+# buildStatus is one of SUCCEEDED | FAILED | FAULT | TIMED_OUT | IN_PROGRESS | STOPPED, so
+# every value except IN_PROGRESS is terminal. FAULT (CodeBuild-side fault) and TIMED_OUT
+# (the project's 60-minute default) must be caught here too, or this loop polls a finished
+# build forever and the deploy never returns.
 echo "   Waiting for build to complete..."
 while true; do
   STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query "builds[0].buildStatus" --output text)
   if [ "$STATUS" = "SUCCEEDED" ]; then
     echo "✅ Image built and pushed to ECR"
     break
-  elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ]; then
+  elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ] || [ "$STATUS" = "FAULT" ] || [ "$STATUS" = "TIMED_OUT" ]; then
     echo "❌ Build failed: $STATUS"
     exit 1
   fi
