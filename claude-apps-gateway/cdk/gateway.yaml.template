@@ -323,7 +323,7 @@ managed:
 #   # spellings of the built-in id, so a global. row and a us. row coexist on one upstream —
 #   # write BOTH explicitly if one gateway serves both tiers, or the us. row (which occupies
 #   # the built-in key) also catches global traffic. `multiplier` applies on top of a row.
-#   # Verified against the pinned 2.1.272 binary; see docs/gotchas.md §21.
+#   # Verified against the pinned 2.1.274 binary; see docs/gotchas.md §21.
 #   # Still open upstream (https://github.com/anthropics/claude-code/issues/92751): `multiplier`
 #   # being global rather than per-upstream, and the unread `usage.inference_geo` — the only
 #   # route that would fix the first-party anthropic/anthropicAws providers, where the premium

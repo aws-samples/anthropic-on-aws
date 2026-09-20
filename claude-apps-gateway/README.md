@@ -530,15 +530,14 @@ prices the two tiers differently:
 | **Global** | `global.anthropic.*` — what this example ships | List price, no premium | $5.00 / $25.00 |
 | **Geographic / in-region** | `us.` `eu.` `au.` `jp.`, or a bare in-region id | **+10% on every rate** | $5.50 / $27.50 |
 
+The `pricing:` block is where you correct this. Uncomment it in **`cdk/gateway.yaml.template`**
+(not the generated `gateway.yaml`) and redeploy, same as step 3 above. It needs an `admin:` block
+**or** a `managed:` block with at least one policy — those are its two readers, the spend meter
+and the `modelPricing` setting pushed to clients — and this example ships `managed:`, so both are
+live here. Because the rates also reach signed-in developers, a correction here fixes what their
+`/cost` and your telemetry report, not just the caps.
 
-The `pricing:` block allows you to configure this. Uncomment it in **`cdk/gateway.yaml.template`** (not
-the generated `gateway.yaml`) and redeploy, same as step 3 above. It needs an `admin:` block
-**or** a `managed:` block with at least one policy — those are its two readers, the spend
-meter and the `modelPricing` setting pushed to clients — and this example ships `managed:`,
-so both are live here. Since **2.1.268** the same rates reach signed-in developers, so a
-correction here also fixes what their `/cost` and your telemetry report, not just the caps.
-
-**For the geographic tier, that is one line** (gateway **≥ 2.1.271**):
+**For the geographic tier, that is one line:**
 
 ```yaml
 pricing:
@@ -546,23 +545,15 @@ pricing:
 ```
 
 `multiplier` scales every metered amount, list-priced or overridden, web search included. Its
-range is `> 0` and `<= 10`; through **2.1.270** the ceiling was `1`, so it could only
-discount and this premium needed a per-model rate table instead. A negotiated discount is the
-same knob (`multiplier: 0.85`), and one value covers both directions at once —
-`1.1 × 0.85 = 0.935`.
+range is `> 0` and `<= 10`, so the same knob expresses a negotiated discount
+(`multiplier: 0.85`) and one value covers both directions at once — `1.1 × 0.85 = 0.935`.
 
-A markup above `1` has **two different version floors**, and the client one is easy to miss:
-
-| Side | Floor | What it gates |
-|---|---|---|
-| Gateway server | **≥ 2.1.271** | Accepting `multiplier` above `1` at all. Earlier builds fail boot with `Number must be less than or equal to 1` |
-| Developer's CLI | **≥ 2.1.270** | *Honouring* a markup received through managed settings. The gateway says so at boot: *"Claude Code clients older than v2.1.270 ignore a multiplier above 1 and show costs without the markup"* |
-
-So caps and the gateway's own spend records are corrected the moment the server is on 2.1.271+,
-but a developer on an older CLI still sees `/cost` at list price. That split only matters for a
-markup: a discount (`multiplier` below `1`) is honoured by any client that reads `modelPricing`.
-The same boot log also warns that spend limits now count 1.1× the price, so developers reach
-existing caps sooner — raise them if that isn't what you want.
+Two things to expect after setting a markup. The boot log warns that spend limits now count
+1.1× the price, so developers reach existing caps sooner — raise them if that isn't what you
+want. And a markup is only *honoured* by a developer's CLI on **v2.1.270+** (the client axis in
+[§4](#4-claude-code-versions-one-pin-two-axes), not something the server pin can deliver): until
+the fleet catches up, caps and the gateway's own spend records carry the markup while `/cost`
+still reports list price. A discount has no such client floor.
 
 `overrides` rows, USD per million tokens, are still what you need in two cases:
 
