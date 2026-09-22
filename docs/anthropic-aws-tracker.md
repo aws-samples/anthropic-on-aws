@@ -1,6 +1,12 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-22
+
+- [Claude Opus 5.5 is now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-opus-5-5-aws-govcloud/) — *AWS What's New* (Tue, 22 Sep 2026 15:00:00 GMT)
+- [Claude Opus 5.5 is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-opus-5-5-aws/) — *AWS What's New* (Tue, 22 Sep 2026 15:00:00 GMT)
+- [Claude Opus 5.5 is now available on AWS](https://aws.amazon.com/blogs/machine-learning/claude-opus-5-5-is-now-available-on-aws/) — *AWS Machine Learning Blog* (Tue, 22 Sep 2026 17:28:01 +0000)
+
 ## 2026-09-11
 
 - [Build interactive MCP Apps using Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/build-interactive-mcp-apps-using-amazon-bedrock-agentcore/) — *AWS Machine Learning Blog* (Fri, 11 Sep 2026 18:23:17 +0000)
