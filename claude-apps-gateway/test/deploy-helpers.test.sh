@@ -85,9 +85,9 @@ for status in "" ROLLBACK_COMPLETE REVIEW_IN_PROGRESS DELETE_COMPLETE; do
   fi
 done
 
-# SKIP pass 1: anything holding resources. UPDATE_FAILED is the --no-rollback
-# recovery state; the invented status stands in for a future CloudFormation value,
-# which must fail closed (skip) rather than fall into the destructive branch.
+# SKIP pass 1: anything holding resources. The invented status stands in for a future
+# CloudFormation value, which must fail closed (skip) rather than fall into the
+# destructive branch.
 for status in CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
               UPDATE_FAILED IMPORT_COMPLETE IMPORT_ROLLBACK_COMPLETE \
               UPDATE_COMPLETE_CLEANUP_IN_PROGRESS DELETE_FAILED CREATE_FAILED \
@@ -103,7 +103,7 @@ done
 # ── 3. Statuses whose recovery is deliberately left to CDK ────────────────────
 # deploy.sh does not re-implement CloudFormation's status list, so these must all
 # take the SKIP branch rather than being special-cased. Checked against the pinned
-# CDK's own handling (2.1129): it waits out *_IN_PROGRESS, deletes and recreates a
+# CDK's own handling (2.1133.0): it waits out *_IN_PROGRESS, deletes and recreates a
 # failed first create, and asks before rolling a fail-paused stack forward.
 for status in CREATE_IN_PROGRESS UPDATE_IN_PROGRESS DELETE_IN_PROGRESS \
               ROLLBACK_IN_PROGRESS UPDATE_ROLLBACK_IN_PROGRESS \

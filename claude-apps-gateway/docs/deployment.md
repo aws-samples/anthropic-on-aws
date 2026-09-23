@@ -150,6 +150,23 @@ npx cdk deploy -c imageReady=false
 > existing deployment, build the image and run **pass 2 only**. (`deploy.sh` skips
 > pass 1 automatically when the stack exists.)
 
+That skip is the only stack-status decision `deploy.sh` makes — it deliberately does
+not pre-check the rest of CloudFormation's status list, because `cdk deploy` recovers
+most of them and bailing early would turn a self-healing case into a hard failure.
+Read off the pinned CDK (2.1133.0):
+
+- Any `*_IN_PROGRESS` — CDK **waits** for the operation to settle, then deploys.
+- `ROLLBACK_COMPLETE` / `ROLLBACK_FAILED` — a failed *first* create, so CDK deletes
+  the stack and recreates it. `ROLLBACK_COMPLETE` is on `deploy.sh`'s pass-1
+  allowlist; `ROLLBACK_FAILED` is not, because its rollback failed and resources may
+  be orphaned, so it stops at the `EcrRepositoryUri` check instead.
+- `CREATE_FAILED` / `UPDATE_FAILED` / `UPDATE_ROLLBACK_FAILED` — CDK calls these
+  "fail-paused" and **asks** to roll back first. `--require-approval never` does not
+  waive that prompt (it only covers security-group/IAM approval); only `--force`
+  does. So an interactive run stops for a y/n and a non-TTY run fails with
+  `TtyNotAttached` — both *after* the image build. Run `npx cdk rollback` if you land
+  there.
+
 **Between passes — build and push the image** to the ECR URI from the pass-1
 output. The stamped config and verified binary must sit next to the `Dockerfile` in
 `cdk/`:
@@ -259,35 +276,25 @@ ECR / CloudWatch **interface** endpoints, tell the CDK track not to recreate the
 — AWS allows one private-DNS endpoint per service per VPC. `setup.sh` has no such
 flag and needs none: it describes before creating, so it adopts endpoints already in
 the VPC. Neither track then touches those endpoints' security groups, so **you** must
-allow 443 from the gateway task SG on each, or tasks time out fetching secrets,
-images, and logs. S3 is a *gateway* endpoint: no SG, no 443 — it just needs an
-association with the tasks' private route table.
+allow 443 from the gateway tasks on each — see **Ordering** below for which source to
+use when — or tasks time out fetching secrets, images, and logs. S3 is a *gateway*
+endpoint: no SG, no 443 — it just needs an association with the tasks' private route
+table.
 
 **Ordering, which differs by track.** `setup.sh` creates its task SG (`$P-task-sg`)
-before tasks start: authorize it, then re-run. CDK's `TaskSg` exists only in pass 2,
-so it can't be preauthorized — and a pass 2 that can't stabilize normally rolls back
-and *deletes* the SG you were about to authorize. Deploy that pass with rollback
-disabled so it survives:
+early in its run, so you can authorize that SG on the endpoints and re-run — tasks
+that failed to reach them come good on the next deployment. CDK's `TaskSg` only
+appears in pass 2, so it can't be preauthorized, and a pass 2 whose tasks can't reach
+the endpoints rolls back and *deletes* the SG you were about to authorize. So allow
+443 from the **VPC CIDR** on the interface endpoints' SGs before the first deploy: a
+CIDR rule needs nothing to exist yet, and pass 2 then stabilizes with rollback left
+on. If the VPC has secondary CIDR blocks, use the block the private subnets sit in.
 
-```bash
-npx cdk deploy --no-rollback ...   # by hand
-NO_ROLLBACK=1 ./scripts/deploy.sh  # or via deploy.sh
-```
-
-Then authorize 443 from `TaskSg` on the interface endpoints' SGs and deploy **pass 2
-only** — never re-run pass 1 (see the caution under [Track B](#track-b--cdk-two-pass));
+Once the stack is up, tighten each rule to the task SG (`TaskSg`, or `$P-task-sg` for
+`setup.sh`) and drop the CIDR rule. From then on, recreating `TaskSg` would silently
+drop the rule referencing it — one more reason to deploy **pass 2 only** and never
+re-run pass 1 (see the caution under [Track B](#track-b--cdk-two-pass));
 `deploy.sh` skips it for you.
-
-A `--no-rollback` failure leaves the stack in `UPDATE_FAILED`. From there, either
-retry the update (that redeploy) or abandon it with `npx cdk rollback` /
-`aws cloudformation rollback-stack`. `continue-update-rollback` does **not** apply —
-it only accepts `UPDATE_ROLLBACK_FAILED`. Having to make that call by hand is why
-neither path disables rollback by default.
-
-Set `NO_ROLLBACK=1` **per run**, as above — don't export it or put it in `.env`.
-CloudFormation refuses an update that requires *replacing* a resource while rollback
-is disabled, so a leftover `NO_ROLLBACK=1` makes some unrelated later change fail for
-a reason that has nothing to do with the change.
 
 Tearing down a reused VPC needs care too — see
 [Reused VPC](teardown.md#reused-vpc) in the teardown guide.

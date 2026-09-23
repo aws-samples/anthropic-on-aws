@@ -156,9 +156,10 @@ fi
 # CloudFormation delete the ~50 resources absent from it: the RDS instance
 # (deletionProtection false + RemovalPolicy.DESTROY + 1-day backups, so the
 # gateway's store is gone), the ALB, the ECS service, the secrets, the log group,
-# the VPC. Re-running deploy.sh must therefore go straight to build + pass 2,
-# which is also what preserves TaskSg and any 443 rules you authorized on reused
-# interface endpoints (see NO_ROLLBACK below).
+# the VPC. Re-running deploy.sh must therefore go straight to build + pass 2, which
+# is also what preserves TaskSg — recreating it would silently drop any rule on a
+# reused endpoint's SG that references it (docs/deployment.md, "Reusing an existing
+# VPC").
 #
 # Read the current status, keeping stderr out of the value (see classify_stack_query).
 STACK_ERR_FILE="$(mktemp)"
@@ -180,23 +181,10 @@ STACK_STATUS="$(classify_stack_query "$STACK_RC" "$STACK_OUT" "$STACK_ERR")" || 
 }
 
 # Only the pass-1 decision is made here. Every other status is CDK's to report — this
-# script does not re-implement CloudFormation's status list. What that means in
-# practice, read off the pinned CDK (2.1129) rather than assumed:
-#   * *_IN_PROGRESS — cdk WAITS for the operation to settle, then deploys. Bailing
-#     here would turn a case that heals itself into a hard failure.
-#   * ROLLBACK_COMPLETE / ROLLBACK_FAILED — a failed FIRST create, so cdk deletes the
-#     stack and recreates it (StackStatus.isCreationFailure). ROLLBACK_COMPLETE is in
-#     the pass-1 allowlist above; ROLLBACK_FAILED is not, deliberately — its rollback
-#     failed, so resources may be orphaned, and it is rare enough not to justify
-#     widening the destructive branch. It stops with a clear message at the
-#     EcrRepositoryUri check in Step 2 instead.
-#   * CREATE_FAILED / UPDATE_FAILED / UPDATE_ROLLBACK_FAILED — cdk calls these
-#     "fail-paused" and ASKS to roll back before deploying. `--require-approval never`
-#     does NOT cover that prompt (it only waives security-group/IAM approval); only
-#     `--force` does. So an interactive run stops for a y/n and a non-TTY run fails
-#     with TtyNotAttached — in both cases AFTER the ~10-minute image build. Roll back
-#     first (`npx cdk rollback`) if you land there. NO_ROLLBACK=1 side-steps it for
-#     UPDATE_FAILED, which is the state that flag's retry path exists for.
+# script does not re-implement CloudFormation's status list, because cdk deploy
+# already recovers most of them and a pre-emptive bail would turn self-healing cases
+# into hard failures. Which statuses those are, and what to do about the ones CDK
+# can't take unattended: docs/deployment.md, "Track B — CDK (two-pass)".
 if needs_pass_one "$STACK_STATUS"; then
   echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
   npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
@@ -405,23 +393,13 @@ echo ""
 # behind the internal ALB. cdk deploy blocks until the service is stable, so no
 # manual `update-service` scale-up is needed.
 #
-# NO_ROLLBACK=1 adds --no-rollback (CloudFormation DisableRollback). Needed when
-# reusing a VPC whose interface endpoints don't yet allow 443 from the task SG: the
-# service can't stabilize, and the default rollback deletes the just-created TaskSg
-# — the very SG you have to authorize on those endpoints. Retaining it makes the
-# documented deploy → authorize → redeploy sequence possible. Off by default: the
-# failure leaves the stack in UPDATE_FAILED, which you then have to either retry or
-# abandon by hand (`npx cdk rollback` / `aws cloudformation rollback-stack` —
-# continue-update-rollback does NOT apply, it only takes UPDATE_ROLLBACK_FAILED).
-#
-# Set it per-run (`NO_ROLLBACK=1 ./scripts/deploy.sh`), not exported in your shell or
-# .env: CloudFormation REFUSES an update that requires replacing a resource while
-# rollback is disabled, so a leftover NO_ROLLBACK=1 makes an unrelated later change
-# fail for a reason that has nothing to do with the change.
-CDK_DEPLOY_FLAGS=(--require-approval never)
-[ "${NO_ROLLBACK:-0}" = "1" ] && CDK_DEPLOY_FLAGS+=(--no-rollback)
+# Reusing a VPC? The tasks this pass starts must be able to reach the reused
+# interface endpoints on 443 or the service never stabilizes and the whole pass rolls
+# back. Authorize that BEFORE the first run — from the VPC CIDR, which needs no
+# resource to exist yet — then tighten to TaskSg afterwards. See docs/deployment.md,
+# "Reusing an existing VPC".
 echo "Step 4/5: Pass 2 — deploying the full stack (CDK)..."
-npx cdk deploy "${CDK_DEPLOY_FLAGS[@]}" -c imageReady=true "${CDK_CTX[@]}"
+npx cdk deploy --require-approval never -c imageReady=true "${CDK_CTX[@]}"
 echo "✅ Full stack deployed"
 echo ""
 

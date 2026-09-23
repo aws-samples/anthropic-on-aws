@@ -136,7 +136,8 @@ No live AWS account is wired up here, so verification is local/static:
   `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool
   detection / `--provenance` gating + the OIDC-secret preflight), and
   `./test/deploy-helpers.test.sh` (deploy.sh's pass-1 gate — the destructive branch's
-  status allowlist, fail-closed status query, early bail on a wedged stack). None
+  status allowlist, fail-closed status query, and leaving CDK-recoverable statuses to
+  CDK rather than bailing). None
   needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
 - Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).
