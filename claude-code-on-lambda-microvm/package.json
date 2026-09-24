@@ -47,12 +47,12 @@
     "@types/ws": "8.18.1",
     "aws-cdk": "2.1131.0",
     "cdk-nag": "2.38.2",
-    "esbuild": "0.25.3",
+    "esbuild": "0.28.2",
     "tsx": "4.19.4",
     "typescript": "5.8.3",
     "vitest": "5.0.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   }
 }
