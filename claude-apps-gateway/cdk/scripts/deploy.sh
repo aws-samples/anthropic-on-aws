@@ -18,6 +18,61 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers for the pass-1 safety gate (Step 1). Defined up here, before any config
+# or AWS call, so tests can source them in isolation — see the DEPLOY_SH_LIB_ONLY
+# gate below and test/deploy-helpers.test.sh. The gate decides whether to run a
+# deploy that DELETES a live data plane, so its string→branch logic is tested
+# rather than reasoned about.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# classify_stack_query — turn a `describe-stacks` result into a stack status.
+# Prints the status on success, prints NOTHING when the stack is genuinely absent,
+# and returns non-zero when the query failed for any OTHER reason — callers must
+# abort on that. This query is itself a safety control, so it must not fail open: a
+# throttle, an expired credential, or a network blip would otherwise look like "no
+# stack yet" and run the destructive pass against a live stack.
+#
+# stdout and stderr are passed in SEPARATELY on purpose. The CLI can print a
+# warning to stderr while still succeeding (urllib3's NotOpenSSLWarning on some
+# macOS Pythons); folding stderr into stdout would prepend that text to the status,
+# and a recoverable ROLLBACK_COMPLETE stack would then read as an unknown status and
+# skip the pass 1 it needs.
+classify_stack_query() {
+  local rc="$1" out="$2" err="$3"
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$out"
+    return 0
+  fi
+  case "$err" in
+    *ValidationError*"does not exist"*) return 0 ;;  # genuinely absent → first deploy
+    *) return 1 ;;
+  esac
+}
+
+# needs_pass_one — should the ECR-repo-only pass 1 run for this stack status?
+# Running pass 1 is the DESTRUCTIVE branch, so it gets the narrow allowlist: only a
+# stack that is absent or provably holds nothing. Every other status — including one
+# neither this script nor today's CloudFormation knows about — skips to pass 2,
+# which is always the safe default.
+needs_pass_one() {
+  case "$1" in
+    # "" is no stack at all. ROLLBACK_COMPLETE is a failed FIRST create (nothing
+    # provisioned); CDK deletes and recreates it. REVIEW_IN_PROGRESS is a
+    # change-set-only stack. DELETE_COMPLETE is listed because it belongs in the
+    # "holds nothing" set, but nothing relies on it: describe-stacks by NAME never
+    # returns a deleted stack (that needs the stack ID), so the arm is unreachable
+    # from the call site below.
+    ""|ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS|DELETE_COMPLETE) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Test hook: `DEPLOY_SH_LIB_ONLY=1 source deploy.sh` loads only the helpers above
+# (see test/deploy-helpers.test.sh) — no .env, no required env, no AWS calls.
+# shellcheck disable=SC2317  # the exit is the executed-not-sourced fallback
+if [ "${DEPLOY_SH_LIB_ONLY:-}" = "1" ]; then return 0 2>/dev/null || exit 0; fi
+
 # Load .env
 if [ ! -f .env ]; then
   echo "❌ .env file not found. Run: cp .env.example .env and fill in your values."
@@ -95,49 +150,156 @@ fi
 # The ECS service can't start until its image exists, so the stack splits the
 # deploy in two: pass 1 creates just the ECR repo; we build+push; pass 2 (below)
 # brings up the full stack. See cdk/README.md "CDK context variables".
-echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
-npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
-echo "✅ ECR repository created"
+#
+# Pass 1 is FIRST-DEPLOY ONLY. Its template holds exactly one resource (the ECR
+# repo), so deploying it over a stack that already reached pass 2 makes
+# CloudFormation delete the ~50 resources absent from it: the RDS instance
+# (deletionProtection false + RemovalPolicy.DESTROY + 1-day backups, so the
+# gateway's store is gone), the ALB, the ECS service, the secrets, the log group,
+# the VPC. Re-running deploy.sh must therefore go straight to build + pass 2, which
+# is also what preserves TaskSg — recreating it would silently drop any rule on a
+# reused endpoint's SG that references it (docs/deployment.md, "Reusing an existing
+# VPC").
+#
+# Read the current status, keeping stderr out of the value (see classify_stack_query).
+STACK_ERR_FILE="$(mktemp)"
+set +e
+STACK_OUT="$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
+  --query 'Stacks[0].StackStatus' --output text 2>"$STACK_ERR_FILE")"
+STACK_RC=$?
+set -e
+STACK_ERR="$(cat "$STACK_ERR_FILE")"
+rm -f "$STACK_ERR_FILE"
+
+STACK_STATUS="$(classify_stack_query "$STACK_RC" "$STACK_OUT" "$STACK_ERR")" || {
+  echo "❌ Could not determine the ClaudeGatewayStack status, so deploy.sh cannot"
+  echo "   tell a first deploy from an existing one — refusing to continue, because"
+  echo "   guessing wrong runs a repo-only deploy that would delete the RDS instance"
+  echo "   and the rest of the running stack. Fix the AWS call and re-run:"
+  echo "   $STACK_ERR"
+  exit 1
+}
+
+# Only the pass-1 decision is made here. Every other status is CDK's to report — this
+# script does not re-implement CloudFormation's status list, because cdk deploy
+# already recovers most of them and a pre-emptive bail would turn self-healing cases
+# into hard failures. Which statuses those are, and what to do about the ones CDK
+# can't take unattended: docs/deployment.md, "Track B — CDK (two-pass)".
+if needs_pass_one "$STACK_STATUS"; then
+  echo "Step 1/5: Pass 1 — creating the ECR repository (CDK)..."
+  npx cdk deploy --require-approval never -c imageReady=false "${CDK_CTX[@]}"
+  echo "✅ ECR repository created"
+else
+  echo "Step 1/5: stack exists ($STACK_STATUS) — skipping pass 1 (a repo-only deploy would delete the ALB/RDS/service)."
+fi
 echo ""
 
 # --- Step 2: Get outputs ---
 echo "Step 2/5: Reading stack outputs..."
 ECR_URI=$(aws cloudformation describe-stacks --stack-name ClaudeGatewayStack \
   --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)
+# Now that pass 1 can be skipped, this can run against a stack that has no
+# EcrRepositoryUri output at all — and `--output text` prints the literal string
+# "None" for a query that matched nothing. Catch that here: left alone it flows into
+# REPO_NAME and the rename guard below blames a GATEWAY_NAME change that never
+# happened.
+if [ -z "$ECR_URI" ] || [ "$ECR_URI" = "None" ]; then
+  echo "❌ ClaudeGatewayStack has no EcrRepositoryUri output, so there is nowhere to"
+  echo "   push the image. This is NOT a GATEWAY_NAME problem: either the stack predates"
+  echo "   that output, or its pass 1 never completed. (Status before this run:"
+  echo "   ${STACK_STATUS:-absent}.) Deploy pass 2 by hand (docs/deployment.md, Track B)"
+  echo "   or tear down and deploy fresh (docs/teardown.md)."
+  exit 1
+fi
 # The repo name the stack actually created, taken from the URI — this is what the
 # CodeBuild IAM policy and docker tags must reference (never assume GATEWAY_NAME
 # alone, so a name mismatch with the stack can't break the push).
 REPO_NAME="${ECR_URI##*/}"
 echo "   ECR: $ECR_URI (repo: $REPO_NAME)"
+
+# Renaming a deployed gateway in place isn't supported: pass 2 would replace the ECR
+# repo, leaving the service pulling from an empty one. Fail here rather than at a
+# confusing ECS pull error. See cdk/README.md (GATEWAY_NAME).
+if [ "$REPO_NAME" != "$GATEWAY_NAME" ]; then
+  echo "❌ GATEWAY_NAME is '$GATEWAY_NAME' but this stack's repo is '$REPO_NAME'. Set it"
+  echo "   back, or tear down (docs/teardown.md) and deploy fresh under the new name."
+  exit 1
+fi
 echo ""
 
 # --- Step 3: Build and push image ---
 echo "Step 3/5: Building and pushing gateway image..."
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-BUCKET="claude-gateway-build-${ACCOUNT_ID}"
+# Region-suffixed: CodeBuild requires its S3 source bucket in the PROJECT's region,
+# so the bucket name must vary by region (an account-global name would leave the
+# bucket in the first region and fail a build in any other). See the single-region
+# scope note below.
+BUCKET="claude-gateway-build-${ACCOUNT_ID}-${DEPLOY_REGION}"
 # Create the S3 build bucket BEFORE the CodeBuild project, which references it as
 # its source location — create-project fails with "Bucket ... does not exist"
 # otherwise (only bites a first-ever run, where the project doesn't yet exist).
-aws s3 mb "s3://$BUCKET" 2>/dev/null || true
+aws s3 mb "s3://$BUCKET" --region "$DEPLOY_REGION" 2>/dev/null || true
 
-# Check if CodeBuild project exists, create if not
+# CodeBuild role + policy. The project has a FIXED name (CodeBuild projects are
+# region-scoped, so the same name in another region is a separate project); the
+# role has a FIXED name and IAM is global. The inline policy is scoped to THIS
+# deploy's ECR repo + region, so re-assert it on EVERY run (idempotent overwrite)
+# instead of only at first project creation — otherwise redeploying with a
+# different gatewayName leaves the role authorized for the previous repo and the
+# build fails with an opaque ECR AccessDenied.
+#
+# SCOPE: deploy.sh targets ONE active region per account. The shared global role
+# means concurrent deployments in multiple regions (or under different gateway
+# names) overwrite each other's policy — give the role + project per-region/-name
+# suffixes if you truly need them side by side. See cdk/README.md (DEPLOY_REGION).
+# A bare `|| true` here would also swallow "you may not create roles", which then
+# resurfaces as a baffling put-role-policy failure below. Tolerate ONLY "the role is
+# already there"; anything else aborts with the API's own message.
+ROLE_ERR_FILE="$(mktemp)"
+set +e
+aws iam create-role --role-name claude-gateway-codebuild \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+  >/dev/null 2>"$ROLE_ERR_FILE"
+ROLE_RC=$?
+set -e
+if [ "$ROLE_RC" -ne 0 ] && ! grep -q 'EntityAlreadyExists' "$ROLE_ERR_FILE"; then
+  echo "❌ Could not create the CodeBuild role claude-gateway-codebuild:"
+  sed 's/^/   /' "$ROLE_ERR_FILE"
+  rm -f "$ROLE_ERR_FILE"
+  exit 1
+fi
+rm -f "$ROLE_ERR_FILE"
+
+# No 2>/dev/null: put-role-policy is quiet on success, and this now runs on EVERY
+# deploy — silencing it would turn a real IAM failure into the script dying right
+# after "Step 3/5" with nothing printed (set -e, no `|| true`).
+aws iam put-role-policy --role-name claude-gateway-codebuild --policy-name build-perms \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::${BUCKET}\",\"arn:aws:s3:::${BUCKET}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}"
+
+# IAM is eventually consistent, and the policy above is scoped to THIS deploy's ECR
+# repo and region — so any repo/region change rewrites it, on a run where the project
+# already exists. Wait after every (re)assertion, not only at project creation, or a
+# build can start against a policy that hasn't propagated → ECR AccessDenied.
+sleep 10  # IAM propagation for the (re)asserted role policy
+
+# The project's S3 source must track $BUCKET, so assert it on EVERY run — create it
+# on a first deploy, else UPDATE an existing project's source. A project created by
+# an earlier version of this script points at the old unsuffixed
+# claude-gateway-build-${ACCOUNT_ID} bucket; since we now upload to the
+# region-suffixed bucket and the role policy above grants only that one, leaving the
+# stale source in place makes start-build fail while downloading its source.
+CB_SOURCE="{\"type\":\"S3\",\"location\":\"${BUCKET}/\",\"buildspec\":\"buildspec.yml\"}"
 if ! aws codebuild batch-get-projects --names claude-gateway-build --query "projects[0].name" --output text 2>/dev/null | grep -q claude-gateway-build; then
   echo "   Creating CodeBuild project..."
-
-  # Create IAM role for CodeBuild
-  aws iam create-role --role-name claude-gateway-codebuild \
-    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' 2>/dev/null || true
-
-  aws iam put-role-policy --role-name claude-gateway-codebuild --policy-name build-perms \
-    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}\",\"arn:aws:s3:::claude-gateway-build-${ACCOUNT_ID}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}" 2>/dev/null
-
-  sleep 10  # Wait for IAM propagation
-
   aws codebuild create-project --name claude-gateway-build \
-    --source "{\"type\":\"S3\",\"location\":\"${BUCKET}/\",\"buildspec\":\"buildspec.yml\"}" \
+    --source "$CB_SOURCE" \
     --artifacts '{"type":"NO_ARTIFACTS"}' \
     --environment '{"type":"LINUX_CONTAINER","image":"aws/codebuild/standard:7.0","computeType":"BUILD_GENERAL1_SMALL","privilegedMode":true}' \
+    --service-role "arn:aws:iam::${ACCOUNT_ID}:role/claude-gateway-codebuild" >/dev/null
+else
+  aws codebuild update-project --name claude-gateway-build \
+    --source "$CB_SOURCE" \
     --service-role "arn:aws:iam::${ACCOUNT_ID}:role/claude-gateway-codebuild" >/dev/null
 fi
 
@@ -208,13 +370,17 @@ aws s3 cp "$LINUX_BINARY" "s3://$BUCKET/claude" --quiet
 echo "   Starting build..."
 BUILD_ID=$(aws codebuild start-build --project-name claude-gateway-build --query "build.id" --output text)
 
+# buildStatus is one of SUCCEEDED | FAILED | FAULT | TIMED_OUT | IN_PROGRESS | STOPPED, so
+# every value except IN_PROGRESS is terminal. FAULT (CodeBuild-side fault) and TIMED_OUT
+# (the project's 60-minute default) must be caught here too, or this loop polls a finished
+# build forever and the deploy never returns.
 echo "   Waiting for build to complete..."
 while true; do
   STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query "builds[0].buildStatus" --output text)
   if [ "$STATUS" = "SUCCEEDED" ]; then
     echo "✅ Image built and pushed to ECR"
     break
-  elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ]; then
+  elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "STOPPED" ] || [ "$STATUS" = "FAULT" ] || [ "$STATUS" = "TIMED_OUT" ]; then
     echo "❌ Build failed: $STATUS"
     exit 1
   fi
@@ -226,6 +392,12 @@ echo ""
 # The image now exists in ECR, so pass 2 brings up the service (desiredCount 2)
 # behind the internal ALB. cdk deploy blocks until the service is stable, so no
 # manual `update-service` scale-up is needed.
+#
+# Reusing a VPC? The tasks this pass starts must be able to reach the reused
+# interface endpoints on 443 or the service never stabilizes and the whole pass rolls
+# back. Authorize that BEFORE the first run — from the VPC CIDR, which needs no
+# resource to exist yet — then tighten to TaskSg afterwards. See docs/deployment.md,
+# "Reusing an existing VPC".
 echo "Step 4/5: Pass 2 — deploying the full stack (CDK)..."
 npx cdk deploy --require-approval never -c imageReady=true "${CDK_CTX[@]}"
 echo "✅ Full stack deployed"
