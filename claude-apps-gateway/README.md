@@ -514,10 +514,64 @@ curl -X POST https://<gateway>/v1/organizations/spend_limits \
 **Key points:**
 - Amounts are in USD cents (50000 = $500)
 - Caps are per-seat defaults, not shared pools (each member gets their own limit)
-- Spend is estimated from token counts at list price (circuit breaker, not an invoice)
+- Spend is estimated from token counts (circuit breaker, not an invoice)
 - If Postgres is unavailable, enforcement fails open by default (inference continues)
 - Set `enforcement.fail_closed_on_error: true` to block all requests when Postgres is down
 - The admin API mirrors Anthropic's public Admin API, so existing SDK clients work with a base_url change
+
+#### Metering at your real Bedrock rate: endpoint tier and negotiated rates
+
+The meter resolves **one rate per model** from the model ID, with no notion of which Bedrock
+endpoint tier served the request, and its built-in table is Anthropic USD list price. Bedrock
+prices the two tiers differently:
+
+| Endpoint | Model IDs | Price | Opus 5 in/out per Mtok |
+|---|---|---|---|
+| **Global** | `global.anthropic.*` — what this example ships | List price, no premium | $5.00 / $25.00 |
+| **Geographic / in-region** | `us.` `eu.` `au.` `jp.`, or a bare in-region id | **+10% on every rate** | $5.50 / $27.50 |
+
+The `pricing:` block is where you correct this. Uncomment it in **`cdk/gateway.yaml.template`**
+(not the generated `gateway.yaml`) and redeploy, same as step 3 above. It needs an `admin:` block
+**or** a `managed:` block with at least one policy — those are its two readers, the spend meter
+and the `modelPricing` setting pushed to clients — and this example ships `managed:`, so both are
+live here. Because the rates also reach signed-in developers, a correction here fixes what their
+`/cost` and your telemetry report, not just the caps.
+
+**For the geographic tier, that is one line:**
+
+```yaml
+pricing:
+  multiplier: 1.1   # geo/in-region endpoints bill 10% over list
+```
+
+`multiplier` scales every metered amount, list-priced or overridden, web search included. Its
+range is `> 0` and `<= 10`, so the same knob expresses a negotiated discount
+(`multiplier: 0.85`) and one value covers both directions at once — `1.1 × 0.85 = 0.935`.
+
+Two things to expect after setting a markup. The boot log warns that spend limits now count
+1.1× the price, so developers reach existing caps sooner — raise them if that isn't what you
+want. And a markup is only *honoured* by a developer's CLI on **v2.1.270+** (the client axis in
+[§4](#4-claude-code-versions-one-pin-two-axes), not something the server pin can deliver): until
+the fleet catches up, caps and the gateway's own spend records carry the markup while `/cost`
+still reports list price. A discount has no such client floor.
+
+`overrides` rows, USD per million tokens, are still what you need in two cases:
+
+- **Per-model rates** — a contract that prices Opus differently from Haiku, rather than one
+  scalar off list:
+  ```yaml
+  pricing:
+    overrides:   # us-east-1 geo tier, 2026-09-15 — re-check per region and model
+      - { upstream: bedrock, model: us.anthropic.claude-opus-5,   input: 5.50, output: 27.50, cache_read: 0.55, cache_write: 6.875 }
+      - { upstream: bedrock, model: us.anthropic.claude-sonnet-5,  input: 2.20, output: 11.00, cache_read: 0.22, cache_write: 2.75  }
+      - { upstream: bedrock, model: us.anthropic.claude-haiku-4-5, input: 1.10, output: 5.50,  cache_read: 0.11, cache_write: 1.375 }
+  ```
+  A model you don't list silently falls back to list price.
+- **More than one upstream on different rate cards** — `multiplier` is a single value for the
+  whole gateway, so the failover stacks the template sketches (an in-region primary with a
+  global fallback, or `bedrock` alongside a first-party upstream on its own rate card and its
+  own discount) can't be priced with one. Only `overrides`, whose rows are per-upstream, can
+  separate them. `multiplier` still applies on top of a row.
 
 ---
 
