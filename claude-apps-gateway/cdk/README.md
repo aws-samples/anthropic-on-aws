@@ -502,14 +502,24 @@ This deletes the ECS service, ALB, RDS database, ECR repository, IAM roles, secu
 
 ## Cost
 
+Idling, before any inference traffic (us-east-1, stack defaults):
+
 | Resource | Monthly cost |
 |----------|-------------|
-| ECS Fargate (0.5 vCPU, 1 GB — gateway + ADOT sidecar) | ~$9 |
-| RDS db.t4g.micro | ~$12 |
+| 6 interface VPC endpoints × 2 AZs | ~$88 |
+| ECS Fargate (0.5 vCPU, 1 GB — gateway + ADOT sidecar), 2 tasks | ~$36 |
+| NAT gateway | ~$33 |
 | Application Load Balancer | ~$16 |
-| ACM certificate | Free |
-| **Total** | **~$37** |
+| RDS db.t4g.micro (single-AZ, 20 GB gp3) | ~$14 |
+| Secrets Manager (3 secrets) | ~$1 |
+| ACM certificate, S3 gateway endpoint | Free |
+| **Total** | **~$188** |
+
+> The endpoints and the NAT gateway are two thirds of the bill and are absent from
+> an "ECS + RDS + ALB" estimate. **[`docs/costs.md`](../docs/costs.md)** covers the
+> endpoint posture options and what each one gives up, plus single-AZ endpoints
+> and VPC reuse.
 
 The ADOT collector runs as a sidecar inside the gateway's Fargate task (a small memory reservation), so per-user usage telemetry adds no separate service cost. Turning telemetry off (deleting the `telemetry:` block — see "Telemetry" under "How traffic flows") saves nothing here, since there's no idle task to remove.
 
-No license or per-seat fee from Anthropic. Amazon Bedrock inference costs are separate and the same as calling Amazon Bedrock directly without the gateway.
+No license or per-seat fee from Anthropic. Amazon Bedrock inference costs are separate, the same as calling Amazon Bedrock directly without the gateway, and dominate the total at any real fleet size.
