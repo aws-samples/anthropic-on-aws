@@ -57,11 +57,18 @@ This CDK stack creates all the AWS infrastructure needed to run it:
 
 Before running `cdk deploy`, make sure you have:
 
-### 1. A DNS hostname for the gateway (optional: Route53 hosted zone)
+### 1. A DNS hostname for the gateway, in a Route 53 zone in this account
 
-The gateway needs a DNS name that resolves to a private IP. If you have a Route53 hosted zone, the CDK stack will create the DNS record and validate the TLS certificate automatically. Provide the **hosted zone ID** and **zone name**.
+The gateway needs a DNS name that resolves to a **private** IP: the CLI rejects a gateway whose hostname resolves to any public address at `/login` ([prerequisite](https://code.claude.com/docs/en/claude-apps-gateway#prerequisites)).
 
-If you manage DNS outside Route53 (corporate DNS, Active Directory, etc.), you can skip the hosted zone. After deployment, manually create a DNS record pointing your hostname to the ALB's DNS name, and use a pre-existing ACM certificate or import one.
+Both tracks satisfy that by upserting an alias A-record into a Route 53 hosted zone **in the deploying account**, so a zone is **required** — neither track has a "skip the record, I'll manage DNS myself" mode:
+
+- Track A (`setup.sh`) requires both `ZONE_ID` and `ZONE_NAME`, then always upserts the record.
+- Track B (CDK) requires `HOSTED_ZONE_NAME` (`-c zoneName`). `HOSTED_ZONE_ID` is optional only because the stack looks the zone up from the name when it is omitted — and that lookup filters for a **private** zone, so pass the id explicitly if your zone is public.
+
+The zone must be the parent of `GATEWAY_HOSTNAME`. If your DNS is in another AWS account or isn't Route 53 (corporate DNS, Active Directory, Infoblox), you still need an in-account zone to deploy, and you publish the name developers resolve in your own DNS out of band. See [`../docs/deployment.md`](../docs/deployment.md) prerequisite 3 for the two zone topologies.
+
+TLS is separate and always required: `CERT_ARN` is an **imported** ACM cert for the hostname, which the stack does not create or validate for you — see [TLS: bring an ACM cert](#tls-bring-an-acm-cert).
 
 ### 2. An OIDC identity provider with a registered app
 
@@ -254,8 +261,8 @@ All values come from `.env`. The CDK code reads them at deploy time.
 |----------|-----------|
 | `GATEWAY_NAME` | Prefix for the stack's named resources (repo, cluster, service, secrets, log group); `deploy.sh` passes it to the `gatewayName` context so the stack matches |
 | `GATEWAY_HOSTNAME` | The full DNS name developers connect to |
-| `HOSTED_ZONE_ID` | Route53 zone ID where the DNS record is created (optional if managing DNS externally) |
-| `HOSTED_ZONE_NAME` | Route53 zone name (optional if managing DNS externally) |
+| `HOSTED_ZONE_ID` | Optional. Route 53 zone ID the gateway A-record is written into. Omit it and the stack looks the zone up from `HOSTED_ZONE_NAME` instead — but that lookup filters for a **private** zone, so a public zone needs the id passed explicitly |
+| `HOSTED_ZONE_NAME` | **Required.** Route 53 zone name (public or private) in this account, the parent of `GATEWAY_HOSTNAME`. The stack always creates the A-record; there is no external-DNS opt-out |
 | `OIDC_ISSUER` | Your IdP's OIDC discovery URL (must serve `/.well-known/openid-configuration`) |
 | `OIDC_CLIENT_ID` | OAuth client ID from your IdP app registration |
 | `OIDC_CLIENT_SECRET` | OAuth client secret from your IdP app registration; `deploy.sh` seeds it into Secrets Manager (never baked into the image) and refuses to deploy while it's still the placeholder |
