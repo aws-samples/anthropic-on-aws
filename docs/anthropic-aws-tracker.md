@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-26
+
+- [AWS End User Messaging and Amazon SES now offer AI agent skills for the AWS MCP Server](https://aws.amazon.com/about-aws/whats-new/2026/09/aws-messaging-ses-ai-skills-mcp-server/) — *AWS What's New* (Fri, 25 Sep 2026 07:00:00 GMT)
+
 ## 2026-09-22
 
 - [Claude Opus 5.5 is now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-opus-5-5-aws-govcloud/) — *AWS What's New* (Tue, 22 Sep 2026 15:00:00 GMT)
