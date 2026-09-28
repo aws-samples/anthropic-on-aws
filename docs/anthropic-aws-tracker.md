@@ -1,6 +1,13 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-28
+
+- [Claude Sonnet 5.5 now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-sonnet-5-5-aws/) — *AWS What's New* (Mon, 28 Sep 2026 15:00:00 GMT)
+- [Claude Sonnet 5.5 now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-sonnet-5-5-aws-govcloud-us/) — *AWS What's New* (Mon, 28 Sep 2026 15:00:00 GMT)
+- [AWS Weekly Roundup: GPT-6 Sol and Luna, Claude Opus 5.5 on Amazon Bedrock, Strands harness, and more (September 28, 2026)](https://aws.amazon.com/blogs/aws/aws-weekly-roundup-gpt-6-sol-and-luna-claude-opus-5-5-on-amazon-bedrock-strands-harness-and-more-september-28-2026/) — *AWS News Blog* (Mon, 28 Sep 2026 16:14:54 +0000)
+- [Introducing Claude Sonnet 5.5 on AWS](https://aws.amazon.com/blogs/machine-learning/introducing-claude-sonnet-5-5-on-aws/) — *AWS Machine Learning Blog* (Mon, 28 Sep 2026 18:57:13 +0000)
+
 ## 2026-09-26
 
 - [AWS End User Messaging and Amazon SES now offer AI agent skills for the AWS MCP Server](https://aws.amazon.com/about-aws/whats-new/2026/09/aws-messaging-ses-ai-skills-mcp-server/) — *AWS What's New* (Fri, 25 Sep 2026 07:00:00 GMT)
