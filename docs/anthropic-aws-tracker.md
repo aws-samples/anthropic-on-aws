@@ -1,6 +1,13 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-09-30
+
+- [AWS CLI now supports bulk skill updates and version checks for the Agent Toolkit for AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/aws-cli-agent-toolkit-update-skill/) — *AWS What's New* (Wed, 30 Sep 2026 20:16:00 GMT)
+- [Amazon Bedrock expands Claude model availability to India, South Korea, and Singapore](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-region-expansion-in-sk/) — *AWS What's New* (Tue, 29 Sep 2026 15:41:00 GMT)
+- [Amazon Bedrock expands Claude model availability to in-country inferencing in India](https://aws.amazon.com/blogs/machine-learning/amazon-bedrock-expands-claude-model-availability-to-india-cross-region-inference/) — *AWS Machine Learning Blog* (Wed, 30 Sep 2026 01:13:14 +0000)
+- [Introducing Anthropic models on Amazon Bedrock for in-region inference in Seoul and Singapore](https://aws.amazon.com/blogs/machine-learning/introducing-anthropic-models-on-amazon-bedrock-for-in-region-inference-in-seoul-and-singapore/) — *AWS Machine Learning Blog* (Wed, 30 Sep 2026 01:13:12 +0000)
+
 ## 2026-09-28
 
 - [Claude Sonnet 5.5 now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-sonnet-5-5-aws/) — *AWS What's New* (Mon, 28 Sep 2026 15:00:00 GMT)
