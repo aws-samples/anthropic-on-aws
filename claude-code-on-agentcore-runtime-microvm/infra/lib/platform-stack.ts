@@ -887,6 +887,12 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       relayTaskDefinition.addContainer('relay', {
         image: ecs.ContainerImage.fromAsset(repositoryRoot, {
           file: 'relay/Dockerfile',
+          // The Dockerfile runs its own `npm ci` and copies only
+          // package*.json, relay/src, and shared. Without these excludes
+          // CDK fingerprints and stages the local node_modules and
+          // cdk.out (~1 GB after a synth) on every synth, which made the
+          // infra tests time out and rebuilt the image for any repo change.
+          exclude: ['cdk.out', 'node_modules'],
         }),
         portMappings: [{ containerPort: 8080 }],
         environment: {
