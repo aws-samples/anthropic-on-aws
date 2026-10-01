@@ -215,6 +215,11 @@ control plane's once-a-minute liveness probe counts as activity, so sessions
 run until terminated or the cap. The interactive shell connection itself
 has a 1h TTL — the CLI and portal both reconnect automatically.
 
+To ship a change to `agent-runtime/`, rerun `npm run deploy`. It pushes the
+image and pins the runtime to its digest. AgentCore Runtime V2 starts new
+sessions from a snapshot of the deployed runtime version, so pushing an
+image with `npm run provision-image` alone does not reach new sessions.
+
 ## Security and limitations
 
 - The API is private and IAM-authorized by default; the portal path adds a

@@ -100,6 +100,36 @@ describe('AgentCore Runtime resource', () => {
     template.hasOutput('AgentImageRepositoryUri', {});
   });
 
+  it('pins the runtime container to agentImageDigest when provided', () => {
+    // AgentCore Runtime V2 restores sessions from a per-version snapshot,
+    // so a new image only reaches new sessions via a containerUri change.
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const pinned = Template.fromStack(
+      new AgentCoreRuntimeStack(
+        new cdk.App({
+          context: { vpcCidr: '10.43.0.0/16', agentImageDigest: digest },
+        }),
+        'PinnedImagePlatform',
+        { env: { account: '111122223333', region: 'us-east-1' } },
+      ),
+    );
+    const runtimes = pinned.findResources('AWS::BedrockAgentCore::Runtime');
+    const uri = JSON.stringify(
+      Object.values(runtimes)[0]?.Properties?.AgentRuntimeArtifact,
+    );
+    expect(uri).toContain(`@${digest}`);
+    expect(uri).not.toContain(':latest');
+    expect(
+      () =>
+        new AgentCoreRuntimeStack(
+          new cdk.App({
+            context: { vpcCidr: '10.43.0.0/16', agentImageDigest: 'latest' },
+          }),
+          'BadDigestPlatform',
+        ),
+    ).toThrow(/agentImageDigest/);
+  });
+
   it('has no Lambda MicroVM service resources or network-connector infrastructure', () => {
     const serialized = JSON.stringify(template.toJSON()).toLowerCase();
     // AgentCore Runtime's compute type is itself called "microVM", so the

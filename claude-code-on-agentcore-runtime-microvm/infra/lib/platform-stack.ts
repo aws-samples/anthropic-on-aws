@@ -225,9 +225,20 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
     // and pushes the first image *before* `cdk deploy` runs (mirroring how
     // claude-code-on-lambda-microvm's scripts/provision-microvm.ts owns the
     // MicroVM image outside CDK). CDK only references the repository by
-    // name here; day-2 image rebuilds use the same provisioning script and
-    // do not require a CDK deploy.
+    // name here. Day-2 image rebuilds still need a deploy: `npm run deploy`
+    // passes the pushed image's digest as `agentImageDigest`, and pinning
+    // the runtime to it is what makes a new image reach new sessions (see
+    // the CfnRuntime below).
     const repositoryName = `${projectName}-agent`;
+    const agentImageDigest = this.node.tryGetContext('agentImageDigest') as
+      | string
+      | undefined;
+    if (
+      agentImageDigest !== undefined &&
+      !/^sha256:[a-f0-9]{64}$/.test(agentImageDigest)
+    ) {
+      throw new Error('agentImageDigest must be a sha256:<64 hex> digest');
+    }
     const repository = ecr.Repository.fromRepositoryName(
       this,
       'AgentImageRepository',
@@ -450,7 +461,14 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
         agentRuntimeName: `${projectName.replace(/-/g, '_')}_agent`,
         agentRuntimeArtifact: {
           containerConfiguration: {
-            containerUri: `${repository.repositoryUri}:latest`,
+            // AgentCore Runtime V2 serves sessions from a snapshot taken
+            // when the runtime version is created, so a `:latest` push alone
+            // never reaches new sessions (confirmed live). A digest change
+            // creates a new runtime version and snapshot. `:latest` remains
+            // the fallback for synth/tests without the context value.
+            containerUri: agentImageDigest
+              ? `${repository.repositoryUri}@${agentImageDigest}`
+              : `${repository.repositoryUri}:latest`,
           },
         },
         roleArn: runtimeExecutionRole.roleArn,

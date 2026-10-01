@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DescribeImagesCommand, ECRClient } from '@aws-sdk/client-ecr';
+import { defaultProvider } from '@aws-sdk/credential-provider-node';
 
 const PLATFORM_STACK = 'ClaudeAgentCoreRuntimeStack';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -57,11 +59,24 @@ if (!skipImage) {
   ]);
 }
 
+// Pin the runtime to the image digest rather than `:latest`. AgentCore
+// Runtime V2 restores new sessions from a snapshot taken when the runtime
+// version was created, so pushing a new `:latest` alone never reaches new
+// sessions (confirmed live); a changed digest makes CloudFormation create a
+// new runtime version, and with it a new snapshot.
+const agentImageDigest = await latestAgentImageDigest(
+  region,
+  profile,
+  projectName,
+);
+
 const contextArguments = [
   '-c',
   `region=${region}`,
   '-c',
   `projectName=${projectName}`,
+  '-c',
+  `agentImageDigest=${agentImageDigest}`,
   '-c',
   `vpcCidr=${vpcCidr}`,
   '-c',
@@ -182,6 +197,30 @@ function platformParameterArguments(
       ? []
       : ['--parameters', `${PLATFORM_STACK}:${name}=${String(item)}`],
   );
+}
+
+async function latestAgentImageDigest(
+  region: string,
+  profile: string,
+  projectName: string,
+): Promise<string> {
+  const ecr = new ECRClient({
+    region,
+    credentials: defaultProvider({ profile }),
+  });
+  const described = await ecr.send(
+    new DescribeImagesCommand({
+      repositoryName: `${projectName}-agent`,
+      imageIds: [{ imageTag: 'latest' }],
+    }),
+  );
+  const digest = described.imageDetails?.[0]?.imageDigest;
+  if (!digest) {
+    throw new Error(
+      `No :latest image in ${projectName}-agent; run without --skip-image`,
+    );
+  }
+  return digest;
 }
 
 async function run(command: string, commandArgs: string[]): Promise<void> {

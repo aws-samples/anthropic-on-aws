@@ -4,10 +4,10 @@
 // `cdk deploy` for a first-time deployment, because `CfnRuntime.
 // agentRuntimeArtifact.containerConfiguration.containerUri` must resolve to
 // an existing image at stack-create time (see infra/lib/platform-stack.ts).
-// It is also the day-2 image-rebuild entry point: rerun this script and
-// restart the runtime's sessions (there is no CDK deploy required) to pick
-// up a new image, mirroring claude-code-on-lambda-microvm's
-// scripts/provision-microvm.ts image-swap workflow.
+// `npm run deploy` runs it on every deploy and then pins the runtime to the
+// pushed image's digest. Pushing alone does not reach new sessions:
+// AgentCore Runtime V2 restores sessions from a snapshot of the runtime
+// version, so a new image needs the deploy to create a new version.
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,9 +41,10 @@ const repositoryUri = await ensureRepository();
 await buildAndPush(repositoryUri);
 
 process.stdout.write(
-  `Pushed ${repositoryUri}:latest. This is the image the AgentCore ` +
-    `Runtime (agentRuntimeName ${projectName.replace(/-/g, '_')}_agent) ` +
-    'will pull for new sessions.\n',
+  `Pushed ${repositoryUri}:latest. Run \`npm run deploy\` to pin the ` +
+    `AgentCore Runtime (agentRuntimeName ` +
+    `${projectName.replace(/-/g, '_')}_agent) to it; new sessions keep ` +
+    'using the previously deployed image until then.\n',
 );
 
 async function ensureRepository(): Promise<string> {
