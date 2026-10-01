@@ -134,13 +134,25 @@ fi
 # linux-x64 claude binary, but without this check the script creates the ECR
 # repo, S3 bucket, and IAM role first and only then dies with a bare "not
 # found". Bail here — before the first AWS call below — with the exact fix.
+#
+# The printed commands are cdk/README.md step 5 verbatim, including deriving
+# VERSION from setup.sh's pin rather than the `stable` channel: `stable` and
+# `latest` move independently of the pin, so either one stages a binary this
+# stack does not describe — and nothing downstream catches that, because the
+# image is pushed as :latest and the binary is never version- or SHA-checked.
 if ! LINUX_BINARY="$(find_linux_binary)"; then
   echo "❌ claude binary not found (looked for linux-x64/claude and ./claude)."
   echo "   No AWS resources were created. Download it first, then re-run:"
-  echo "     VERSION=\$(curl -fsSL https://downloads.claude.ai/claude-code-releases/stable)"
-  echo "     mkdir -p linux-x64"
-  echo "     curl -fL -o linux-x64/claude \"https://downloads.claude.ai/claude-code-releases/\${VERSION}/linux-x64/claude\""
-  echo "     chmod +x linux-x64/claude"
+  # Quoted heredoc, not echo: these four lines are README step 5 verbatim, so
+  # they must survive as literal text. Escaping them for echo is what let the
+  # two copies drift apart, and it trips SC2028 on the sed backreference.
+  cat <<'BINARY_HINT'
+     VERSION=$(sed -n 's/^CLAUDE_VERSION="${CLAUDE_VERSION:-\(.*\)}"$/\1/p' scripts/setup.sh)
+     mkdir -p linux-x64
+     curl -fL -o linux-x64/claude \
+       "https://downloads.claude.ai/claude-code-releases/${VERSION}/linux-x64/claude"
+     chmod +x linux-x64/claude
+BINARY_HINT
   echo "   (see cdk/README.md step 5)"
   exit 1
 fi
