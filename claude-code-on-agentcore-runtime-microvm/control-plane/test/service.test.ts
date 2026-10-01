@@ -466,6 +466,38 @@ describe('ControlService.terminate', () => {
   });
 });
 
+describe('ControlService.reconcile', () => {
+  it('checkpoint-terminates before the runtime expiry and releases the workspace', async () => {
+    const repository = new MemoryRepository();
+    let clock = NOW;
+    const { service, agentRuntime } = newService({
+      repository,
+      now: () => clock,
+    });
+    const started = await service.start(OWNER, 'default');
+    const runtimeExpiresAt = started.record.runtimeExpiresAt;
+    expect(runtimeExpiresAt).toBeDefined();
+
+    // Well before the expiration lead: reconcile leaves the session alone.
+    clock = NOW + 3_600;
+    await service.reconcile();
+    expect(agentRuntime.terminateCalls).toEqual([]);
+
+    // Inside the 45-minute lead: terminate (which checkpoints first).
+    clock = (runtimeExpiresAt ?? 0) - 30 * 60;
+    await service.reconcile();
+    expect(agentRuntime.terminateCalls).toEqual([
+      started.record.runtimeSessionId,
+    ]);
+    // Regression: the record used to stay TERMINATING (holding the
+    // workspace claim) until it was force-terminated 3 minutes later.
+    const record = await repository.get(started.record.sessionId);
+    expect(record?.state).toBe('TERMINATED');
+    const restarted = await service.start(OWNER, 'default');
+    expect(restarted.created).toBe(true);
+  });
+});
+
 describe('ControlService.checkpointUrls', () => {
   it('rejects a mismatched runtimeSessionId', async () => {
     const { service } = newService();

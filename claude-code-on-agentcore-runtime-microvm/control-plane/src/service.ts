@@ -533,6 +533,16 @@ export class ControlService {
       config.agentRuntimeArn,
       record.runtimeSessionId,
     );
+    // Finish the transition here, as terminate() does. Previously the
+    // record was left in TERMINATING, holding the workspace claim until
+    // refreshFromRuntime() force-terminated it 3 minutes later with a
+    // misleading "state could not be confirmed" failure reason.
+    await this.options.repository.patch(
+      record.sessionId,
+      { state: 'TERMINATED', updatedAt: this.now() },
+      ['TERMINATING'],
+    );
+    await this.options.repository.releaseWorkspace(record);
     return true;
   }
 
