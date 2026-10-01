@@ -4,8 +4,9 @@
 Implements GET /ping and POST /invocations per the AgentCore Runtime HTTP
 protocol contract (port 8080, host 0.0.0.0). Also runs the Claude Code
 workspace lifecycle: restore /workspace from the S3 checkpoint on the first
-invocation for a runtimeSessionId, and checkpoint back to S3 on a "suspend"
-or "terminate" lifecycle command sent through /invocations.
+invocation for a runtimeSessionId, and checkpoint back to S3 every
+CHECKPOINT_INTERVAL_SECONDS while the session runs, plus on a "suspend" or
+"terminate" lifecycle command sent through /invocations.
 
 Terminal access itself goes through AWS's InvokeAgentRuntimeCommandShell,
 which spawns its own PTY session directly against this container (see
@@ -71,6 +72,14 @@ MAX_EXTRACTED_BYTES = int(
 )
 MAX_ARCHIVE_MEMBERS = 200_000
 CHECKPOINT_TIMEOUT_SECONDS = 50
+# Periodic checkpoints are what keep the saved workspace current: without
+# them S3 only ever saw a session's files on an explicit terminate/suspend
+# or the pre-expiry terminate ~7h after start, so the portal showed a
+# days-old checkpoint (from some earlier session) for a workspace being
+# actively edited. 0 disables them.
+CHECKPOINT_INTERVAL_SECONDS = int(
+    os.environ.get("CHECKPOINT_INTERVAL_SECONDS", "300")
+)
 
 
 @dataclass(frozen=True)
@@ -90,7 +99,11 @@ class Runtime:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._session: Session | None = None
-        self._checkpoint_current = False
+        # SHA-256 of the last archive this session uploaded. Archives are
+        # deterministic (see create_workspace_archive), so an equal digest
+        # means the workspace has not changed and the upload can be skipped.
+        self._uploaded_digest: str | None = None
+        self._checkpointer: threading.Thread | None = None
 
     def bootstrap(self, payload: str) -> dict[str, Any]:
         session = parse_run_hook_payload(payload)
@@ -115,7 +128,8 @@ class Runtime:
             write_terminal_defaults()
             write_session_configuration(session)
             self._session = session
-            self._checkpoint_current = False
+            self._uploaded_digest = None
+            self._start_periodic_checkpoints()
             LOG.info(
                 "session initialized",
                 extra={"session_id": session.session_id},
@@ -126,16 +140,49 @@ class Runtime:
         with self._lock:
             if not self._session:
                 return {"status": "no-active-session"}
-            if self._checkpoint_current:
-                return {"status": "already-current"}
+            # Always re-archive: a previous version of this method kept a
+            # "checkpoint is current" flag that was set by the first upload
+            # and never cleared, so every later checkpoint in the session
+            # (e.g. terminate after a suspend) silently skipped the upload
+            # and discarded the developer's newer changes.
             archive = create_workspace_archive()
             try:
-                upload_checkpoint(self._session, archive)
-                self._checkpoint_current = True
+                digest = file_sha256(archive)
+                if digest == self._uploaded_digest:
+                    status = "unchanged"
+                else:
+                    upload_checkpoint(self._session, archive)
+                    self._uploaded_digest = digest
+                    status = "checkpointed"
             finally:
                 archive.unlink(missing_ok=True)
-        LOG.info("workspace checkpoint uploaded", extra={"operation": operation})
-        return {"status": "checkpointed", "operation": operation}
+        LOG.info(
+            "workspace checkpoint %s",
+            status,
+            extra={"operation": operation},
+        )
+        return {"status": status, "operation": operation}
+
+    def _start_periodic_checkpoints(self) -> None:
+        # Started from bootstrap rather than at import so nothing
+        # session-specific runs before /ping reports healthy (AgentCore
+        # Runtime V2 snapshots the container at that point).
+        if self._checkpointer or CHECKPOINT_INTERVAL_SECONDS <= 0:
+            return
+        self._checkpointer = threading.Thread(
+            target=self._periodic_checkpoints,
+            name="periodic-checkpoint",
+            daemon=True,
+        )
+        self._checkpointer.start()
+
+    def _periodic_checkpoints(self) -> None:
+        while True:
+            time.sleep(CHECKPOINT_INTERVAL_SECONDS)
+            try:
+                self.checkpoint("periodic")
+            except Exception:
+                LOG.exception("periodic workspace checkpoint failed")
 
 
 RUNTIME = Runtime()
@@ -558,8 +605,14 @@ def create_workspace_archive() -> Path:
         return None
 
     try:
-        with tarfile.open(
-            archive, mode="w:gz", compresslevel=6, dereference=False
+        # The gzip header normally embeds the output filename and the
+        # current time; pinning both makes the archive a pure function of
+        # the workspace contents, which is what lets Runtime.checkpoint()
+        # skip uploading an unchanged workspace.
+        with open(archive, "wb") as raw, gzip.GzipFile(
+            filename="", mode="wb", fileobj=raw, compresslevel=6, mtime=0
+        ) as compressed, tarfile.open(
+            fileobj=compressed, mode="w", dereference=False
         ) as destination:
             for child in sorted(WORKSPACE.iterdir(), key=lambda item: item.name):
                 destination.add(
@@ -571,6 +624,14 @@ def create_workspace_archive() -> Path:
     except Exception:
         archive.unlink(missing_ok=True)
         raise
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def chown_tree(root: Path, username: str) -> None:

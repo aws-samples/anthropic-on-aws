@@ -35,7 +35,7 @@ flowchart LR
     Portal -- "browser shell WebSocket" --> AR
     CP -- "bootstrap / invoke / checkpoint" --> AR
     CP <--> DDB
-    AR -- "checkpoint.tar.gz on terminate" --> S3
+    AR -- "checkpoint.tar.gz every 5 min + on terminate" --> S3
     AR -- "restore on bootstrap" --> S3
 ```
 
@@ -68,6 +68,7 @@ Install and validate:
 npm ci
 npm run build
 npm test
+npm run test:agent-runtime   # agent.py unit tests (python3)
 ```
 
 Copy and edit the deployment configuration:
@@ -201,13 +202,18 @@ principal. Run `npm run client -- --help` for the full command reference.
 ## Lifecycle and checkpointing
 
 AgentCore Runtime has no native pause primitive and no session
-list/describe API, so `control-plane/` emulates suspend/resume itself:
-`terminate` checkpoints `/workspace` to S3 as a `.tar.gz`, and the next
-`start`/`resume` for the same workspace restores it. Sessions are
-checkpoint-terminated automatically after `idleAfterSeconds` of shell
-inactivity (default 900s), and hit an 8h hard cap regardless of activity.
-The interactive shell connection itself has a 1h TTL — the CLI and portal
-both reconnect automatically.
+list/describe API, so `control-plane/` emulates suspend/resume itself.
+While a session runs, the container checkpoints `/workspace` to S3 as a
+`.tar.gz` every 5 minutes (`CHECKPOINT_INTERVAL_SECONDS` in
+`agent-runtime/agent.py`; an unchanged workspace is not re-uploaded), and
+again on `suspend` and `terminate`. The next `start` for the same workspace
+restores it, and the portal's "saved" time and download link reflect the
+latest checkpoint. Sessions are checkpoint-terminated 45 minutes before the
+8h AgentCore Runtime hard cap. There is no idle-based termination yet:
+`idleAfterSeconds` is passed to AgentCore Runtime's own idle timeout, but the
+control plane's once-a-minute liveness probe counts as activity, so sessions
+run until terminated or the cap. The interactive shell connection itself
+has a 1h TTL — the CLI and portal both reconnect automatically.
 
 ## Security and limitations
 

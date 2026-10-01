@@ -12,6 +12,7 @@
     "provision-image": "tsx scripts/provision-agent-image.ts",
     "smoke-test": "tsx scripts/smoke-test.ts",
     "test": "vitest run",
+    "test:agent-runtime": "python3 -m unittest discover -s agent-runtime",
     "test:watch": "vitest",
     "synth": "cdk synth",
     "lint": "tsc --noEmit"
