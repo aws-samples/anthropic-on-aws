@@ -32,7 +32,7 @@
     "@smithy/signature-v4": "5.6.5",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "aws-cdk-lib": "2.260.0",
+    "aws-cdk-lib": "2.272.0",
     "constructs": "10.7.0",
     "ws": "8.21.1"
   },
@@ -40,7 +40,7 @@
     "@types/aws-lambda": "8.10.152",
     "@types/node": "22.15.3",
     "@types/ws": "8.18.1",
-    "aws-cdk": "2.1131.0",
+    "aws-cdk": "2.1143.0",
     "cdk-nag": "2.38.2",
     "esbuild": "0.25.3",
     "tsx": "4.19.4",

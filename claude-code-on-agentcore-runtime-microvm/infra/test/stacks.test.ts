@@ -84,6 +84,7 @@ describe('AgentCore Runtime resource', () => {
         }),
       }),
       ProtocolConfiguration: 'HTTP',
+      PlatformVersion: 'V2',
       LifecycleConfiguration: Match.objectLike({
         MaxLifetime: 28_800,
       }),

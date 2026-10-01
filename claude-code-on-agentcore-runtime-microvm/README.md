@@ -43,8 +43,10 @@ flowchart LR
 
 - a VPC, KMS key, S3 checkpoint bucket, and DynamoDB sessions/claims tables;
 - a private, IAM-authorized API Gateway backed by the control-plane Lambda;
-- an `AWS::BedrockAgentCore::Runtime` running the `agent-runtime/` container
-  image (Claude Code CLI + VS Code CLI);
+- an `AWS::BedrockAgentCore::Runtime` on AgentCore Runtime V2
+  (`PlatformVersion: V2`, which restores sessions from a snapshot of the
+  healthy container for faster cold starts) running the `agent-runtime/`
+  container image (Claude Code CLI + VS Code CLI);
 - optionally (`enablePortal`, **on by default**), a Cognito user pool and a
   small portal Lambda that serves a single-page browser terminal behind a
   Cognito user pool authorizer.

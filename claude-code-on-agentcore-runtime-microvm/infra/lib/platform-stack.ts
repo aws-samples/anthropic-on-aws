@@ -465,6 +465,12 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
           },
         },
         protocolConfiguration: 'HTTP',
+        // AgentCore Runtime V2 snapshots each container after it first
+        // reports healthy and restores new sessions from that snapshot,
+        // cutting cold start. The agent does no per-session work before
+        // /ping (bootstrap happens via the lifecycle hook), so restoring a
+        // shared snapshot is safe.
+        platformVersion: 'V2',
         environmentVariables: {
           BEDROCK_MODEL_ID: bedrockModelId,
           WORKSPACE_BUCKET_NAME: workspaceBucket.bucketName,
