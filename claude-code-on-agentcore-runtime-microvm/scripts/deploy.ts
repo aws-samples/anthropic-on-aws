@@ -17,6 +17,8 @@ interface DeploymentConfiguration {
   allowClaudeAiSubscription?: boolean;
   enablePortal?: boolean;
   idleAfterSeconds?: number;
+  portalPublicUrls?: string[];
+  albSecurityGroupId?: string;
 }
 
 const args = process.argv.slice(2);
@@ -59,6 +61,8 @@ const contextArguments = [
   '-c',
   `region=${region}`,
   '-c',
+  `projectName=${projectName}`,
+  '-c',
   `vpcCidr=${vpcCidr}`,
   '-c',
   `enablePortal=${String(enablePortal)}`,
@@ -68,6 +72,12 @@ const contextArguments = [
   )}`,
   ...(configuration.bedrockModelId
     ? ['-c', `bedrockModelId=${configuration.bedrockModelId}`]
+    : []),
+  ...(configuration.portalPublicUrls?.length
+    ? ['-c', `portalPublicUrls=${configuration.portalPublicUrls.join(',')}`]
+    : []),
+  ...(configuration.albSecurityGroupId
+    ? ['-c', `albSecurityGroupId=${configuration.albSecurityGroupId}`]
     : []),
 ];
 await run('npx', [
@@ -80,7 +90,7 @@ await run('npx', [
   '--require-approval',
   approval,
   ...contextArguments,
-  ...platformParameterArguments(configuration, projectName),
+  ...platformParameterArguments(configuration),
 ]);
 
 process.stdout.write(
@@ -127,6 +137,21 @@ async function loadConfiguration(
   ) {
     throw new Error('enablePortal must be a boolean');
   }
+  if (
+    configuration.portalPublicUrls !== undefined &&
+    (!Array.isArray(configuration.portalPublicUrls) ||
+      !configuration.portalPublicUrls.every(
+        (url) => typeof url === 'string' && url.startsWith('https://'),
+      ))
+  ) {
+    throw new Error('portalPublicUrls must be an array of https URLs');
+  }
+  if (configuration.albSecurityGroupId !== undefined) {
+    requiredConfiguredString(
+      configuration.albSecurityGroupId,
+      'albSecurityGroupId',
+    );
+  }
   for (const [name, item] of Object.entries(configuration)) {
     if (typeof item === 'string' && item.includes('REPLACE_ME')) {
       throw new Error(`${name} still contains REPLACE_ME`);
@@ -142,12 +167,13 @@ async function loadConfiguration(
   return configuration;
 }
 
+// projectName is CDK context (it names resources at synth time), not a
+// CloudFormation parameter; passing it as `--parameters ...:ProjectName`
+// makes CloudFormation reject the change set.
 function platformParameterArguments(
   configuration: DeploymentConfiguration,
-  projectName: string,
 ): string[] {
   const parameters: Record<string, string | number | undefined> = {
-    ProjectName: projectName,
     TrustedClientCidr: configuration.trustedClientCidr,
     IdleAfterSeconds: configuration.idleAfterSeconds,
   };

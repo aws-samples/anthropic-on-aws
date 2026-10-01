@@ -169,15 +169,19 @@ Two ways to get one:
      mismatch you'd hit passing TLS straight through to a hostname the
      endpoint's certificate doesn't cover.
    - Register the CloudFront portal URL as a Cognito callback/logout URL with
-     the `portalPublicUrls` context flag, or the OAuth redirect is rejected:
+     `portalPublicUrls` in `deployment.json`, or the OAuth redirect is
+     rejected. Set `albSecurityGroupId` to the ALB's security group so the
+     relay accepts its WebSocket traffic:
 
-     ```bash
-     npm run deploy -- --config deployment.json --profile <profile> \
-       -c portalPublicUrls=https://<distribution>.cloudfront.net/v1/portal
+     ```json
+     {
+       "portalPublicUrls": ["https://<distribution>.cloudfront.net/v1/portal"],
+       "albSecurityGroupId": "sg-0123456789abcdef0"
+     }
      ```
 
-     Declaring it here rather than editing the user pool client by hand keeps
-     the callback list intact across redeploys.
+     Declaring them here rather than editing the user pool client by hand
+     keeps the callback list intact across redeploys.
 
    Caveat: VPC endpoint ENI IPs are not contractually stable, so a static IP
    target group can go stale if AWS rescales the endpoint. For anything
