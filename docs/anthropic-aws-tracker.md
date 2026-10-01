@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-01
+
+- [Amazon Bedrock expands Claude models in-region support in the UK (London)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-region-expansion-lhr/) — *AWS What's New* (Wed, 30 Sep 2026 17:00:00 GMT)
+- [Implementing Multi-Environment Access for Claude Platform on AWS](https://aws.amazon.com/blogs/machine-learning/implementing-multi-environment-access-for-claude-platform-on-aws/) — *AWS Machine Learning Blog* (Thu, 01 Oct 2026 16:32:23 +0000)
+
 ## 2026-09-30
 
 - [AWS CLI now supports bulk skill updates and version checks for the Agent Toolkit for AWS](https://aws.amazon.com/about-aws/whats-new/2026/09/aws-cli-agent-toolkit-update-skill/) — *AWS What's New* (Wed, 30 Sep 2026 20:16:00 GMT)
