@@ -526,6 +526,7 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
           AGENT_RUNTIME_ARN: agentRuntime.attrAgentRuntimeArn,
           BEDROCK_MODEL_ID: bedrockModelId,
           IDLE_AFTER_SECONDS: idleAfterSeconds.valueAsString,
+          PROJECT_NAME: projectName,
           RUNTIME_EXECUTION_ROLE_ARN: runtimeExecutionRole.roleArn,
           RUNTIME_LOG_GROUP: runtimeLogGroup.logGroupName,
           SESSION_TABLE_NAME: sessions.tableName,
@@ -561,6 +562,26 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ['iam:PassRole'],
         resources: [runtimeExecutionRole.roleArn],
+      }),
+    );
+    // Scoped to the one deterministic parameter name GithubGatewayStack
+    // publishes (see that stack's own doc comment) -- this grant exists
+    // unconditionally so enabling the optional GitHub gateway later never
+    // requires touching this stack's IAM policy. GetParameter on a
+    // parameter that does not exist yet (no GithubGatewayStack deployed)
+    // simply fails with ParameterNotFound, which
+    // control-plane/src/handler.ts's loadConfiguration() treats as "the
+    // GitHub gateway feature is disabled for this deployment."
+    controlFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          this.formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: `${projectName}/github-gateway/url`,
+          }),
+        ],
       }),
     );
     bedrockAgentCoreDataEndpoint.addToPolicy(
@@ -809,6 +830,13 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       new cdk.CfnOutput(this, 'PortalUrl', { value: portalUrl });
       new cdk.CfnOutput(this, 'PortalUserPoolId', {
         value: portalUserPool.userPoolId,
+      });
+      // Consumed by scripts/setup-github-gateway.ts, which imports this
+      // same user pool and client into GithubGatewayStack's Cognito
+      // authorizer by ID rather than by CDK cross-stack reference -- see
+      // that stack's own doc comment for why.
+      new cdk.CfnOutput(this, 'PortalUserPoolClientId', {
+        value: portalUserPoolClient.userPoolClientId,
       });
 
       // Signing relay for the browser terminal. InvokeAgentRuntimeCommandShell

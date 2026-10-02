@@ -1,6 +1,11 @@
 import { BedrockAgentCoreClient } from '@aws-sdk/client-bedrock-agentcore';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { S3Client } from '@aws-sdk/client-s3';
+import {
+  GetParameterCommand,
+  ParameterNotFound,
+  SSMClient,
+} from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { randomBytes } from 'node:crypto';
 import type {
@@ -27,6 +32,7 @@ type ControlEvent =
   | EventBridgeEvent<string, unknown>;
 
 const region = process.env.AWS_REGION ?? 'us-east-1';
+const ssmClient = new SSMClient({ region });
 const documentClient = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region }),
   { marshallOptions: { removeUndefinedValues: true } },
@@ -112,6 +118,14 @@ export async function handler(
         {
           accessMode: optionalAccessMode(body.accessMode),
           inferenceMode: optionalInferenceMode(body.inferenceMode),
+          // Only the portal route has a Cognito ID token to forward: the
+          // IAM operator-CLI path's "Authorization" header is a SigV4
+          // signature, not a JWT, and has no meaning to AgentCore
+          // Gateway's Cognito authorizer. See service.ts's StartOptions
+          // and README, "GitHub integration setup".
+          userIdToken: portal
+            ? headerValue(event, 'authorization')
+            : undefined,
         },
       );
       return response(result.created ? 202 : 200, {
@@ -200,9 +214,40 @@ async function loadConfiguration(): Promise<StartConfiguration> {
     controlApiUrl: process.env.CONTROL_API_URL || observedApiUrl,
     idleAfterSeconds: positiveInteger('IDLE_AFTER_SECONDS'),
     suspendedRetentionSeconds: 3_600,
+    githubGatewayUrl: await loadGithubGatewayUrl(),
   };
   configurationCache = { expiresAt: now + 60_000, value };
   return value;
+}
+
+// GithubGatewayStack (infra/lib/github-gateway-stack.ts) is an optional,
+// independently-deployed stack; this parameter only exists once a reader
+// has run `npm run setup:github-gateway`. ParameterNotFound is the normal,
+// expected shape of "this deployment doesn't have the GitHub gateway" --
+// not an error -- so it is swallowed here rather than failing the whole
+// request. Any other SSM failure (throttling, a transient outage) is also
+// swallowed and simply disables the feature for that one cached window,
+// matching the "the gateway is optional" design: a readable AWS outage on
+// this one parameter should never block starting a session.
+async function loadGithubGatewayUrl(): Promise<string | undefined> {
+  const projectName = process.env.PROJECT_NAME ?? 'claude-agentcore';
+  try {
+    const result = await ssmClient.send(
+      new GetParameterCommand({
+        Name: `/${projectName}/github-gateway/url`,
+      }),
+    );
+    const value = result.Parameter?.Value;
+    return value && value !== 'pending' ? value : undefined;
+  } catch (error) {
+    if (error instanceof ParameterNotFound) {
+      return undefined;
+    }
+    console.warn('github gateway URL lookup failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return undefined;
+  }
 }
 
 function observeApiUrl(event: APIGatewayProxyEvent): void {

@@ -204,6 +204,7 @@ class FakeCheckpointService implements WorkspaceCheckpointService {
 function newService(overrides?: {
   repository?: SessionRepository;
   agentRuntime?: AgentRuntimeService;
+  configuration?: StartConfiguration;
   now?: () => number;
   newId?: () => string;
 }): {
@@ -221,7 +222,7 @@ function newService(overrides?: {
     repository,
     agentRuntime,
     checkpoints: new FakeCheckpointService(),
-    loadConfiguration: async () => CONFIGURATION,
+    loadConfiguration: async () => overrides?.configuration ?? CONFIGURATION,
     now: overrides?.now ?? (() => NOW),
     newId:
       overrides?.newId ??
@@ -537,5 +538,45 @@ describe('run hook payload compression', () => {
     expect(value.ownerHash).toBe(
       createHash('sha256').update(OWNER).digest('hex'),
     );
+  });
+});
+
+describe('ControlService.start GitHub gateway passthrough', () => {
+  function decodedPayload(agentRuntime: FakeAgentRuntimeService): Record<string, unknown> {
+    const [payload] = agentRuntime.runPayloads;
+    const decoded = payload!.startsWith('gzip-base64:')
+      ? gunzipSync(
+          Buffer.from(payload!.slice('gzip-base64:'.length), 'base64'),
+        ).toString('utf8')
+      : payload!;
+    return JSON.parse(decoded) as Record<string, unknown>;
+  }
+
+  it('forwards githubGatewayUrl and userIdToken when both are present', async () => {
+    const { service, agentRuntime } = newService({
+      configuration: { ...CONFIGURATION, githubGatewayUrl: 'https://gw.example/mcp' },
+    });
+    await service.start(OWNER, 'default', { userIdToken: 'eyJhbGciOi.fake.jwt' });
+    const value = decodedPayload(agentRuntime);
+    expect(value.githubGatewayUrl).toBe('https://gw.example/mcp');
+    expect(value.userIdToken).toBe('eyJhbGciOi.fake.jwt');
+  });
+
+  it('omits both fields when the deployment has no GitHub gateway', async () => {
+    const { service, agentRuntime } = newService();
+    await service.start(OWNER, 'default', { userIdToken: 'eyJhbGciOi.fake.jwt' });
+    const value = decodedPayload(agentRuntime);
+    expect(value.githubGatewayUrl).toBeUndefined();
+    expect(value.userIdToken).toBeUndefined();
+  });
+
+  it('omits both fields when the caller supplied no ID token (IAM operator path)', async () => {
+    const { service, agentRuntime } = newService({
+      configuration: { ...CONFIGURATION, githubGatewayUrl: 'https://gw.example/mcp' },
+    });
+    await service.start(OWNER, 'default');
+    const value = decodedPayload(agentRuntime);
+    expect(value.githubGatewayUrl).toBeUndefined();
+    expect(value.userIdToken).toBeUndefined();
   });
 });

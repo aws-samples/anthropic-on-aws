@@ -63,6 +63,12 @@ export interface StartConfiguration {
   controlApiUrl?: string;
   idleAfterSeconds: number;
   suspendedRetentionSeconds: number;
+  // The AgentCore Gateway MCP URL for the optional GitHub tools target
+  // (see infra/lib/github-gateway-stack.ts), looked up at request time
+  // from an SSM parameter -- undefined when that stack has not been
+  // deployed. Unrelated to `agentCoreGatewayUrl` above, which this
+  // sample does not use.
+  githubGatewayUrl?: string;
 }
 
 export interface RunResult {

@@ -50,6 +50,10 @@ flowchart LR
 - optionally (`enablePortal`, **on by default**), a Cognito user pool and a
   small portal Lambda that serves a single-page browser terminal behind a
   Cognito user pool authorizer.
+- optionally, a separate `GithubGatewayStack` -- an AgentCore Gateway
+  giving Claude Code sessions a per-user-authorized GitHub tool; see
+  "GitHub integration setup" below. Not deployed unless you run
+  `npm run setup:github-gateway`.
 
 ## Prerequisites
 
@@ -232,3 +236,157 @@ image with `npm run provision-image` alone does not reach new sessions.
 - Advanced security features and MFA on the Cognito user pool are deferred
   to production hardening, matching the baseline-cost posture of the rest of
   the sample.
+
+## GitHub integration setup
+
+An optional, separate feature: once set up, a Claude Code session can call
+two real GitHub tools -- list the logged-in portal user's own open pull
+requests, and create an issue -- authorized as that specific GitHub
+account via that account's own OAuth consent, never a shared service
+token. Deliberately limited to GitHub and to these two operations; see
+"Design" below for why.
+
+This requires `enablePortal: true` (see "Portal setup and first login"):
+the feature identifies the already-logged-in portal user to the gateway
+below, so it has no meaning for the IAM-only operator CLI path.
+
+### How it works
+
+- [Amazon Bedrock AgentCore Gateway](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html)
+  exposes an MCP server backed by an **OpenAPI target** that calls
+  `api.github.com` directly (`infra/github-tools-openapi.json`,
+  `infra/lib/github-gateway-stack.ts`).
+- Gateway's **inbound** auth reuses the portal's existing Cognito user
+  pool (no second user pool): a session's Claude Code CLI presents the
+  same Cognito ID token the portal login already issued, as a bearer
+  token.
+- Gateway's **outbound** auth to GitHub is an
+  [AgentCore Identity `GithubOauth2` credential provider](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity-idp-github.html):
+  on a user's first GitHub tool call, AgentCore redirects them through a
+  real GitHub OAuth consent screen, then stores that one user's GitHub
+  access token in AWS's Token Vault, scoped to that Cognito identity.
+  Later calls from the same user reuse it; a different user gets their
+  own separate consent and token.
+
+### Design: why an OpenAPI target, not a Lambda target
+
+AgentCore Gateway supports several target types. A Lambda target was the
+obvious first guess (custom code, full control) -- it turns out to be the
+wrong choice for this specific requirement, confirmed against AWS's own
+current outbound-authorization support table
+([gateway-outbound-auth.html](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-outbound-auth.html)):
+**Lambda targets only support the gateway's own IAM service role for
+outbound auth -- no OAuth of any kind.** Confirmed from the other
+direction too: the real [Lambda target invocation
+contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-add-target-lambda.html)
+passes the Lambda function only `bedrockAgentCore{MessageVersion,
+AwsRequestId, McpMessageId, GatewayId, TargetId, ToolName}` in the
+invocation context -- no caller identity, no token, nothing a Lambda
+function could use to look up a per-user GitHub token even if it tried.
+There is no way to get a specific end user's own GitHub OAuth token to a
+Lambda target today.
+
+An **OpenAPI target**, by contrast, supports OAuth authorization-code
+(3-legged, per-user) outbound auth natively, and needs no Lambda at all:
+Gateway calls `api.github.com` directly, resolving the right user's
+token from Token Vault per call. For this specific requirement (identify
+the calling user, get a token scoped to that one user, call a plain REST
+API), the OpenAPI target isn't just simpler -- it's the only one of the
+two that actually implements per-user OAuth.
+
+### Set up your GitHub OAuth App
+
+1. In GitHub: profile picture -> **Settings** -> **Developer settings** ->
+   **OAuth Apps** -> **New OAuth App**.
+2. Fill in:
+   - **Application name**: anything recognizable, e.g. "Claude Code
+     AgentCore sample (yourname)".
+   - **Homepage URL**: your deployment's `PortalUrl` stack output (any
+     `https://` URL is accepted here; GitHub does not validate it against
+     your Authorization callback URL).
+   - **Authorization callback URL**: leave this **blank for now**. AWS
+     issues a unique callback URL per credential provider (see below) --
+     you cannot know it before creating the AWS side.
+3. Click **Register application**.
+4. On the app's page, click **Generate a new client secret**. Copy both
+   the **Client ID** and this **client secret** immediately -- GitHub
+   only shows the secret once.
+
+### Run the setup script
+
+```bash
+GITHUB_CLIENT_SECRET=<the secret from step 4> \
+  npm run setup:github-gateway -- \
+  --client-id <the client ID from step 4> \
+  --region us-east-1 \
+  --profile default \
+  --project-name claude-agentcore
+```
+
+(Match `--region`/`--project-name` to your existing deployment; see
+`deployment.json`.) This:
+
+1. Registers a `GithubOauth2` AgentCore Identity credential provider via
+   `CreateOauth2CredentialProvider` and prints the **callback URL** AWS
+   issued for it.
+2. Deploys `GithubGatewayStack` (the AgentCore Gateway + OpenAPI target),
+   importing your existing portal's Cognito user pool by ID -- this does
+   **not** touch or redeploy `ClaudeAgentCoreRuntimeStack`.
+
+Then go back to your GitHub OAuth App's settings and paste the printed
+callback URL into **Authorization callback URL** (it looks like
+`https://bedrock-agentcore.<region>.amazonaws.com/identities/oauth2/callback/<uuid>`).
+Save.
+
+That's it -- no changes to the platform stack, no redeploy of it, and no
+manual IAM or raw `aws` CLI calls. The already-deployed control plane
+picks up the new gateway automatically: it reads the gateway's URL from
+an SSM parameter (`/<projectName>/github-gateway/url`) that
+`GithubGatewayStack` publishes, at the moment each new session starts.
+Existing running sessions do not get the tool retroactively; start a new
+session (or reconnect, which starts fresh) to pick it up.
+
+### What changes in the portal/session
+
+Nothing visible changes in the portal UI. Inside a session, Claude Code
+now has an MCP server named `github` registered
+(`$CLAUDE_CONFIG_DIR/.claude.json`, written by
+`agent-runtime/agent.py`'s `configure_github_mcp_server()`). Ask it
+something like "what are my open pull requests?" or "create an issue on
+`<owner>/<repo>` titled ...". The first call for a given GitHub account
+returns an OAuth consent URL; after you approve it once in a browser,
+follow-up calls (from any session, as long as the Cognito ID token below
+hasn't expired) just work.
+
+### The security tradeoff, plainly
+
+- The credential that actually reaches the sandbox is the user's own
+  **Cognito ID token** (the same one the portal login already issued),
+  written in cleartext into `.claude.json` inside `/workspace` --
+  which is itself encrypted at rest (KMS) and checkpointed to the
+  workspace S3 bucket, but readable in cleartext by anything running as
+  the `developer` user inside that session's container.
+- That token is short-lived: Cognito's default ID token lifetime is **60
+  minutes** from mint time, and it is minted once, at session start --
+  this sample does not refresh it. A session left running past that
+  window has a GitHub tool that starts failing with 401s until the user
+  starts a new session.
+- The token's blast radius if read by a compromised Claude Code session
+  (a malicious MCP server, a prompt-injected tool result, etc.) is
+  bounded: it is only valid as a bearer token against this one AgentCore
+  Gateway's Cognito authorizer, for calling exactly the two GitHub
+  operations defined in `infra/github-tools-openapi.json`, until it
+  expires. It is **not** a GitHub credential -- the actual GitHub OAuth
+  access token never leaves AWS's Token Vault and is not retrievable from
+  inside the sandbox, directly or indirectly. A compromised session
+  within that one hour could list the user's open PRs and create issues
+  (and whatever else the `repo` OAuth scope allows if the tool set were
+  ever widened) as that user, but could not read, exfiltrate, or reuse
+  the underlying GitHub token itself outside that one hour.
+- `repo` is a broad GitHub OAuth scope (reads and writes across public
+  and private repos the user can access). The two operations here only
+  need read access to the user's own PRs and issue-create on one repo at
+  a time; a narrower `public_repo` scope would work if you don't need
+  the tools to see private repos, at the cost of GitHub's search API
+  then only returning the user's public-repo pull requests. Change it
+  with `--scope public_repo` on the setup script.

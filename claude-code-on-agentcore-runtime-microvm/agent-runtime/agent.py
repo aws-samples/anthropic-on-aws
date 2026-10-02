@@ -48,6 +48,13 @@ LOG = logging.getLogger("claude-agentcore-agent")
 WORKSPACE = Path("/workspace")
 DEVELOPER_HOME = WORKSPACE / ".claude-home"
 CLAUDE_SETTINGS = DEVELOPER_HOME / ".claude" / "settings.json"
+# Claude Code CLI's own config/state file -- distinct from settings.json
+# above. `claude mcp add --transport http <name> <url> --header "..." -s
+# local` writes the MCP server entry here, under
+# projects["<cwd>"].mcpServers (confirmed empirically against the real
+# CLI; settings.json's mcpServers key is not read for this purpose). See
+# configure_github_mcp_server().
+CLAUDE_CONFIG_JSON = DEVELOPER_HOME / ".claude" / ".claude.json"
 STATE_DIRECTORY = Path("/var/lib/claude-agentcore")
 SESSION_CONFIGURATION = STATE_DIRECTORY / "session.json"
 CLAUDE_BINARY = Path("/usr/local/bin/claude")
@@ -93,6 +100,13 @@ class Session:
     checkpoint_download_url: str | None
     checkpoint_upload_url: str
     access_mode: str = "terminal"
+    # Both set together or neither (see control-plane/src/service.ts's
+    # StartOptions doc comment) -- a deployment with no GitHub gateway,
+    # or a caller with no Cognito ID token to forward (the IAM
+    # operator-CLI path), never sends either. See
+    # configure_github_mcp_server().
+    github_gateway_url: str | None = None
+    user_id_token: str | None = None
 
 
 class Runtime:
@@ -126,6 +140,7 @@ class Runtime:
 
             initialize_developer_home()
             write_terminal_defaults()
+            configure_github_mcp_server(session)
             write_session_configuration(session)
             self._session = session
             self._uploaded_digest = None
@@ -224,6 +239,19 @@ def parse_run_hook_payload(value: str) -> Session:
     )
     checkpoint_upload_url = required_string(checkpoint, "uploadUrl", 8_000)
 
+    github_gateway_url = optional_string(payload, "githubGatewayUrl", 2_048)
+    user_id_token = optional_string(payload, "userIdToken", 8_192)
+    if (github_gateway_url is None) != (user_id_token is None):
+        # Defensive only: the control plane always sends both or
+        # neither (see service.ts). Don't half-configure the MCP tool
+        # if that invariant is ever violated.
+        github_gateway_url = None
+        user_id_token = None
+    if github_gateway_url is not None and not github_gateway_url.startswith(
+        "https://"
+    ):
+        raise ValueError("githubGatewayUrl must be an https URL")
+
     if not SESSION_ID_PATTERN.fullmatch(session_id):
         raise ValueError("Invalid sessionId")
     if not OWNER_HASH_PATTERN.fullmatch(owner_hash):
@@ -240,6 +268,8 @@ def parse_run_hook_payload(value: str) -> Session:
         bedrock_model_id=bedrock_model_id,
         checkpoint_download_url=checkpoint_download_url,
         checkpoint_upload_url=checkpoint_upload_url,
+        github_gateway_url=github_gateway_url,
+        user_id_token=user_id_token,
     )
 
 
@@ -267,6 +297,95 @@ def required_string(value: dict[str, Any], key: str, max_length: int) -> str:
     ):
         raise ValueError(f"{key} must be a non-empty string")
     return result
+
+
+def optional_string(
+    value: dict[str, Any], key: str, max_length: int
+) -> str | None:
+    result = value.get(key)
+    if result is None:
+        return None
+    if (
+        not isinstance(result, str)
+        or not result
+        or len(result.encode("utf-8")) > max_length
+    ):
+        raise ValueError(f"{key} must be a non-empty string when present")
+    return result
+
+
+def configure_github_mcp_server(session: Session) -> None:
+    """Registers (or removes) the GitHub tool MCP server entry for Claude
+    Code, authorized as this specific session's own portal user.
+
+    Writes directly into $CLAUDE_CONFIG_DIR/.claude.json's
+    projects["/workspace"].mcpServers -- the exact shape `claude mcp add
+    --transport http <name> <url> --header "Authorization: Bearer ..."
+    -s local` writes (confirmed empirically against the real Claude Code
+    2.1.287 CLI: settings.json's own mcpServers key, used for the theme/
+    tui defaults in write_terminal_defaults() above, is NOT read for MCP
+    server registration).
+
+    Idempotent across workspace checkpoint restores: /workspace
+    (including .claude-home) persists across sessions via S3 checkpoint/
+    restore, so a workspace that previously had the GitHub tool
+    configured, reused in a session where the control plane does not
+    forward both githubGatewayUrl and userIdToken (GitHub gateway not
+    deployed, or a non-portal/IAM-authenticated caller -- see
+    control-plane/src/service.ts's StartOptions), has the stale entry
+    removed rather than left pointing at a now-meaningless token.
+
+    Security note (see README, "GitHub integration setup"): the
+    Authorization header written here is the user's own Cognito ID
+    token, not a GitHub credential -- it only lets the holder call
+    AgentCore Gateway's GitHub tools as that Cognito user for as long as
+    the token is valid (Cognito's default ID token lifetime, 60
+    minutes); the actual GitHub OAuth access token never leaves AWS's
+    Token Vault and is not retrievable from inside this sandbox.
+    """
+    developer = pwd.getpwnam("developer")
+    config: dict[str, Any] = {}
+    if CLAUDE_CONFIG_JSON.exists():
+        try:
+            value = json.loads(CLAUDE_CONFIG_JSON.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            value = {}
+        if isinstance(value, dict):
+            config = value
+
+    projects = config.get("projects")
+    if not isinstance(projects, dict):
+        projects = {}
+    config["projects"] = projects
+
+    project = projects.get(str(WORKSPACE))
+    if not isinstance(project, dict):
+        project = {}
+    projects[str(WORKSPACE)] = project
+
+    mcp_servers = project.get("mcpServers")
+    if not isinstance(mcp_servers, dict):
+        mcp_servers = {}
+    project["mcpServers"] = mcp_servers
+
+    if session.github_gateway_url and session.user_id_token:
+        mcp_servers["github"] = {
+            "type": "http",
+            "url": session.github_gateway_url,
+            "headers": {"Authorization": f"Bearer {session.user_id_token}"},
+        }
+    else:
+        mcp_servers.pop("github", None)
+
+    CLAUDE_CONFIG_JSON.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chown(CLAUDE_CONFIG_JSON.parent, developer.pw_uid, developer.pw_gid)
+    atomic_json_write(
+        CLAUDE_CONFIG_JSON,
+        config,
+        mode=0o600,
+        owner=developer.pw_uid,
+        group=developer.pw_gid,
+    )
 
 
 def write_terminal_defaults() -> None:

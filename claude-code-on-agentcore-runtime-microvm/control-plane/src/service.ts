@@ -48,6 +48,14 @@ export interface ControlServiceOptions {
 export interface StartOptions {
   accessMode?: AccessMode;
   inferenceMode?: InferenceMode;
+  // The caller's raw Cognito ID token, forwarded only for portal/browser
+  // callers (see handler.ts's callerPrincipal/portalCaller split) --
+  // never present for the IAM-authenticated operator-CLI path, which has
+  // no JWT concept. Carried into the run hook payload so the sandbox can
+  // present it to AgentCore Gateway's Cognito authorizer as the GitHub
+  // tool's own bearer token; see README, "GitHub integration setup" for
+  // the full tradeoff (short Cognito ID token lifetime, no refresh).
+  userIdToken?: string;
 }
 
 /**
@@ -170,6 +178,20 @@ export class ControlService {
           inferenceMode === 'bedrock' ? config.bedrockModelId : undefined,
         controlApiUrl: config.controlApiUrl || undefined,
         checkpoint,
+        // Both fields are only ever set together (see handler.ts): a
+        // userIdToken with no gateway to present it to is pointless, and
+        // a deployment with no GitHub gateway never has a userIdToken to
+        // forward in the first place (the IAM operator-CLI path never
+        // supplies one). agent.py registers the MCP server entry only
+        // when it receives both.
+        githubGatewayUrl:
+          config.githubGatewayUrl && options.userIdToken
+            ? config.githubGatewayUrl
+            : undefined,
+        userIdToken:
+          config.githubGatewayUrl && options.userIdToken
+            ? options.userIdToken
+            : undefined,
       });
 
       const run = await this.options.agentRuntime.run({
