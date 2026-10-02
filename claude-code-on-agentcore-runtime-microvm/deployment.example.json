@@ -6,5 +6,6 @@
   "bedrockModelId": "anthropic.claude-sonnet-5",
   "allowClaudeAiSubscription": false,
   "enablePortal": true,
+  "enableGithubGatewayDnsEndpoint": false,
   "idleAfterSeconds": 900
 }

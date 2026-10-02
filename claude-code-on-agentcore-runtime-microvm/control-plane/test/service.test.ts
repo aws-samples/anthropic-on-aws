@@ -552,22 +552,22 @@ describe('ControlService.start GitHub gateway passthrough', () => {
     return JSON.parse(decoded) as Record<string, unknown>;
   }
 
-  it('forwards githubGatewayUrl and userIdToken when both are present', async () => {
+  it('forwards githubGatewayUrl and userAccessToken when both are present', async () => {
     const { service, agentRuntime } = newService({
       configuration: { ...CONFIGURATION, githubGatewayUrl: 'https://gw.example/mcp' },
     });
-    await service.start(OWNER, 'default', { userIdToken: 'eyJhbGciOi.fake.jwt' });
+    await service.start(OWNER, 'default', { userAccessToken: 'eyJhbGciOi.fake.jwt' });
     const value = decodedPayload(agentRuntime);
     expect(value.githubGatewayUrl).toBe('https://gw.example/mcp');
-    expect(value.userIdToken).toBe('eyJhbGciOi.fake.jwt');
+    expect(value.userAccessToken).toBe('eyJhbGciOi.fake.jwt');
   });
 
   it('omits both fields when the deployment has no GitHub gateway', async () => {
     const { service, agentRuntime } = newService();
-    await service.start(OWNER, 'default', { userIdToken: 'eyJhbGciOi.fake.jwt' });
+    await service.start(OWNER, 'default', { userAccessToken: 'eyJhbGciOi.fake.jwt' });
     const value = decodedPayload(agentRuntime);
     expect(value.githubGatewayUrl).toBeUndefined();
-    expect(value.userIdToken).toBeUndefined();
+    expect(value.userAccessToken).toBeUndefined();
   });
 
   it('omits both fields when the caller supplied no ID token (IAM operator path)', async () => {
@@ -577,6 +577,6 @@ describe('ControlService.start GitHub gateway passthrough', () => {
     await service.start(OWNER, 'default');
     const value = decodedPayload(agentRuntime);
     expect(value.githubGatewayUrl).toBeUndefined();
-    expect(value.userIdToken).toBeUndefined();
+    expect(value.userAccessToken).toBeUndefined();
   });
 });

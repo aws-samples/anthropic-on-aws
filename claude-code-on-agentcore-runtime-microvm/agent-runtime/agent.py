@@ -102,11 +102,11 @@ class Session:
     access_mode: str = "terminal"
     # Both set together or neither (see control-plane/src/service.ts's
     # StartOptions doc comment) -- a deployment with no GitHub gateway,
-    # or a caller with no Cognito ID token to forward (the IAM
+    # or a caller with no Cognito access token to forward (the IAM
     # operator-CLI path), never sends either. See
     # configure_github_mcp_server().
     github_gateway_url: str | None = None
-    user_id_token: str | None = None
+    user_access_token: str | None = None
 
 
 class Runtime:
@@ -240,13 +240,13 @@ def parse_run_hook_payload(value: str) -> Session:
     checkpoint_upload_url = required_string(checkpoint, "uploadUrl", 8_000)
 
     github_gateway_url = optional_string(payload, "githubGatewayUrl", 2_048)
-    user_id_token = optional_string(payload, "userIdToken", 8_192)
-    if (github_gateway_url is None) != (user_id_token is None):
+    user_access_token = optional_string(payload, "userAccessToken", 8_192)
+    if (github_gateway_url is None) != (user_access_token is None):
         # Defensive only: the control plane always sends both or
         # neither (see service.ts). Don't half-configure the MCP tool
         # if that invariant is ever violated.
         github_gateway_url = None
-        user_id_token = None
+        user_access_token = None
     if github_gateway_url is not None and not github_gateway_url.startswith(
         "https://"
     ):
@@ -269,7 +269,7 @@ def parse_run_hook_payload(value: str) -> Session:
         checkpoint_download_url=checkpoint_download_url,
         checkpoint_upload_url=checkpoint_upload_url,
         github_gateway_url=github_gateway_url,
-        user_id_token=user_id_token,
+        user_access_token=user_access_token,
     )
 
 
@@ -330,16 +330,16 @@ def configure_github_mcp_server(session: Session) -> None:
     (including .claude-home) persists across sessions via S3 checkpoint/
     restore, so a workspace that previously had the GitHub tool
     configured, reused in a session where the control plane does not
-    forward both githubGatewayUrl and userIdToken (GitHub gateway not
+    forward both githubGatewayUrl and userAccessToken (GitHub gateway not
     deployed, or a non-portal/IAM-authenticated caller -- see
     control-plane/src/service.ts's StartOptions), has the stale entry
     removed rather than left pointing at a now-meaningless token.
 
     Security note (see README, "GitHub integration setup"): the
-    Authorization header written here is the user's own Cognito ID
+    Authorization header written here is the user's own Cognito access
     token, not a GitHub credential -- it only lets the holder call
     AgentCore Gateway's GitHub tools as that Cognito user for as long as
-    the token is valid (Cognito's default ID token lifetime, 60
+    the token is valid (Cognito's default access token lifetime, 60
     minutes); the actual GitHub OAuth access token never leaves AWS's
     Token Vault and is not retrievable from inside this sandbox.
     """
@@ -368,11 +368,11 @@ def configure_github_mcp_server(session: Session) -> None:
         mcp_servers = {}
     project["mcpServers"] = mcp_servers
 
-    if session.github_gateway_url and session.user_id_token:
+    if session.github_gateway_url and session.user_access_token:
         mcp_servers["github"] = {
             "type": "http",
             "url": session.github_gateway_url,
-            "headers": {"Authorization": f"Bearer {session.user_id_token}"},
+            "headers": {"Authorization": f"Bearer {session.user_access_token}"},
         }
     else:
         mcp_servers.pop("github", None)

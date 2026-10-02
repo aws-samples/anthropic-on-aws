@@ -492,6 +492,16 @@ function base64Url(bytes) {
 
 function idToken() { return sessionStorage.getItem('portalIdToken'); }
 
+// A Cognito access token, not the ID token above -- forwarded only on
+// the session-start call, and only used server-side to let a Claude
+// Code session present it to AgentCore Gateway's Cognito authorizer for
+// the optional GitHub tools integration (see README, "GitHub
+// integration setup"). Access tokens carry a non-empty OAuth "scope"
+// claim; ID tokens never do (confirmed live -- Gateway's authorizer
+// accepts the ID token as a validly-signed JWT but then rejects it with
+// HTTP 403 "insufficient_scope", since it has no scope claim at all).
+function accessToken() { return sessionStorage.getItem('portalAccessToken'); }
+
 function hostedUiUrl(cfg, endpoint) {
   return 'https://' + cfg.userPoolDomain + '/oauth2/' + endpoint;
 }
@@ -514,6 +524,7 @@ function signedIn() {
 
 function signOut() {
   sessionStorage.removeItem('portalIdToken');
+  sessionStorage.removeItem('portalAccessToken');
   sessionStorage.removeItem('portalVerifier');
   sessionStorage.removeItem('portalState');
   render();
@@ -579,6 +590,9 @@ async function completeLogin() {
     throw new Error('Token exchange failed: ' + (tokens.error || res.status));
   }
   sessionStorage.setItem('portalIdToken', tokens.id_token);
+  if (tokens.access_token) {
+    sessionStorage.setItem('portalAccessToken', tokens.access_token);
+  }
   sessionStorage.removeItem('portalVerifier');
   sessionStorage.removeItem('portalState');
 }
@@ -587,7 +601,12 @@ function api(method, path, body) {
   return fetch(path, {
     method: method,
     headers: Object.assign(
-      { authorization: idToken() },
+      {
+        authorization: idToken(),
+        // Only meaningful on POST /sessions (session start); harmless,
+        // ignored elsewhere. See accessToken()'s own comment above.
+        'x-cognito-access-token': accessToken() || '',
+      },
       body ? { 'content-type': 'application/json' } : {}),
     body: body ? JSON.stringify(body) : undefined
   }).then(function (response) {

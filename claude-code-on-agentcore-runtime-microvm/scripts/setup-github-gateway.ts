@@ -28,6 +28,7 @@ import {
 } from '@aws-sdk/client-bedrock-agentcore-control';
 import {
   CloudFormationClient,
+  DescribeStackResourcesCommand,
   DescribeStacksCommand,
 } from '@aws-sdk/client-cloudformation';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
@@ -116,6 +117,7 @@ const portalUserPoolClientId = requireOutput(
   'PortalUserPoolClientId',
   PLATFORM_STACK,
 );
+await warnIfMissingGatewayDnsEndpoint();
 
 await run('npx', [
   'cdk',
@@ -234,6 +236,40 @@ async function getExistingProvider(): Promise<
     }
     throw error;
   }
+}
+
+// Confirmed live: without the BedrockAgentCoreGatewayEndpoint VPC
+// interface endpoint (added to platform-stack.ts behind the
+// enableGithubGateway context flag), the sandbox cannot resolve the
+// Gateway's own hostname at all -- see README, "GitHub integration
+// setup" for the full DNS-shadowing explanation. This is a best-effort
+// pre-flight check, not a hard dependency: it only warns, since the
+// resource might be present under a different logical ID after a
+// manual template change.
+async function warnIfMissingGatewayDnsEndpoint(): Promise<void> {
+  try {
+    const described = await cloudformation.send(
+      new DescribeStackResourcesCommand({
+        StackName: PLATFORM_STACK,
+        LogicalResourceId: 'BedrockAgentCoreGatewayEndpoint',
+      }),
+    );
+    if (described.StackResources?.length) {
+      return;
+    }
+  } catch {
+    // Falls through to the warning below either way.
+  }
+  process.stdout.write(
+    '\nWARNING: ' +
+      `${PLATFORM_STACK} does not appear to have the ` +
+      'BedrockAgentCoreGatewayEndpoint VPC interface endpoint yet. ' +
+      'Without it, Claude Code sessions cannot resolve the Gateway\'s ' +
+      'hostname (confirmed live -- see README, "GitHub integration ' +
+      'setup"). Set "enableGithubGatewayDnsEndpoint": true in ' +
+      'deployment.json and run `npm run deploy` once, then re-run this ' +
+      'script.\n\n',
+  );
 }
 
 async function stackOutputs(

@@ -257,9 +257,12 @@ below, so it has no meaning for the IAM-only operator CLI path.
   `api.github.com` directly (`infra/github-tools-openapi.json`,
   `infra/lib/github-gateway-stack.ts`).
 - Gateway's **inbound** auth reuses the portal's existing Cognito user
-  pool (no second user pool): a session's Claude Code CLI presents the
-  same Cognito ID token the portal login already issued, as a bearer
-  token.
+  pool (no second user pool): a session's Claude Code CLI presents a
+  Cognito **access token** from the same login the portal already did,
+  as a bearer token -- not the ID token the portal itself uses to call
+  its own API (see "The security tradeoff, plainly" below for exactly
+  why these have to be two different tokens; confirmed live, not
+  assumed from docs).
 - Gateway's **outbound** auth to GitHub is an
   [AgentCore Identity `GithubOauth2` credential provider](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity-idp-github.html):
   on a user's first GitHub tool call, AgentCore redirects them through a
@@ -314,6 +317,23 @@ two that actually implements per-user OAuth.
 
 ### Run the setup script
 
+Set `"enableGithubGatewayDnsEndpoint": true` in `deployment.json` and run
+`npm run deploy` once (no other changes needed). This adds one VPC interface
+endpoint (`com.amazonaws.<region>.bedrock-agentcore.gateway`) that the
+sandbox needs to resolve AgentCore Gateway's own hostname -- confirmed
+live: without it, the platform stack's existing
+`com.amazonaws.<region>.bedrock-agentcore` endpoint (needed for the
+Runtime data plane, always present) makes this VPC privately
+authoritative for all of `bedrock-agentcore.<region>.amazonaws.com`,
+which silently breaks DNS resolution for Gateway's distinct
+`<id>.gateway.bedrock-agentcore.<region>.amazonaws.com` hostnames from
+inside the sandbox (`curl: Could not resolve host`) even though the
+exact same hostname resolves fine from outside the VPC. This endpoint
+is opt-in (`enableGithubGatewayDnsEndpoint`) specifically so a
+deployment that never uses this feature doesn't pay for it.
+
+Then:
+
 ```bash
 GITHUB_CLIENT_SECRET=<the secret from step 4> \
   npm run setup:github-gateway -- \
@@ -355,20 +375,23 @@ now has an MCP server named `github` registered
 something like "what are my open pull requests?" or "create an issue on
 `<owner>/<repo>` titled ...". The first call for a given GitHub account
 returns an OAuth consent URL; after you approve it once in a browser,
-follow-up calls (from any session, as long as the Cognito ID token below
-hasn't expired) just work.
+follow-up calls (from any session, as long as the Cognito access token
+below hasn't expired) just work.
 
 ### The security tradeoff, plainly
 
 - The credential that actually reaches the sandbox is the user's own
-  **Cognito ID token** (the same one the portal login already issued),
-  written in cleartext into `.claude.json` inside `/workspace` --
-  which is itself encrypted at rest (KMS) and checkpointed to the
-  workspace S3 bucket, but readable in cleartext by anything running as
-  the `developer` user inside that session's container.
-- That token is short-lived: Cognito's default ID token lifetime is **60
-  minutes** from mint time, and it is minted once, at session start --
-  this sample does not refresh it. A session left running past that
+  **Cognito access token** (minted at session start from the same login
+  the portal already did -- not the ID token the portal itself uses for
+  its own API calls; see the "inbound auth" bullet above for why an ID
+  token doesn't work here), written in cleartext into `.claude.json`
+  inside `/workspace` -- which is itself encrypted at rest (KMS) and
+  checkpointed to the workspace S3 bucket, but readable in cleartext by
+  anything running as the `developer` user inside that session's
+  container.
+- That token is short-lived: Cognito's default access token lifetime is
+  **60 minutes** from mint time, and it is minted once, at session start
+  -- this sample does not refresh it. A session left running past that
   window has a GitHub tool that starts failing with 401s until the user
   starts a new session.
 - The token's blast radius if read by a compromised Claude Code session

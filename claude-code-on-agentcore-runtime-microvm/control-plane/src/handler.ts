@@ -25,6 +25,7 @@ import type {
   StartConfiguration,
 } from './model.js';
 import { isPortalRoute, portalCaller, portalRoutePath } from './portal.js';
+import { accessIdToken, headerValue } from './http.js';
 import { ControlError, ControlService } from './service.js';
 
 type ControlEvent =
@@ -112,20 +113,19 @@ export async function handler(
     }
     if (method === 'POST' && path === '/sessions') {
       const body = parseBody(event);
+      const resolvedAccessToken = portal ? accessIdToken(event) : undefined;
       const result = await service.start(
         ownerPrincipal,
         optionalString(body.workspaceId),
         {
           accessMode: optionalAccessMode(body.accessMode),
           inferenceMode: optionalInferenceMode(body.inferenceMode),
-          // Only the portal route has a Cognito ID token to forward: the
-          // IAM operator-CLI path's "Authorization" header is a SigV4
-          // signature, not a JWT, and has no meaning to AgentCore
-          // Gateway's Cognito authorizer. See service.ts's StartOptions
-          // and README, "GitHub integration setup".
-          userIdToken: portal
-            ? headerValue(event, 'authorization')
-            : undefined,
+          // Only the portal route has a Cognito access token to
+          // forward: the IAM operator-CLI path's "Authorization"
+          // header is a SigV4 signature, not a JWT, and has no meaning
+          // to AgentCore Gateway's Cognito authorizer. See service.ts's
+          // StartOptions and README, "GitHub integration setup".
+          userAccessToken: resolvedAccessToken,
         },
       );
       return response(result.created ? 202 : 200, {
@@ -415,18 +415,6 @@ async function mintRelayShellUrl(
     }),
   );
   return `wss://${host}/shell?token=${token}`;
-}
-
-function headerValue(
-  event: APIGatewayProxyEvent,
-  name: string,
-): string | undefined {
-  for (const [key, value] of Object.entries(event.headers ?? {})) {
-    if (key.toLowerCase() === name && value) {
-      return value;
-    }
-  }
-  return undefined;
 }
 
 function positiveInteger(name: string): number {

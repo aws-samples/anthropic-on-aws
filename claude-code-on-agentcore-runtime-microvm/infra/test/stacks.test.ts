@@ -10,6 +10,7 @@ let template: Template;
 let portalTemplate: Template;
 let portalPublicTemplate: Template;
 let bedrockProfileTemplate: Template;
+let githubGatewayEnabledTemplate: Template;
 
 beforeAll(() => {
   const env = { account: '111122223333', region: 'us-east-1' };
@@ -62,6 +63,19 @@ beforeAll(() => {
         },
       }),
       'BedrockProfilePlatform',
+      { env },
+    ),
+  );
+  githubGatewayEnabledTemplate = Template.fromStack(
+    new AgentCoreRuntimeStack(
+      new cdk.App({
+        context: {
+          '@aws-cdk/aws-ec2:restrictDefaultSecurityGroup': true,
+          enableGithubGatewayDnsEndpoint: true,
+          vpcCidr: '10.43.0.0/16',
+        },
+      }),
+      'GithubGatewayEnabledPlatform',
       { env },
     ),
   );
@@ -188,6 +202,21 @@ describe('network boundaries', () => {
       ServiceName: 'com.amazonaws.us-east-1.bedrock-runtime',
       VpcEndpointType: 'Interface',
     });
+  });
+
+  // Confirmed live (see README, "GitHub integration setup"): without
+  // this endpoint, the bedrock-agentcore data-plane endpoint above
+  // (always present) makes this VPC privately authoritative for all of
+  // bedrock-agentcore.<region>.amazonaws.com, which breaks DNS
+  // resolution for AgentCore Gateway's own, differently-scoped hostname
+  // from inside the sandbox.
+  it('adds the AgentCore Gateway VPC endpoint only when enableGithubGateway is set', () => {
+    template.resourceCountIs('AWS::EC2::VPCEndpoint', 7);
+    githubGatewayEnabledTemplate.hasResourceProperties('AWS::EC2::VPCEndpoint', {
+      ServiceName: 'com.amazonaws.us-east-1.bedrock-agentcore.gateway',
+      VpcEndpointType: 'Interface',
+    });
+    githubGatewayEnabledTemplate.resourceCountIs('AWS::EC2::VPCEndpoint', 8);
   });
 });
 

@@ -94,7 +94,7 @@ class CheckpointTest(unittest.TestCase):
 
 class GithubMcpServerTest(unittest.TestCase):
     """Covers parse_run_hook_payload's optional githubGatewayUrl/
-    userIdToken fields and configure_github_mcp_server's
+    userAccessToken fields and configure_github_mcp_server's
     $CLAUDE_CONFIG_DIR/.claude.json writes -- the MCP server registration
     path for the optional GitHub gateway sample (see README, "GitHub
     integration setup").
@@ -144,17 +144,17 @@ class GithubMcpServerTest(unittest.TestCase):
             json.dumps(
                 self._base_payload(
                     githubGatewayUrl="https://gw.example/mcp",
-                    userIdToken="header.payload.sig",
+                    userAccessToken="header.payload.sig",
                 )
             )
         )
         self.assertEqual(session.github_gateway_url, "https://gw.example/mcp")
-        self.assertEqual(session.user_id_token, "header.payload.sig")
+        self.assertEqual(session.user_access_token, "header.payload.sig")
 
     def test_omits_both_fields_when_absent(self) -> None:
         session = agent.parse_run_hook_payload(json.dumps(self._base_payload()))
         self.assertIsNone(session.github_gateway_url)
-        self.assertIsNone(session.user_id_token)
+        self.assertIsNone(session.user_access_token)
 
     def test_drops_a_lone_field_defensively(self) -> None:
         # The control plane never sends just one (see service.ts), but
@@ -166,7 +166,7 @@ class GithubMcpServerTest(unittest.TestCase):
             )
         )
         self.assertIsNone(session.github_gateway_url)
-        self.assertIsNone(session.user_id_token)
+        self.assertIsNone(session.user_access_token)
 
     def test_rejects_a_non_https_gateway_url(self) -> None:
         with self.assertRaises(ValueError):
@@ -174,7 +174,7 @@ class GithubMcpServerTest(unittest.TestCase):
                 json.dumps(
                     self._base_payload(
                         githubGatewayUrl="http://gw.example/mcp",
-                        userIdToken="header.payload.sig",
+                        userAccessToken="header.payload.sig",
                     )
                 )
             )
@@ -187,7 +187,7 @@ class GithubMcpServerTest(unittest.TestCase):
     def test_writes_the_mcp_server_entry_claude_code_actually_reads(self) -> None:
         session = self._session(
             githubGatewayUrl="https://gw.example/mcp",
-            userIdToken="header.payload.sig",
+            userAccessToken="header.payload.sig",
         )
         agent.configure_github_mcp_server(session)
         written = json.loads(self.config_json.read_text())
@@ -205,7 +205,7 @@ class GithubMcpServerTest(unittest.TestCase):
         # non-portal caller).
         configured = self._session(
             githubGatewayUrl="https://gw.example/mcp",
-            userIdToken="header.payload.sig",
+            userAccessToken="header.payload.sig",
         )
         agent.configure_github_mcp_server(configured)
         unconfigured = self._session()
@@ -222,7 +222,7 @@ class GithubMcpServerTest(unittest.TestCase):
         )
         session = self._session(
             githubGatewayUrl="https://gw.example/mcp",
-            userIdToken="header.payload.sig",
+            userAccessToken="header.payload.sig",
         )
         agent.configure_github_mcp_server(session)
         written = json.loads(self.config_json.read_text())

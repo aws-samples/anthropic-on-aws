@@ -74,6 +74,22 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       this.node.tryGetContext('enablePortal'),
       false,
     );
+    // Adds the one extra VPC interface endpoint the optional GitHub
+    // gateway needs (see the BedrockAgentCoreGatewayEndpoint comment
+    // below) -- kept opt-in rather than always-on so a deployment that
+    // never runs scripts/setup-github-gateway.ts doesn't pay for an
+    // unused endpoint. A distinct flag from GithubGatewayStack's own
+    // `enableGithubGateway` context (infra/bin/app.ts): that one gates
+    // whether the *other* stack's constructor even runs (it requires
+    // several more context values this platform-stack deploy doesn't
+    // have), so reusing the same name here made a plain `cdk deploy
+    // ClaudeAgentCoreRuntimeStack --exclusively -c enableGithubGateway=
+    // true` crash during synth trying to also construct
+    // GithubGatewayStack (confirmed live).
+    const enableGithubGatewayDnsEndpoint = contextBoolean(
+      this.node.tryGetContext('enableGithubGatewayDnsEndpoint'),
+      false,
+    );
     // Extra absolute portal URLs to register as Cognito callback/logout URLs,
       // for deployments that front the private API with a CDN or proxy (e.g. a
     // CloudFront VPC origin). Comma-separated https URLs.
@@ -363,6 +379,32 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
         443,
       ),
     );
+    // Only when the optional GitHub gateway (infra/lib/github-gateway-
+    // stack.ts) is in use. Confirmed live: without this, DNS resolution
+    // for an AgentCore Gateway's own hostname
+    // (<id>.gateway.bedrock-agentcore.<region>.amazonaws.com) fails
+    // from inside this VPC with "Could not resolve host" even though
+    // the exact same hostname resolves fine from outside the VPC. Root
+    // cause: the BedrockAgentCoreDataEndpoint above (needed for the
+    // Runtime data plane, always created) enables private DNS for the
+    // entire bedrock-agentcore.<region>.amazonaws.com zone once
+    // associated with this VPC -- a Route 53 private hosted zone is
+    // authoritative for every name under it, so queries for Gateway's
+    // sibling-but-unrelated hostnames under that same parent domain get
+    // shadowed into that zone (which only has records for the Runtime
+    // data-plane service) instead of falling through to public DNS.
+    // AWS publishes a separate, more specific endpoint service for
+    // Gateway itself; adding it registers the more specific zone needed
+    // to win resolution back.
+    if (enableGithubGatewayDnsEndpoint) {
+      addInterfaceEndpoint(
+        'BedrockAgentCoreGatewayEndpoint',
+        new ec2.InterfaceVpcEndpointService(
+          `com.amazonaws.${this.region}.bedrock-agentcore.gateway`,
+          443,
+        ),
+      );
+    }
 
     // Execution role assumed by the AgentCore Runtime microVM. Deliberately
     // has no direct workspace S3 access -- the control plane mints

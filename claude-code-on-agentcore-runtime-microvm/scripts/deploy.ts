@@ -18,6 +18,7 @@ interface DeploymentConfiguration {
   bedrockModelId?: string;
   allowClaudeAiSubscription?: boolean;
   enablePortal?: boolean;
+  enableGithubGatewayDnsEndpoint?: boolean;
   idleAfterSeconds?: number;
   portalPublicUrls?: string[];
   albSecurityGroupId?: string;
@@ -81,6 +82,10 @@ const contextArguments = [
   `vpcCidr=${vpcCidr}`,
   '-c',
   `enablePortal=${String(enablePortal)}`,
+  '-c',
+  `enableGithubGatewayDnsEndpoint=${String(
+    configuration.enableGithubGatewayDnsEndpoint ?? false,
+  )}`,
   '-c',
   `allowClaudeAiSubscription=${String(
     configuration.allowClaudeAiSubscription ?? false,
@@ -151,6 +156,12 @@ async function loadConfiguration(
     typeof configuration.enablePortal !== 'boolean'
   ) {
     throw new Error('enablePortal must be a boolean');
+  }
+  if (
+    configuration.enableGithubGatewayDnsEndpoint !== undefined &&
+    typeof configuration.enableGithubGatewayDnsEndpoint !== 'boolean'
+  ) {
+    throw new Error('enableGithubGatewayDnsEndpoint must be a boolean');
   }
   if (
     configuration.portalPublicUrls !== undefined &&
