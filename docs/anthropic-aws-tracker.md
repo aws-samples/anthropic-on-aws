@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-02
+
+- [Add secure Web Search to Claude Desktop with Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/add-secure-web-search-to-claude-desktop-with-amazon-bedrock-agentcore/) — *AWS Machine Learning Blog* (Fri, 02 Oct 2026 15:46:05 +0000)
+
 ## 2026-10-01
 
 - [Amazon Bedrock expands Claude models in-region support in the UK (London)](https://aws.amazon.com/about-aws/whats-new/2026/09/claude-region-expansion-lhr/) — *AWS What's New* (Wed, 30 Sep 2026 17:00:00 GMT)
