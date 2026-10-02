@@ -25,6 +25,7 @@ import {
   CreateOauth2CredentialProviderCommand,
   GetOauth2CredentialProviderCommand,
   ResourceNotFoundException,
+  UpdateOauth2CredentialProviderCommand,
 } from '@aws-sdk/client-bedrock-agentcore-control';
 import {
   CloudFormationClient,
@@ -171,9 +172,48 @@ async function ensureCredentialProvider(): Promise<{
   secretArn: string;
   callbackUrl: string;
 }> {
-  const existing = await getExistingProvider();
-  if (existing) {
-    return existing;
+  // Always pushes clientId/clientSecret to AWS, whether this is the
+  // first run (Create) or a later one with rotated/corrected GitHub
+  // OAuth App credentials (Update) -- a reader who re-runs this script
+  // after fixing a typo, or after this sample's own placeholder test
+  // run, expects the credentials they just passed to actually take
+  // effect, not to be silently ignored because a same-named provider
+  // already exists.
+  const existingArn = await existingProviderArn();
+  if (existingArn) {
+    const updated = await identityClient.send(
+      new UpdateOauth2CredentialProviderCommand({
+        name: providerName,
+        credentialProviderVendor: 'GithubOauth2',
+        oauth2ProviderConfigInput: {
+          githubOauth2ProviderConfig: { clientId, clientSecret },
+        },
+      }),
+    );
+    if (!updated.credentialProviderArn || !updated.clientSecretArn?.secretArn) {
+      throw new Error(
+        'UpdateOauth2CredentialProvider response is missing required fields',
+      );
+    }
+    process.stdout.write(
+      `Updated existing credential provider "${providerName}" with the ` +
+        'client ID/secret just provided.\n',
+    );
+    // UpdateOauth2CredentialProviderCommand's response does not include
+    // callbackUrl (it is assigned once, at creation, and never changes).
+    // Fetch it back explicitly so the printed instructions are always
+    // accurate, including on an update.
+    const refetched = await identityClient.send(
+      new GetOauth2CredentialProviderCommand({ name: providerName }),
+    );
+    if (!refetched.callbackUrl) {
+      throw new Error('GetOauth2CredentialProvider is missing callbackUrl');
+    }
+    return {
+      credentialProviderArn: updated.credentialProviderArn,
+      secretArn: updated.clientSecretArn.secretArn,
+      callbackUrl: refetched.callbackUrl,
+    };
   }
   const created = await identityClient.send(
     new CreateOauth2CredentialProviderCommand({
@@ -200,36 +240,12 @@ async function ensureCredentialProvider(): Promise<{
   };
 }
 
-async function getExistingProvider(): Promise<
-  | {
-      credentialProviderArn: string;
-      secretArn: string;
-      callbackUrl: string;
-    }
-  | undefined
-> {
+async function existingProviderArn(): Promise<string | undefined> {
   try {
     const existing = await identityClient.send(
       new GetOauth2CredentialProviderCommand({ name: providerName }),
     );
-    if (
-      !existing.credentialProviderArn ||
-      !existing.clientSecretArn?.secretArn ||
-      !existing.callbackUrl
-    ) {
-      return undefined;
-    }
-    process.stdout.write(
-      `Reusing existing credential provider "${providerName}" (its ` +
-        "client secret is not updated by this run -- delete it with " +
-        '`aws bedrock-agentcore-control delete-oauth2-credential-provider` ' +
-        'first if you need to rotate it).\n',
-    );
-    return {
-      credentialProviderArn: existing.credentialProviderArn,
-      secretArn: existing.clientSecretArn.secretArn,
-      callbackUrl: existing.callbackUrl,
-    };
+    return existing.credentialProviderArn;
   } catch (error) {
     if (error instanceof ResourceNotFoundException) {
       return undefined;
