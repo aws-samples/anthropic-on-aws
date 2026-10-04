@@ -444,9 +444,23 @@ export const PORTAL_HTML = `<!doctype html>
     <div class="manifest bracketed">
       <table>
         <thead>
-          <tr><th>Session</th><th>Workspace</th><th>State</th><th>Updated</th><th>Storage</th><th></th></tr>
+          <tr><th>Session</th><th>Workspace</th><th>State</th><th>Updated</th><th></th></tr>
         </thead>
         <tbody id="sessions"></tbody>
+      </table>
+    </div>
+    <div class="panel-head">
+      <div>
+        <span class="eyebrow">Workspaces</span>
+        <p class="panel-sub">Persistent storage, shared across every session on the same workspace -- survives after a session ends.</p>
+      </div>
+    </div>
+    <div class="manifest bracketed">
+      <table>
+        <thead>
+          <tr><th>Workspace</th><th>Storage</th><th>Used by</th></tr>
+        </thead>
+        <tbody id="workspaces"></tbody>
       </table>
     </div>
     <p id="error" hidden></p>
@@ -658,7 +672,7 @@ function renderSessions() {
   if (sessions.length === 0) {
     var emptyRow = document.createElement('tr');
     var emptyCell = document.createElement('td');
-    emptyCell.colSpan = 6;
+    emptyCell.colSpan = 5;
     emptyCell.className = 'manifest-empty';
     emptyCell.textContent = '// no environments yet -- create one above to get started';
     emptyRow.appendChild(emptyCell);
@@ -687,15 +701,14 @@ function renderSessions() {
     updatedCell.textContent = new Date(session.updatedAt * 1000).toLocaleString();
     row.appendChild(updatedCell);
 
-    // Persistent-storage cell: filled in async below once the workspace
-    // route resolves, since it is a separate request per row rather than
-    // part of the sessions list payload (that payload is shared with the
-    // CLI's /sessions route, which has no reason to carry S3 metadata).
-    var storageCell = document.createElement('td');
-    storageCell.className = 'storage-cell';
-    storageCell.textContent = 'Checking\u2026';
-    row.appendChild(storageCell);
-    loadWorkspaceInfo(session, storageCell);
+    // Storage used to be a per-row cell here (one async fetch per
+    // session, re-rendering the same workspace's size/age once per
+    // session that happened to share it -- confusing when several
+    // sessions point at one "default" workspace, since the exact same
+    // Download link would appear once per row). Storage is a
+    // workspace-level fact, not a session-level one -- see the
+    // Workspaces panel/renderWorkspaces() below, which lists it exactly
+    // once per distinct workspace instead.
 
     var actions = document.createElement('td');
     var connectButton = document.createElement('button');
@@ -732,49 +745,84 @@ function formatRelativeTime(unixSeconds) {
   return Math.floor(hours / 24) + 'd ago';
 }
 
-// Phase 1 of surfacing persistent per-workspace storage in the portal:
-// a read-only view of the same checkpoint archive the runtime itself
-// checkpoints to/from on suspend and terminate (see agent-runtime/agent.py
-// and control-plane/src/service.ts's workspaceInfo()). This route never
-// returns an upload URL -- only the runtime's own IAM role can write a
-// checkpoint -- so a portal user can see and download what has been
-// saved for a workspace, but never overwrite it from here.
-function loadWorkspaceInfo(session, cell) {
-  api('GET', 'sessions/' + session.sessionId + '/workspace')
-    .then(function (info) {
-      cell.textContent = '';
-      if (!info.exists) {
-        var none = document.createElement('span');
-        none.className = 'storage-empty';
-        none.textContent = 'No files saved yet';
-        cell.appendChild(none);
-        return;
-      }
+// Workspace-level view of persistent storage: one row per distinct
+// workspaceId this owner has, however many sessions share it, each row's
+// size/age/download link reflecting that one real underlying S3 object
+// exactly once -- see WorkspaceSummary in model.ts and
+// ControlService.listWorkspaces() for why this had to be a separate route
+// from /sessions rather than a per-row field on it.
+function renderWorkspaces(workspaces) {
+  var body = el('workspaces');
+  body.replaceChildren();
+  if (workspaces.length === 0) {
+    var emptyRow = document.createElement('tr');
+    var emptyCell = document.createElement('td');
+    emptyCell.colSpan = 3;
+    emptyCell.className = 'manifest-empty';
+    emptyCell.textContent = '// no workspaces yet';
+    emptyRow.appendChild(emptyCell);
+    body.appendChild(emptyRow);
+    return;
+  }
+  workspaces.forEach(function (workspace) {
+    var row = document.createElement('tr');
+
+    var nameCell = document.createElement('td');
+    nameCell.textContent = workspace.workspaceId;
+    row.appendChild(nameCell);
+
+    var storageCell = document.createElement('td');
+    storageCell.className = 'storage-cell';
+    if (!workspace.exists) {
+      var none = document.createElement('span');
+      none.className = 'storage-empty';
+      none.textContent = 'No files saved yet';
+      storageCell.appendChild(none);
+    } else {
       var summary = document.createElement('span');
       summary.className = 'storage-summary';
       summary.textContent =
-        formatBytes(info.sizeBytes || 0) +
-        (info.lastModifiedAt
-          ? ' \u00b7 saved ' + formatRelativeTime(info.lastModifiedAt)
+        formatBytes(workspace.sizeBytes || 0) +
+        (workspace.lastModifiedAt
+          ? ' \u00b7 saved ' + formatRelativeTime(workspace.lastModifiedAt)
           : '');
-      cell.appendChild(summary);
-      if (info.downloadUrl) {
+      storageCell.appendChild(summary);
+      if (workspace.downloadUrl) {
         var link = document.createElement('a');
         link.className = 'storage-download';
-        link.href = info.downloadUrl;
+        link.href = workspace.downloadUrl;
         link.textContent = 'Download';
-        link.setAttribute('download', session.workspaceId + '.tar.gz');
-        cell.appendChild(link);
+        link.setAttribute('download', workspace.workspaceId + '.tar.gz');
+        storageCell.appendChild(link);
       }
-    })
-    .catch(function () {
-      cell.textContent = '';
-      var errorLabel = document.createElement('span');
-      errorLabel.className = 'storage-empty';
-      errorLabel.textContent = 'Unavailable';
-      cell.appendChild(errorLabel);
-    });
+    }
+    row.appendChild(storageCell);
+
+    var usedByCell = document.createElement('td');
+    usedByCell.className = 'used-by-cell';
+    usedByCell.textContent = workspace.sessionIds
+      .map(function (sessionId) { return sessionId.slice(0, 8); })
+      .join(', ');
+    row.appendChild(usedByCell);
+
+    body.appendChild(row);
+  });
 }
+
+async function loadWorkspaces() {
+  try {
+    var result = await api('GET', 'workspaces');
+    renderWorkspaces(result.workspaces);
+  } catch (error) {
+    // Deliberately silent beyond the console: a failed workspace fetch
+    // should not block the sessions table (which already rendered) or
+    // escalate to the same #error banner sessions use -- it is
+    // supplementary, read-only information, not something the user is
+    // blocked on.
+    console.error('Failed to load workspaces', error);
+  }
+}
+
 
 async function refresh() {
   clearError();
@@ -785,6 +833,7 @@ async function refresh() {
   } catch (error) {
     showError(error);
   }
+  loadWorkspaces();
 }
 
 async function startSession() {

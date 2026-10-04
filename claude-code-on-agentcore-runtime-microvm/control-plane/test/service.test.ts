@@ -211,17 +211,19 @@ function newService(overrides?: {
   service: ControlService;
   repository: MemoryRepository;
   agentRuntime: FakeAgentRuntimeService;
+  checkpoints: FakeCheckpointService;
 } {
   const repository =
     (overrides?.repository as MemoryRepository) ?? new MemoryRepository();
   const agentRuntime =
     (overrides?.agentRuntime as FakeAgentRuntimeService) ??
     new FakeAgentRuntimeService();
+  const checkpoints = new FakeCheckpointService();
   let counter = 0;
   const service = new ControlService({
     repository,
     agentRuntime,
-    checkpoints: new FakeCheckpointService(),
+    checkpoints,
     loadConfiguration: async () => overrides?.configuration ?? CONFIGURATION,
     now: overrides?.now ?? (() => NOW),
     newId:
@@ -232,7 +234,7 @@ function newService(overrides?: {
         return `session-${counter}`.padEnd(36, '0');
       }),
   });
-  return { service, repository, agentRuntime };
+  return { service, repository, agentRuntime, checkpoints };
 }
 
 describe('ControlService.start', () => {
@@ -516,6 +518,53 @@ describe('ControlService.checkpointUrls', () => {
       started.record.runtimeSessionId!,
     );
     expect(access.uploadUrl).toContain('https://');
+  });
+});
+
+describe('ControlService.listWorkspaces', () => {
+  it('groups multiple past sessions on the same workspace into one entry', async () => {
+    const { service } = newService();
+    const first = await service.start(OWNER, 'default');
+    // start() reuses an existing *active* session on the same workspace
+    // (see service.ts) -- real distinct session records on one workspace
+    // only accumulate the way the live portal actually shows them: one
+    // terminates, then a later one starts fresh on that same workspace.
+    await service.terminate(OWNER, first.record.sessionId);
+    const second = await service.start(OWNER, 'default');
+    expect(first.record.sessionId).not.toBe(second.record.sessionId);
+    const workspaces = await service.listWorkspaces(OWNER);
+    expect(workspaces).toHaveLength(1);
+    expect(workspaces[0]!.workspaceId).toBe('default');
+    expect(workspaces[0]!.sessionIds.sort()).toEqual(
+      [first.record.sessionId, second.record.sessionId].sort(),
+    );
+  });
+
+  it('keeps distinctly named workspaces as separate entries', async () => {
+    const { service } = newService();
+    await service.start(OWNER, 'default');
+    await service.start(OWNER, 'scratch');
+    const workspaces = await service.listWorkspaces(OWNER);
+    const names = workspaces.map((workspace) => workspace.workspaceId).sort();
+    expect(names).toEqual(['default', 'scratch']);
+  });
+
+  it('carries through the real checkpoint info per workspace, not a per-session duplicate', async () => {
+    const { service, checkpoints } = newService();
+    checkpoints.archiveExists = true;
+    const first = await service.start(OWNER, 'default');
+    await service.terminate(OWNER, first.record.sessionId);
+    await service.start(OWNER, 'default');
+    const workspaces = await service.listWorkspaces(OWNER);
+    expect(workspaces).toHaveLength(1);
+    expect(workspaces[0]!.exists).toBe(true);
+    expect(workspaces[0]!.sizeBytes).toBe(4096);
+  });
+
+  it('returns no workspaces for an owner with no sessions', async () => {
+    const { service } = newService();
+    const workspaces = await service.listWorkspaces('nobody');
+    expect(workspaces).toEqual([]);
   });
 });
 

@@ -117,6 +117,23 @@ export interface WorkspaceInfo {
   downloadUrl?: string;
 }
 
+// A workspace is the persistent unit (S3-backed, survives across many
+// ephemeral sessions); a session is not. Multiple session rows commonly
+// share one workspaceId (the "default" workspace, unless a caller names
+// one explicitly), so a workspace-level view needs its own summary type
+// rather than reusing the per-session route -- see
+// ControlService.listWorkspaces().
+export interface WorkspaceSummary extends WorkspaceInfo {
+  workspaceId: string;
+  // Every session this owner has that currently points at this
+  // workspaceId, newest first. Derived from the owner's session list
+  // (the owner-updated-index GSI), not from an independent workspace
+  // registry -- a workspace with real S3 data but zero remaining session
+  // rows (e.g. after a session was deleted) will not appear here. That is
+  // a known, deliberate v1 limitation, not an oversight.
+  sessionIds: string[];
+}
+
 export type CreateSessionResult =
   | { created: true }
   | { created: false; record: SessionRecord };

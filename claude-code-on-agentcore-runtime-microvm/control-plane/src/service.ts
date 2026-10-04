@@ -13,6 +13,7 @@ import type {
   WorkspaceCheckpointAccess,
   WorkspaceCheckpointService,
   WorkspaceInfo,
+  WorkspaceSummary,
 } from './model.js';
 import { ACTIVE_STATES } from './model.js';
 
@@ -475,6 +476,41 @@ export class ControlService {
     return this.options.checkpoints.getInfo(
       record.ownerHash,
       record.workspaceId,
+    );
+  }
+
+  // Workspace-level counterpart to workspaceInfo() above. That route is
+  // keyed by sessionId because the portal's sessions table only had
+  // sessions to join against; this one lists every distinct workspace
+  // this owner has, each with its own storage info exactly once --
+  // regardless of how many session rows happen to point at it. See
+  // WorkspaceSummary's doc comment in model.ts for the one known gap
+  // (workspaces with zero remaining session rows are not listed here).
+  public async listWorkspaces(
+    ownerPrincipal: string,
+  ): Promise<WorkspaceSummary[]> {
+    const records = await this.list(ownerPrincipal);
+    const sessionIdsByWorkspace = new Map<string, string[]>();
+    const ownerHashByWorkspace = new Map<string, string>();
+    for (const record of records) {
+      const existing = sessionIdsByWorkspace.get(record.workspaceId);
+      if (existing) {
+        existing.push(record.sessionId);
+      } else {
+        sessionIdsByWorkspace.set(record.workspaceId, [record.sessionId]);
+        ownerHashByWorkspace.set(record.workspaceId, record.ownerHash);
+      }
+    }
+    return Promise.all(
+      Array.from(sessionIdsByWorkspace.entries()).map(
+        async ([workspaceId, sessionIds]) => {
+          const info = await this.options.checkpoints.getInfo(
+            ownerHashByWorkspace.get(workspaceId)!,
+            workspaceId,
+          );
+          return { ...info, workspaceId, sessionIds };
+        },
+      ),
     );
   }
 

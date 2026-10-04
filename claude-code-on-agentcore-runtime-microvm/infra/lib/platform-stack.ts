@@ -723,6 +723,8 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
     const sessionResource = api.root.addResource('sessions');
     sessionResource.addMethod('GET', integration, methodOptions);
     sessionResource.addMethod('POST', integration, methodOptions);
+    const workspacesResource = api.root.addResource('workspaces');
+    workspacesResource.addMethod('GET', integration, methodOptions);
     const byId = sessionResource.addResource('{sessionId}');
     byId.addMethod('GET', integration, methodOptions);
     byId.addMethod('DELETE', integration, methodOptions);
@@ -858,6 +860,9 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       const portalSessions = portal.addResource('sessions');
       portalSessions.addMethod('GET', integration, portalMethodOptions);
       portalSessions.addMethod('POST', integration, portalMethodOptions);
+      portal
+        .addResource('workspaces')
+        .addMethod('GET', integration, portalMethodOptions);
       const portalById = portalSessions.addResource('{sessionId}');
       portalById.addMethod('GET', integration, portalMethodOptions);
       portalById.addMethod('DELETE', integration, portalMethodOptions);

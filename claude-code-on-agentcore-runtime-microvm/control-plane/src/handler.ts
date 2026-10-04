@@ -111,6 +111,10 @@ export async function handler(
       const sessions = await service.list(ownerPrincipal, true);
       return response(200, { sessions: sessions.map(publicSession) });
     }
+    if (method === 'GET' && path === '/workspaces') {
+      const workspaces = await service.listWorkspaces(ownerPrincipal);
+      return response(200, { workspaces });
+    }
     if (method === 'POST' && path === '/sessions') {
       const body = parseBody(event);
       const resolvedAccessToken = portal ? accessIdToken(event) : undefined;
