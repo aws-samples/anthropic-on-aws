@@ -59,7 +59,7 @@ Before running `cdk deploy`, make sure you have:
 
 ### 1. A DNS hostname for the gateway, in a Route 53 zone in this account
 
-The gateway needs a DNS name that resolves to a **private** IP: the CLI rejects a gateway whose hostname resolves to any public address at `/login` ([prerequisite](https://code.claude.com/docs/en/claude-apps-gateway#prerequisites)).
+The gateway needs a DNS name that resolves to a **private** IP: the CLI rejects a gateway whose hostname resolves to any public address at `/login` ([prerequisite](https://code.claude.com/docs/en/claude-apps-gateway#prerequisites)). The one exception is an internal network numbered from public IPv4 space your organization owns, which you declare with the `gatewayInternalNetworks` managed setting ([allow a gateway on public address space you own](https://code.claude.com/docs/en/claude-apps-gateway#allow-a-gateway-on-public-address-space-you-own)).
 
 Both tracks satisfy that by upserting an alias A-record into a Route 53 hosted zone **in the deploying account**, so a zone is **required** — neither track has a "skip the record, I'll manage DNS myself" mode:
 
