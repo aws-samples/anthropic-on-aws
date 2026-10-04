@@ -153,6 +153,13 @@ export const PORTAL_HTML = `<!doctype html>
     margin-bottom: 1.4rem;
     animation: fade-up .5s cubic-bezier(.16, 1, .3, 1) .05s both;
   }
+  /* The Workspaces panel-head sits directly after the Environments
+     manifest in the DOM with no gap of its own -- found by looking at
+     the live rendered page, not by reading the CSS in isolation; it
+     read as part of the same block instead of its own section. Scoped
+     to "a panel-head following a manifest" so the first (Environments)
+     panel-head, which has nothing stacked above it, is untouched. */
+  .manifest + .panel-head { margin-top: 2.5rem; }
   .eyebrow {
     display: block;
     font-family: var(--mono);
