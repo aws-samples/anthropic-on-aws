@@ -6,8 +6,7 @@
   "description": "SigV4 stdio bridge from Claude Code to an AgentCore MCP Gateway",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "test": "vitest run"
+    "build": "tsc"
   },
   "dependencies": {
     "@aws-crypto/sha256-js": "5.2.0",
@@ -18,8 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.3",
-    "typescript": "5.8.3",
-    "vitest": "3.2.7"
+    "typescript": "5.8.3"
   },
   "engines": {
     "node": ">=22"
