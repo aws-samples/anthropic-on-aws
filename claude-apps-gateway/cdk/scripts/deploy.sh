@@ -68,6 +68,28 @@ needs_pass_one() {
   esac
 }
 
+# find_linux_binary — locate the staged linux-x64 claude binary Step 3 builds
+# into the image. Prints the path and returns 0; prints nothing and returns 1
+# when absent. $1 (optional) is the directory to search from — the script cds
+# to cdk/ up front, so the default ($PWD) reproduces the call-site layout and
+# tests pass a scratch dir instead (no AWS calls, no .env involved).
+find_linux_binary() {
+  local base="${1:-$PWD}"
+  local candidate
+  for candidate in \
+    "$base/../linux-x64/claude" \
+    "$base/linux-x64/claude" \
+    "$base/claude" \
+    "$base/../claude"
+  do
+    if [ -f "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Test hook: `DEPLOY_SH_LIB_ONLY=1 source deploy.sh` loads only the helpers above
 # (see test/deploy-helpers.test.sh) — no .env, no required env, no AWS calls.
 # shellcheck disable=SC2317  # the exit is the executed-not-sourced fallback
@@ -105,6 +127,33 @@ GATEWAY_NAME="${GATEWAY_NAME:-claude-gateway}"
 : "${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET in .env (the real OIDC client secret; it is seeded into Secrets Manager, never baked into the image)}"
 if [ "${OIDC_CLIENT_SECRET}" = "your-oidc-client-secret" ]; then
   echo "❌ OIDC_CLIENT_SECRET is still the .env.example placeholder. Set the real value in .env."
+  exit 1
+fi
+
+# Linux binary preflight (#262). Step 3 builds the image around the staged
+# linux-x64 claude binary, but without this check the script creates the ECR
+# repo, S3 bucket, and IAM role first and only then dies with a bare "not
+# found". Bail here — before the first AWS call below — with the exact fix.
+#
+# The printed commands are cdk/README.md step 5 verbatim, including deriving
+# VERSION from setup.sh's pin rather than the `stable` channel: `stable` and
+# `latest` move independently of the pin, so either one stages a binary this
+# stack does not describe — and nothing downstream catches that, because the
+# image is pushed as :latest and the binary is never version- or SHA-checked.
+if ! LINUX_BINARY="$(find_linux_binary)"; then
+  echo "❌ claude binary not found (looked for linux-x64/claude and ./claude)."
+  echo "   No AWS resources were created. Download it first, then re-run:"
+  # Quoted heredoc, not echo: these four lines are README step 5 verbatim, so
+  # they must survive as literal text. Escaping them for echo is what let the
+  # two copies drift apart, and it trips SC2028 on the sed backreference.
+  cat <<'BINARY_HINT'
+     VERSION=$(sed -n 's/^CLAUDE_VERSION="${CLAUDE_VERSION:-\(.*\)}"$/\1/p' scripts/setup.sh)
+     mkdir -p linux-x64
+     curl -fL -o linux-x64/claude \
+       "https://downloads.claude.ai/claude-code-releases/${VERSION}/linux-x64/claude"
+     chmod +x linux-x64/claude
+BINARY_HINT
+  echo "   (see cdk/README.md step 5)"
   exit 1
 fi
 
@@ -303,22 +352,9 @@ else
     --service-role "arn:aws:iam::${ACCOUNT_ID}:role/claude-gateway-codebuild" >/dev/null
 fi
 
-# Find the linux binary. Accept the README step 5 linux-x64/ layout OR the location
-# the tracked CDK Dockerfile uses (cdk/claude, i.e. ./claude relative to cdk/), so the
-# two documented build paths agree on where the binary lives.
-LINUX_BINARY=""
-if [ -f "../linux-x64/claude" ]; then
-  LINUX_BINARY="../linux-x64/claude"
-elif [ -f "./linux-x64/claude" ]; then
-  LINUX_BINARY="./linux-x64/claude"
-elif [ -f "./claude" ]; then
-  LINUX_BINARY="./claude"
-elif [ -f "../claude" ]; then
-  LINUX_BINARY="../claude"
-else
-  echo "❌ claude binary not found (looked for linux-x64/claude and ./claude). Download it (see cdk/README.md step 5)."
-  exit 1
-fi
+# LINUX_BINARY was resolved by the preflight above (before any AWS call), so a
+# missing binary fails fast there instead of here — after the ECR repo, S3
+# bucket, and IAM role already exist (#262).
 
 # Stamp gateway.yaml from the COMMITTED template via stamp-config.sh — the SAME
 # path setup.sh uses (setup.sh Step 2a) — instead of maintaining a second inline
