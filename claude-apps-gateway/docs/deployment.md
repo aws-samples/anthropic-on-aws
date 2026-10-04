@@ -64,6 +64,12 @@ a common failure:
      (associate it yourself for in-VPC resolution), and off-VPC laptops then need
      a Route 53 Resolver inbound endpoint or corp-DNS forwarding — see
      [`connectivity.md`](connectivity.md).
+
+   Either way the zone is **required** and must live in the deploying account:
+   both tracks write the A-record unconditionally and neither has an
+   external-DNS opt-out. If DNS is in another account or isn't Route 53, you
+   still need an in-account zone to deploy, and you publish the name developers
+   resolve in your own DNS after the deploy.
 4. **Connectivity + private DNS from developer laptops to the internal ALB** — a
    VPN / Direct Connect / Transit Gateway path. This is the #1 "internal ALB doesn't
    work from my laptop" failure — see [`connectivity.md`](connectivity.md).
