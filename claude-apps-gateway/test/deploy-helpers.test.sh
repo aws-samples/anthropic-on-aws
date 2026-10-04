@@ -117,6 +117,56 @@ do
   fi
 done
 
+# ── 4. find_linux_binary — the Step 3 prerequisite, checked before any AWS call ─
+# #262: the binary used to be located in Step 3, after the ECR repo, S3 bucket,
+# and IAM role already existed. It is now resolved by the preflight up front,
+# so these assert the locator itself against scratch dirs (the script's own cwd
+# layout: cdk/ with an optional linux-x64/ beside it).
+SCRATCH="$(mktemp -d)"
+trap 'rm -rf "${SCRATCH}"' EXIT
+mkdir -p "${SCRATCH}/cdk/linux-x64" "${SCRATCH}/linux-x64"
+touch "${SCRATCH}/cdk/linux-x64/claude" "${SCRATCH}/linux-x64/claude"
+touch "${SCRATCH}/cdk/claude" "${SCRATCH}/claude"
+
+# Every accepted layout resolves (first match wins, mirroring the call site).
+# Paths keep their ../ form — identical file, same as the script always used.
+out="$(find_linux_binary "${SCRATCH}/cdk")"
+if [[ "$?" -eq 0 && "${out}" == "${SCRATCH}/cdk/../linux-x64/claude" ]]; then
+  pass "prefers the README step 5 linux-x64/ layout beside cdk/"
+else
+  fail "prefers the README step 5 linux-x64/ layout beside cdk/" "got '${out}'"
+fi
+rm "${SCRATCH}/linux-x64/claude"
+out="$(find_linux_binary "${SCRATCH}/cdk")"
+if [[ "$?" -eq 0 && "${out}" == "${SCRATCH}/cdk/linux-x64/claude" ]]; then
+  pass "falls back to linux-x64/ inside cdk/"
+else
+  fail "falls back to linux-x64/ inside cdk/" "got '${out}'"
+fi
+rm "${SCRATCH}/cdk/linux-x64/claude"
+out="$(find_linux_binary "${SCRATCH}/cdk")"
+if [[ "$?" -eq 0 && "${out}" == "${SCRATCH}/cdk/claude" ]]; then
+  pass "falls back to ./claude (the tracked Dockerfile's location)"
+else
+  fail "falls back to ./claude (the tracked Dockerfile's location)" "got '${out}'"
+fi
+rm "${SCRATCH}/cdk/claude"
+out="$(find_linux_binary "${SCRATCH}/cdk")"
+if [[ "$?" -eq 0 && "${out}" == "${SCRATCH}/cdk/../claude" ]]; then
+  pass "falls back to ../claude"
+else
+  fail "falls back to ../claude" "got '${out}'"
+fi
+
+# Absent everywhere: silent, non-zero — the caller prints the fix, not this.
+rm "${SCRATCH}/claude"
+out="$(find_linux_binary "${SCRATCH}/cdk")"
+if [[ "$?" -ne 0 && -z "${out}" ]]; then
+  pass "missing binary fails silently for the caller to report"
+else
+  fail "missing binary fails silently for the caller to report" "got '${out}'"
+fi
+
 echo ""
 echo "deploy-helpers.test.sh: ${PASS} passed, ${FAIL} failed"
 [[ "${FAIL}" -eq 0 ]]
