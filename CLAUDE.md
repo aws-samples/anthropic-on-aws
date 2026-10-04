@@ -66,9 +66,3 @@ files. **It does not test your sample**, so verify locally before opening a PR:
 - Docs site changes: `mkdocs build` (see `.github/workflows/docbuild.yml` for plugins).
 
 State what you ran in the PR description.
-
-## Automation you'll see
-
-- `anthropic-aws-news-tracker` commits daily to `docs/anthropic-aws-tracker.md` as
-  `github-actions[bot]`. Don't edit that file or `scripts/anthropic-aws-news/seen-items.json`
-  by hand.
