@@ -1,0 +1,167 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GitHub tools for Claude Code (AgentCore Gateway sample)",
+    "description": "The two GitHub operations exposed through the AgentCore Gateway OpenAPI target: list the authenticated user's own open pull requests, and create an issue on a repo. Every call is authorized with that specific user's own GitHub OAuth token (3-legged OAuth via the GithubOauth2 AgentCore Identity credential provider) -- never a shared service token. See README.md, \"GitHub integration setup\".",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://api.github.com" }
+  ],
+  "paths": {
+    "/search/issues": {
+      "get": {
+        "operationId": "listMyOpenPullRequests",
+        "summary": "List the authenticated user's own open pull requests",
+        "description": "Searches GitHub for open pull requests authored by the caller, using the GitHub OAuth token that AgentCore Gateway obtained for this specific user's own account via 3-legged OAuth consent. Leave q at its default value unless you specifically want a different GitHub search query.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "GitHub search-issues query. Defaults to the caller's own open pull requests across every repo they can see.",
+            "schema": {
+              "type": "string",
+              "default": "is:pr is:open author:@me"
+            }
+          },
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": false,
+            "description": "Always use this exact value; GitHub's REST API requires it.",
+            "schema": {
+              "type": "string",
+              "default": "application/vnd.github+json"
+            }
+          },
+          {
+            "name": "X-GitHub-Api-Version",
+            "in": "header",
+            "required": false,
+            "description": "Always use this exact value; pins the GitHub REST API version.",
+            "schema": {
+              "type": "string",
+              "default": "2022-11-28"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results. Each item in `items` is a pull request (GitHub's Search API returns pull requests as issues with a `pull_request` field).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_count": { "type": "integer" },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "number": { "type": "integer" },
+                          "title": { "type": "string" },
+                          "html_url": { "type": "string" },
+                          "state": { "type": "string" },
+                          "repository_url": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "The caller's GitHub OAuth token is missing, expired, or invalid." }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/issues": {
+      "post": {
+        "operationId": "createIssue",
+        "summary": "Create an issue on a GitHub repository",
+        "description": "Creates a new issue, authorized as this specific user's own GitHub account via their 3-legged OAuth consent. The user must have permission to create issues on the target repo.",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "path",
+            "required": true,
+            "description": "The repository owner (user or organization login), e.g. \"octocat\".",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "repo",
+            "in": "path",
+            "required": true,
+            "description": "The repository name, e.g. \"Hello-World\".",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": false,
+            "description": "Always use this exact value; GitHub's REST API requires it.",
+            "schema": {
+              "type": "string",
+              "default": "application/vnd.github+json"
+            }
+          },
+          {
+            "name": "X-GitHub-Api-Version",
+            "in": "header",
+            "required": false,
+            "description": "Always use this exact value; pins the GitHub REST API version.",
+            "schema": {
+              "type": "string",
+              "default": "2022-11-28"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "The issue title."
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "The issue body (Markdown). Optional."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created issue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "number": { "type": "integer" },
+                    "html_url": { "type": "string" },
+                    "title": { "type": "string" },
+                    "state": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "The caller's GitHub OAuth token is missing, expired, or invalid." },
+          "404": { "description": "The repo does not exist or the user cannot see it." },
+          "410": { "description": "Issues are disabled on this repository." },
+          "422": { "description": "Validation failed (for example, an empty title)." }
+        }
+      }
+    }
+  }
+}
