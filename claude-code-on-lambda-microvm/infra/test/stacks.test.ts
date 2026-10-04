@@ -8,6 +8,7 @@ import {
 
 let gatewayTemplate: Template;
 let bedrockTemplate: Template;
+let bedrockDefaultTemplate: Template;
 let bedrockProfileTemplate: Template;
 let agentCoreTemplate: Template;
 let portalTemplate: Template;
@@ -32,7 +33,24 @@ beforeAll(() => {
       { env },
     ),
   );
+  // Direct model ID: exercises the Messages (bedrock-mantle) endpoint path.
   bedrockTemplate = Template.fromStack(
+    new PlatformStack(
+      new cdk.App({
+        context: {
+          '@aws-cdk/aws-ec2:restrictDefaultSecurityGroup':
+            true,
+          bedrockModelId: 'anthropic.claude-sonnet-5',
+          inferenceMode: 'bedrock',
+          vpcCidr: '10.42.0.0/16',
+        },
+      }),
+      'BedrockPlatform',
+      { env },
+    ),
+  );
+  // No bedrockModelId context: exercises the built-in default.
+  bedrockDefaultTemplate = Template.fromStack(
     new PlatformStack(
       new cdk.App({
         context: {
@@ -42,7 +60,7 @@ beforeAll(() => {
           vpcCidr: '10.42.0.0/16',
         },
       }),
-      'BedrockPlatform',
+      'BedrockDefaultPlatform',
       { env },
     ),
   );
@@ -471,6 +489,36 @@ describe('control and runtime permissions', () => {
           }),
         },
       }),
+    );
+  });
+
+  it('defaults to the US inference profile over Bedrock Runtime without a Messages endpoint', () => {
+    bedrockDefaultTemplate.hasResourceProperties(
+      'AWS::Lambda::Function',
+      Match.objectLike({
+        Environment: {
+          Variables: Match.objectLike({
+            BEDROCK_MODEL_ID: 'us.anthropic.claude-sonnet-5',
+            INFERENCE_MODE: 'bedrock',
+          }),
+        },
+      }),
+    );
+    bedrockDefaultTemplate.hasResourceProperties(
+      'AWS::EC2::VPCEndpoint',
+      {
+        ServiceName:
+          'com.amazonaws.us-east-1.bedrock-runtime',
+        VpcEndpointType: 'Interface',
+      },
+    );
+    const rendered = JSON.stringify(
+      bedrockDefaultTemplate.toJSON(),
+    );
+    expect(rendered).not.toContain('bedrock-mantle');
+    expect(rendered).toContain(
+      ':bedrock:us-east-1:111122223333:' +
+        'inference-profile/us.anthropic.claude-sonnet-5',
     );
   });
 

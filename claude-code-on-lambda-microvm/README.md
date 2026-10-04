@@ -138,8 +138,10 @@ cp deployment.example.json deployment.json
 ```
 
 At minimum, review the Region, VPC CIDR, routed developer CIDR, model ID, and
-portal setting. The default model is the direct Sonnet 5 ID
-`anthropic.claude-sonnet-5`.
+portal setting. The example configuration uses the US cross-Region Sonnet 5
+inference profile `us.anthropic.claude-sonnet-5`, served through the private
+Bedrock Runtime endpoint. Adjust it to the model or profile approved for your
+account.
 
 Deploy:
 
