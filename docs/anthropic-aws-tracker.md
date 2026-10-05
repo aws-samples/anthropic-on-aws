@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-05
+
+- [Supercharge regulated workloads with Claude Code and Amazon Bedrock](https://aws.amazon.com/blogs/machine-learning/supercharge-regulated-workloads-with-claude-code-and-amazon-bedrock/) — *AWS Machine Learning Blog* (Mon, 05 Oct 2026 17:25:20 +0000)
+- [New agent skill: Amazon SageMaker optimized generative AI inference for your coding agent](https://aws.amazon.com/blogs/machine-learning/new-agent-skill-amazon-sagemaker-optimized-generative-ai-inference-for-your-coding-agent/) — *AWS Machine Learning Blog* (Mon, 05 Oct 2026 17:23:19 +0000)
+
 ## 2026-10-02
 
 - [Add secure Web Search to Claude Desktop with Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/add-secure-web-search-to-claude-desktop-with-amazon-bedrock-agentcore/) — *AWS Machine Learning Blog* (Fri, 02 Oct 2026 15:46:05 +0000)
