@@ -41,7 +41,7 @@ session:
 | Okta (custom auth server) | `https://company.okta.com/oauth2/default` | Emits email/groups directly |
 | Microsoft Entra ID | `https://login.microsoftonline.com/<tenant-id>/v2.0` | Groups come as Object IDs; use `groups_claim: roles` for app roles |
 | Google Workspace | `https://accounts.google.com` | No groups in id_token; use `google_groups` config or match on `email_domain` |
-| Amazon Cognito | `https://cognito-idp.<region>.amazonaws.com/<pool-id>` | Standard OIDC |
+| Amazon Cognito | `https://cognito-idp.<region>.amazonaws.com/<pool-id>` | Set `scopes: [openid, email, profile]` — `offline_access` isn't a Cognito scope, so the default set fails the first `/login` with `invalid_scope`. Refresh tokens still arrive on the authorization_code grant, so leave `ttl_hours` at 1 |
 
 ## How to verify it
 

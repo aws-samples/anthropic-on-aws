@@ -44,7 +44,10 @@ oidc:
   client_id: @@OIDC_CLIENT_ID@@
   client_secret: ${OIDC_CLIENT_SECRET}   # the one secret in this block (env-injected)
   allowed_email_domains: [@@ALLOWED_EMAIL_DOMAINS@@]
-  # Cognito does not support offline_access; override default scopes here.
+  # Amazon Cognito: offline_access is not a Cognito scope, so the FIRST /login fails
+  # with invalid_scope until you uncomment the override below. Unlike Google, Cognito
+  # still returns a refresh token on the authorization_code grant (its lifetime is an
+  # app-client setting), so session.ttl_hours below stays at 1.
   # scopes: [openid, email, profile]
   # Per-IdP notes — uncomment what your provider needs:
   #   Okta (org server https://example.okta.com): id_token omits email/groups →
@@ -74,6 +77,8 @@ session:
   #   Google: ignores offline_access — set, in the oidc block:
   #     scopes: [openid, profile, email]
   #     extra_auth_params: { access_type: offline, prompt: consent }
+  #   Cognito: drop offline_access (see the oidc block) — refresh tokens come from
+  #     the authorization_code grant regardless, so leave ttl_hours at 1.
   # Opt-out: ONLY if your IdP can't issue refresh tokens, raise ttl_hours to 8-12
   # (no silent renewal otherwise) — deprovisioning then lags by that TTL.
 
