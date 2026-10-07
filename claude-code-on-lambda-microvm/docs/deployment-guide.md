@@ -217,7 +217,7 @@ Code Desktop and Remote Tunnels installation.
 | AWS Region | `us-east-1` | |
 | Platform VPC CIDR | `10.42.0.0/16` | |
 | Trusted developer source CIDR | `10.100.0.0/22` | |
-| Bedrock model or profile ID | `anthropic.claude-sonnet-5` | |
+| Bedrock model or profile ID | `us.anthropic.claude-sonnet-5` | |
 | AgentCore Gateway URL and ARN | Optional | |
 | Portal enabled | `true` | |
 | Optional gateway URL | `https://<private-gateway-hostname>` | |
@@ -395,13 +395,16 @@ For optional gateway mode, replace the inference fields with the values in
 The stack pins one explicit Claude model ID and rejects other providers and
 malformed values. The accepted ID determines the endpoint:
 
-- `anthropic.claude-sonnet-5` is the default direct model ID. Claude Code
-  routes this form to the Messages API, and the stack creates a private
-  Messages endpoint with the required project-scoped permission.
 - `us.anthropic.claude-*`, `eu.anthropic.claude-*`,
   `au.anthropic.claude-*`, and `global.anthropic.claude-*` are geographic or
   global inference-profile IDs. Claude Code routes these through the private
-  Bedrock Runtime endpoint.
+  Bedrock Runtime endpoint, the AWS-recommended path. The example
+  configuration in this sample uses `us.anthropic.claude-sonnet-5`.
+- `anthropic.claude-sonnet-5` is the direct model ID. Claude Code routes this
+  form to the Messages API, and the stack creates a private Messages
+  endpoint with the required project-scoped permission. Confirm that the
+  Messages endpoint service is available in the target Region and
+  Availability Zones before choosing this form.
 
 Machine-managed settings expose the matching Claude Code family alias, such as
 `sonnet`, as the only selectable model and map that alias to the exact
