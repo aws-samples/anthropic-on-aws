@@ -1,6 +1,12 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-07
+
+- [Claude Haiku 5.5 is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/10/claude-haiku-5-5-aws/) — *AWS What's New* (Wed, 07 Oct 2026 14:00:00 GMT)
+- [Claude Haiku 5.5 is now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/10/claude-haiku-5-5-aws-govcloud/) — *AWS What's New* (Wed, 07 Oct 2026 14:00:00 GMT)
+- [Introducing Claude Haiku 5.5 on AWS](https://aws.amazon.com/blogs/machine-learning/introducing-claude-haiku-5-5-on-aws/) — *AWS Machine Learning Blog* (Wed, 07 Oct 2026 18:52:10 +0000)
+
 ## 2026-10-05
 
 - [Supercharge regulated workloads with Claude Code and Amazon Bedrock](https://aws.amazon.com/blogs/machine-learning/supercharge-regulated-workloads-with-claude-code-and-amazon-bedrock/) — *AWS Machine Learning Blog* (Mon, 05 Oct 2026 17:25:20 +0000)
