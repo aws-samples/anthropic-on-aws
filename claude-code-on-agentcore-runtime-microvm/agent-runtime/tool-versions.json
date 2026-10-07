@@ -1,0 +1,11 @@
+{
+  "claudeCode": {
+    "version": "2.1.215",
+    "sha256": "2b43a3d5b0787217e5d7381fad42c7314292546fe9db9eb8b9b379de90509b30"
+  },
+  "vscodeCli": {
+    "version": "1.129.1",
+    "commit": "8a7abeba6e03ea3af87bfbce9a1b7e48fed567b8",
+    "sha256": "abd6e9ef317be8ecbbe255954bb76e5c174f15e1b37cf99d82a3d59b798812a6"
+  }
+}
