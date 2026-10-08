@@ -33,8 +33,33 @@ role granting Bedrock invoke.
 
 The CDK app and `setup.sh` provision the **same** Fargate deployment two ways — keep them in sync.
 
+How the pieces connect (all scripts live in `cdk/scripts/`, not the repo root):
+
+- **`setup.sh`** (Track A) — the aws-CLI path. Its `CLAUDE_VERSION` default is the **single
+  version pin** for the gateway binary; the CDK docs read it from there rather than a release
+  channel.
+- **`deploy.sh`** — the CDK convenience path: reads `cdk/.env` (from `.env.example`), maps it
+  to CDK context (`gatewayName`, `certArn`, …), runs the two passes, and builds/pushes the image
+  via S3 + CodeBuild so no local Docker is needed. Its pass-1 gate can delete a live data plane,
+  which is why that logic is unit-tested.
+- **`stamp-config.sh`** — shared by both paths: renders `cdk/gateway.yaml.template` into
+  `gateway.yaml` by substituting `@@NAME@@` deploy-time placeholders, leaving `${ENV_VAR}`
+  runtime secrets for the gateway to expand. Edit the template, never a generated `gateway.yaml`.
+- `setup.sh` and `deploy.sh` are sourceable for tests: `SETUP_SH_LIB_ONLY=1` /
+  `DEPLOY_SH_LIB_ONLY=1` load only the helper functions defined above the gate.
+- `workshop/` — five hands-on modules (identity, policy, telemetry, routing, spend caps) run
+  against an already-deployed gateway.
+
 ## Non-obvious constraints (these break the gateway if missed)
 
+- **Bedrock access goes through a per-developer `assume_role`** (gateway >= 2.1.281). The task
+  role holds *no* Bedrock grant — only `sts:AssumeRole` on a fixed-name
+  `<gatewayName>-bedrock-role`, which trusts only the task role and holds the Bedrock policy
+  below. `gateway.yaml` sets `assume_role: {role_arn, session_name: email}` on the Bedrock
+  upstream, so AWS attributes each call to `assumed-role/<role>/<email>`. The role name is
+  fixed because `gateway.yaml` is baked into the image *before* the stack creates the role:
+  `deploy.sh`/`setup.sh` derive the ARN and pass `BEDROCK_ROLE_ARN` to `stamp-config.sh`.
+  Every Bedrock upstream must carry the block, and both tracks add an STS interface endpoint.
 - **Bedrock IAM needs two ARN families.** Grant `bedrock:InvokeModel` +
   `bedrock:InvokeModelWithResponseStream` + `bedrock:CountTokens` (2.1.260+ counts aborted
   requests through it, falling back to a `max_tokens:1` invoke; Bedrock supports it for
@@ -124,22 +149,25 @@ welcome and should not be bundled with a debatable feature in the same PR.
 
 No live AWS account is wired up here, so verification is local/static:
 
-- Shell: `bash -n setup.sh`, and `shellcheck setup.sh` if available.
+- Shell: `bash -n cdk/scripts/*.sh`, and `shellcheck cdk/scripts/*.sh` if available.
 - CDK (strongest automated check — type-checks TS + validates construct wiring without deploying):
   `cd cdk && npm install && npx cdk synth`. Deploy a single stack with `npx cdk deploy <StackName>`.
 - Tests (run these after changing the stack or `stamp-config.sh`, and add cases when
   fixing a deployment trap): `cd cdk && npm test` (Jest + CDK `assertions` over the
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
-  ADOT telemetry sidecar, `createVpcEndpoints` opt-out, imported-cert TLS),
+  ADOT telemetry sidecar, `createVpcEndpoints` opt-out, imported-cert TLS, the
+  assume_role split — Bedrock role trust/name, no Bedrock grant on the task role, STS endpoint),
   `./test/stamp-config.test.sh`
-  (dependency-free bash: placeholder guard + Google scope auto-injection),
+  (dependency-free bash + PyYAML: placeholder guard, Google scope auto-injection, the
+  stamped `assume_role` block),
   `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool
   detection / `--provenance` gating + the OIDC-secret preflight), and
   `./test/deploy-helpers.test.sh` (deploy.sh's pass-1 gate — the destructive branch's
   status allowlist, fail-closed status query, and leaving CDK-recoverable statuses to
   CDK rather than bailing). None
   needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
-- Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
+  Single Jest case: `cd cdk && npx jest -t '<test name substring>'`.
+- Config: `python3 -c 'import yaml; yaml.safe_load(open("cdk/gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).
 - `docker build` is deferred — it needs the real pinned `claude` binary that `setup.sh` stages.
 

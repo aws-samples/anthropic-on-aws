@@ -9,8 +9,9 @@ import { GatewayStack, GatewayStackProps } from '../lib/claude-gateway-stack';
  *
  * The focus is the non-obvious wiring that breaks the gateway if it regresses:
  * the dual-ARN Bedrock policy, the IPv4-only internal ALB, the raised idle
- * timeout, the /healthz target-group check, and the createVpcEndpoints opt-out
- * added for VPC reuse.
+ * timeout, the /healthz target-group check, the createVpcEndpoints opt-out
+ * added for VPC reuse, and the per-developer assume_role split (task role → STS
+ * only; a fixed-name Bedrock role holds the Bedrock grant).
  */
 
 const ACCOUNT = '111122223333';
@@ -21,7 +22,7 @@ const REGION = 'us-east-1';
 const PASS2: GatewayStackProps = {
   env: { account: ACCOUNT, region: REGION },
   imageReady: true,
-  imageTag: '2.1.274',
+  imageTag: '2.1.294',
   publicUrl: 'https://claude-gateway.example.com',
   certArn: `arn:aws:acm:${REGION}:${ACCOUNT}:certificate/abc-123`,
   zoneName: 'example.com',
@@ -35,8 +36,31 @@ function synth(props: GatewayStackProps): Template {
   return Template.fromStack(stack);
 }
 
+/** Logical id of the IAM role with the given physical RoleName. */
+function roleIdByName(template: Template, roleName: string): string {
+  const ids = Object.keys(template.findResources('AWS::IAM::Role', { Properties: { RoleName: roleName } }));
+  expect(ids).toHaveLength(1);
+  return ids[0];
+}
+const bedrockRoleId = (template: Template) => roleIdByName(template, 'claude-gateway-bedrock-role');
+
+/** Logical id of the gateway's ECS task role (the one ecs-tasks assumes and the task def names). */
+function taskRoleId(template: Template): string {
+  const taskDef = Object.values(template.findResources('AWS::ECS::TaskDefinition'))[0];
+  return (taskDef.Properties.TaskRoleArn as { 'Fn::GetAtt': [string, string] })['Fn::GetAtt'][0];
+}
+
+/** Every statement of every inline IAM policy attached to the given role. */
+function statementsForRole(template: Template, roleId: string): Array<Record<string, unknown>> {
+  return Object.values(template.findResources('AWS::IAM::Policy'))
+    .filter((p) => (p.Properties.Roles as Array<{ Ref: string }>).some((r) => r.Ref === roleId))
+    .flatMap((p) => p.Properties.PolicyDocument.Statement as Array<Record<string, unknown>>);
+}
+const actionsOf = (st: Record<string, unknown>): string[] =>
+  ([] as string[]).concat(st.Action as string | string[]);
+
 describe('pass 1 (imageReady: false) — ECR repo only', () => {
-  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.274' });
+  const template = synth({ env: PASS2.env, imageReady: false, imageTag: '2.1.294' });
 
   test('creates the ECR repository', () => {
     template.resourceCountIs('AWS::ECR::Repository', 1);
@@ -52,11 +76,11 @@ describe('pass 1 (imageReady: false) — ECR repo only', () => {
 describe('pass 2 (imageReady: true) — full stack', () => {
   const template = synth(PASS2);
 
-  test('creates all seven VPC endpoints by default (6 interface + 1 gateway)', () => {
-    template.resourceCountIs('AWS::EC2::VPCEndpoint', 7);
+  test('creates all eight VPC endpoints by default (7 interface incl. STS + 1 gateway)', () => {
+    template.resourceCountIs('AWS::EC2::VPCEndpoint', 8);
   });
 
-  test('Bedrock task role grants BOTH inference-profile and foundation-model ARNs', () => {
+  test('Bedrock role grants BOTH inference-profile and foundation-model ARNs', () => {
     // Missing either ARN family yields 403 on invoke — this is the trap CLAUDE.md
     // calls out, so pin both into the policy. Asserted as two single-element
     // arrayWith matches: mixing a literal and a stringLikeRegexp inside ONE
@@ -64,8 +88,11 @@ describe('pass 2 (imageReady: true) — full stack', () => {
     // CountTokens rides the same statement: from 2.1.260 the gateway counts an
     // aborted request's input tokens through it, falling back to a max_tokens:1
     // invoke when the call fails — so the grant buys the free path.
+    // Scoped to the Bedrock role's policy: with assume_role the task role must not
+    // carry this grant (asserted separately below).
     const invokeStatement = (resource: unknown) =>
       Match.objectLike({
+        Roles: [{ Ref: bedrockRoleId(template) }],
         PolicyDocument: {
           Statement: Match.arrayWith([
             Match.objectLike({
@@ -213,7 +240,7 @@ describe('createVpcEndpoints opt-out (VPC reuse)', () => {
 
   test('omitting the flag defaults to creating the endpoints', () => {
     const template = synth(PASS2);
-    template.resourceCountIs('AWS::EC2::VPCEndpoint', 7);
+    template.resourceCountIs('AWS::EC2::VPCEndpoint', 8);
   });
 });
 
@@ -227,10 +254,59 @@ describe('gatewayName parameterization (must match setup.sh PROJECT / deploy.sh 
     t.hasResourceProperties('AWS::ECS::Service', { ServiceName: 'claude-gateway2' });
     t.hasResourceProperties('AWS::SecretsManager::Secret', { Name: 'claude-gateway2-oidc-client-secret' });
     t.hasResourceProperties('AWS::Logs::LogGroup', { LogGroupName: '/claude-gateway2/gateway' });
+    // deploy.sh stamps assume_role.role_arn from GATEWAY_NAME, so the role must follow it.
+    t.hasResourceProperties('AWS::IAM::Role', { RoleName: 'claude-gateway2-bedrock-role' });
   });
 
   test('defaults to claude-gateway when gatewayName is omitted', () => {
     const t = synth(PASS2);
     t.hasResourceProperties('AWS::ECR::Repository', { RepositoryName: 'claude-gateway' });
+  });
+});
+
+describe('per-developer assume_role (gateway >= 2.1.281, session_name: email)', () => {
+  // gateway.yaml's Bedrock upstream sets assume_role with session_name: email, so the
+  // gateway assumes the Bedrock role once per developer per hour and AWS attributes
+  // each request to assumed-role/<role>/<email>. The ARN is stamped into the image
+  // before the stack exists, hence the fixed RoleName these tests pin.
+  const template = synth(PASS2);
+
+  test('the Bedrock role has the fixed name deploy.sh / setup.sh stamp into gateway.yaml', () => {
+    template.hasResourceProperties('AWS::IAM::Role', { RoleName: 'claude-gateway-bedrock-role' });
+    template.hasOutput('BedrockRoleArn', {});
+  });
+
+  test('the Bedrock role trusts only the gateway task role', () => {
+    const role = template.findResources('AWS::IAM::Role')[bedrockRoleId(template)];
+    const trust = role.Properties.AssumeRolePolicyDocument.Statement as Array<Record<string, any>>;
+    expect(trust).toHaveLength(1);
+    expect(trust[0].Action).toBe('sts:AssumeRole');
+    expect(trust[0].Principal).toEqual({ AWS: { 'Fn::GetAtt': [taskRoleId(template), 'Arn'] } });
+  });
+
+  test('the task role may assume the Bedrock role', () => {
+    const assume = statementsForRole(template, taskRoleId(template)).filter((st) =>
+      actionsOf(st).includes('sts:AssumeRole'),
+    );
+    expect(assume).toHaveLength(1);
+    expect(assume[0].Resource).toEqual({ 'Fn::GetAtt': [bedrockRoleId(template), 'Arn'] });
+  });
+
+  test('the task role holds NO Bedrock permission of its own', () => {
+    // An upstream without assume_role would sign with the task role and escape
+    // per-developer attribution; with no grant here that misconfiguration 403s
+    // instead of silently billing every request to one principal.
+    const bedrockActions = statementsForRole(template, taskRoleId(template))
+      .flatMap(actionsOf)
+      .filter((a) => a.startsWith('bedrock:'));
+    expect(bedrockActions).toEqual([]);
+  });
+
+  test('an STS interface endpoint keeps the request-time AssumeRole calls off the NAT', () => {
+    template.hasResourceProperties('AWS::EC2::VPCEndpoint', {
+      ServiceName: Match.stringLikeRegexp('\\.sts$'),
+      VpcEndpointType: 'Interface',
+      PrivateDnsEnabled: true,
+    });
   });
 });

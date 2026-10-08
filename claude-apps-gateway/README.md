@@ -88,10 +88,10 @@ You need an AWS account where they can create the following resources:
 - **Compute**: ECS cluster (Fargate), EKS cluster, or EC2 instances
 - **Database**: An RDS PostgreSQL instance (db.t4g.micro is sufficient; the gateway stores only a few KB of sign-in state)
 - **Networking**: A VPC with private subnets, an internal ALB, and an imported ACM TLS certificate (use a public ACM cert to skip the first-login fingerprint prompt — see [`cdk/README.md`](cdk/README.md))
-- **IAM role**: The gateway's task role needs `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream` and `bedrock:CountTokens` permissions on inference-profile and foundation-model ARNs
+- **IAM roles**: The gateway's task role needs only `sts:AssumeRole` on a second **Bedrock role**, which holds `bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream` and `bedrock:CountTokens` on inference-profile and foundation-model ARNs. The gateway assumes that role once per developer, so AWS attributes Bedrock usage to each developer's email (see [Per-developer cost attribution](#per-developer-cost-attribution-assume_role) below)
 - **Model access**: A **one-time, account-level** enablement of each Claude model you list — a Bedrock *console/admin* action, **not** an IAM grant or a gateway responsibility. On Bedrock, Anthropic's models are AWS Marketplace offerings, so first use requires a subscription. Until it's done, invokes return a `403` (often naming `aws-marketplace:ViewSubscriptions` / `aws-marketplace:Subscribe`) even though the IAM policy above is correct. Enable it once as an admin; **do not** add Marketplace permissions to the task role (see [`docs/gotchas.md`](docs/gotchas.md) §8 for why). This is the single most common Bedrock-through-gateway failure.
 
-The IAM policy for the task role looks like:
+The IAM policy on the Bedrock role looks like:
 ```json
 {
   "Effect": "Allow",
@@ -109,11 +109,36 @@ The IAM policy for the task role looks like:
 
 `bedrock:CountTokens` is there because the gateway counts an aborted request's input tokens through Bedrock's free `CountTokens` API. It is not load-bearing: when the call fails the gateway logs one warning per upstream and falls back to a `max_tokens:1` invoke, so the tokens are still counted — you just pay for the probe. Two limits are worth knowing before you expect the free path (both verified against Bedrock, us-east-1, 2026-09-15): `CountTokens` accepts only a **bare foundation-model id**, not an inference profile (the gateway strips the `global.`/`us.` prefix itself), and of this example's catalog only `anthropic.claude-haiku-4-5-20251001-v1:0` supports it — `anthropic.claude-opus-5` and `anthropic.claude-sonnet-5` return `ValidationException: The provided model doesn't support counting tokens`. Those two therefore take the fallback whatever the IAM policy says.
 
+#### Per-developer cost attribution (`assume_role`)
+
+The Bedrock upstream in [`gateway.yaml.template`](cdk/gateway.yaml.template) sets `assume_role` with `session_name: email`:
+
+```yaml
+upstreams:
+  - provider: bedrock
+    region: us-east-1
+    auth: {}                 # the task role: it only calls STS
+    assume_role:
+      role_arn: arn:aws:iam::<account>:role/claude-gateway-bedrock-role
+      session_name: email
+```
+
+The gateway assumes the Bedrock role once per developer per hour, with the session name set to the developer's verified email, and signs that developer's Bedrock calls with the result. Each request reaches AWS as `arn:aws:sts::<account>:assumed-role/claude-gateway-bedrock-role/<email>`, so it shows up per developer in CloudTrail and, once you enable [IAM principal cost allocation](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/iam-principal-cost-allocation.html) in your billing export, in AWS billing. Both deploy paths create the role with a fixed name (`<GATEWAY_NAME>-bedrock-role`) that trusts only the task role, add an STS interface VPC endpoint so the request-time `AssumeRole` calls stay off the NAT, and stamp the role ARN into `gateway.yaml`.
+
+What to know (behaviour, limits, and the cross-account variant are in the [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#per-developer-aws-cost-attribution) and the [AWS deploy guide](https://code.claude.com/docs/en/claude-apps-gateway-on-aws#cost-attribution)):
+
+- If you add Bedrock upstreams, give each one the same `assume_role` block. The task role has no Bedrock grant of its own, so an upstream without it gets 403s rather than silently billing to one principal.
+- The token count for a request the developer aborted, and its `max_tokens:1` fallback, are signed by a shared `claude-apps-gateway` session, not the developer's.
+- A developer whose IdP token carries no email claim isn't served by this upstream; switch to `session_name: sub` or set `oidc.email_claim`.
+- If STS fails, the gateway tries the next upstream; it doesn't fall back to the task role's own credentials.
+
+#### Inference profiles and regions
+
 The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-5`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`au.`, and `jp.` for some models, since geo coverage varies per model — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
 
 ### 4. Claude Code versions: one pin, two axes
 
-**This example is built and validated on Claude Code `2.1.274`.** That single version is the
+**This example is built and validated on Claude Code `2.1.294`.** That single version is the
 gateway server: it sets `CLAUDE_VERSION` in [`cdk/scripts/setup.sh`](cdk/scripts/setup.sh) and
 `claudeVersion` in [`cdk/bin/app.ts`](cdk/bin/app.ts), drives the binary download, and is baked
 into the container image. Everything documented in this README describes that version's
@@ -331,7 +356,10 @@ See [`docs/deployment.md`](docs/deployment.md#telemetry) for deployment details.
 upstreams:
   - provider: bedrock
     region: us-east-1     # any region; global profiles resolve everywhere
-    auth: {}              # uses ECS task role / instance profile
+    auth: {}              # ECS task role / IRSA — here it only calls STS
+    assume_role:          # one session per developer → per-user AWS attribution
+      role_arn: arn:aws:iam::111111111111:role/claude-gateway-bedrock-role
+      session_name: email
 
 # Explicit catalog → global cross-region inference profiles, so the config is
 # region-agnostic. (For data residency, swap global. for a geo prefix: us./eu./au.,
@@ -367,11 +395,13 @@ upstreams:
     provider: bedrock
     region: us-east-1
     auth: {}
+    assume_role: { role_arn: arn:aws:iam::111111111111:role/claude-gateway-bedrock-role, session_name: email }
 
   - name: bedrock-od
     provider: bedrock
     region: us-west-2
     auth: {}
+    assume_role: { role_arn: arn:aws:iam::111111111111:role/claude-gateway-bedrock-role, session_name: email }
 
 models:
   - id: claude-opus-4-8
@@ -384,8 +414,9 @@ models:
 **Key points:**
 - Failover is automatic: 5xx, 429, and timeouts try the next upstream; 4xx does not, except a `404` — so a model missing from one upstream falls through to one that has it
 - Cross-region is supported (gateway in us-east-1, Amazon Bedrock in eu-west-1)
-- Cross-account is supported (each upstream can have different credentials)
-- `auth: {}` uses the AWS default credential chain (ECS task role, IRSA, instance profile)
+- Cross-account is supported (each upstream can have different credentials, or `assume_role` a role in another account)
+- `auth: {}` uses the AWS default credential chain (ECS task role, IRSA, instance profile); with `assume_role` that identity only calls STS
+- Set `assume_role` on **every** Bedrock upstream, or the requests an upstream without it serves lose per-developer attribution
 - Claude Platform on AWS uses standard Anthropic model IDs (claude-sonnet-4-6), not Bedrock ARNs
 - Changing providers requires only a config change and redeploy, no developer action
 

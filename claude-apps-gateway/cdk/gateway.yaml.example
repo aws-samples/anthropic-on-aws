@@ -82,7 +82,22 @@ store:
 upstreams:
   - provider: bedrock
     region: us-east-1
-    auth: {}                 # AWS default credential chain → the ECS task role
+    auth: {}                 # AWS default credential chain → the ECS task role,
+                             # which here ONLY calls sts:AssumeRole (no Bedrock grant)
+    # Per-developer AWS cost attribution (requires gateway >= 2.1.281; earlier
+    # gateways refuse to start on this key). The gateway assumes role_arn once per
+    # developer per hour with RoleSessionName = their verified email, and signs that
+    # developer's Bedrock calls with the result, so AWS sees each request as
+    #   arn:aws:sts::<account>:assumed-role/<role>/<email>
+    # Enable IAM principal cost allocation in your billing export to see spend per
+    # developer. The role holds the Bedrock policy and trusts only the task role.
+    # Caveats: the token count for an aborted request (and its max_tokens:1
+    # fallback) is signed by the shared `claude-apps-gateway` session, not the
+    # developer's; if STS fails the gateway tries the next upstream rather than
+    # falling back to the task role's own credentials.
+    assume_role:
+      role_arn: arn:aws:iam::123456789012:role/claude-gateway-bedrock-role
+      session_name: email    # or `sub` if your IdP's tokens carry no email claim
     # FIPS / VPC-endpoint override:
     # base_url: https://bedrock-runtime-fips.us-east-1.amazonaws.com
   # Multi-upstream failover (provisioned-throughput → on-demand → second region).
@@ -90,14 +105,18 @@ upstreams:
   # 401, 403, 404, and timeout — so an upstream that hasn't enabled a model (404)
   # falls through to one that has; other 4xx (a bad request) does not. (Pre-2.1.198
   # returned the first 404 to the client instead of trying later upstreams.)
+  # Repeat assume_role on EVERY Bedrock upstream: one without it signs with the
+  # task role, which has no Bedrock grant here (and would lose per-user attribution).
   # - name: bedrock-pt
   #   provider: bedrock
   #   region: us-east-1
   #   auth: {}
+  #   assume_role: { role_arn: arn:aws:iam::123456789012:role/claude-gateway-bedrock-role, session_name: email }
   # - name: bedrock-od
   #   provider: bedrock
   #   region: us-west-2
   #   auth: {}
+  #   assume_role: { role_arn: arn:aws:iam::123456789012:role/claude-gateway-bedrock-role, session_name: email }
   # (with a matching `models:` block mapping the PT ARN to bedrock-pt)
   #
   # Claude Platform on AWS (anthropicAws) — an alternative AWS-native upstream,

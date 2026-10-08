@@ -17,7 +17,8 @@ runtime-only failure. See the fix below.
 - The **distroless image** is identical — same pinned `claude` binary, same
   `claude gateway --config …` entrypoint.
 - The **dual-ARN Bedrock policy** is identical (both `inference-profile/global.anthropic.*`
-  and `foundation-model/anthropic.*`).
+  and `foundation-model/anthropic.*`), and so is the **per-developer `assume_role`** split:
+  that policy lives on the Bedrock role the gateway assumes, not on the gateway's own role.
 - **RDS**, the **internal-ALB / private-IP** requirement, the **idle-timeout**
   need, and the **Bedrock model-access prerequisite** are unchanged.
 
@@ -25,9 +26,11 @@ runtime-only failure. See the fix below.
 
 ### 1. Credentials: IRSA instead of an ECS task role
 
-Create an IAM role with the dual-ARN Bedrock policy and a trust policy for the
-cluster's OIDC provider scoped to the gateway's service account, then annotate
-the service account:
+Create an IAM role with a trust policy for the cluster's OIDC provider scoped to
+the gateway's service account and `sts:AssumeRole` on the Bedrock role (the one
+named in `assume_role.role_arn`), then annotate the service account. The Bedrock
+role keeps the dual-ARN Bedrock policy; change its trust policy to name this IRSA
+role instead of the ECS task role:
 
 ```yaml
 apiVersion: v1
@@ -39,7 +42,8 @@ metadata:
 ```
 
 `auth: {}` in the Bedrock upstream picks it up through the default credential
-chain — no static keys.
+chain — no static keys — and uses it only to call STS. The pods need a path to
+`sts.<region>.amazonaws.com` (an STS interface endpoint or NAT).
 
 ### 2. Config + secrets: the Secrets Store CSI driver (file mounts)
 
