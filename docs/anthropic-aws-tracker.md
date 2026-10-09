@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-09
+
+- [Anthropic Claude Sonnet 5.5 and Claude Opus 5.5 are now available on Kiro in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/06/kiro-claude-5-5-aws-govcloud-us/) — *AWS What's New* (Fri, 09 Oct 2026 17:13:00 GMT)
+- [AWS Cost Explorer, Budgets, and Dashboards now support Amazon Bedrock product attributes](https://aws.amazon.com/about-aws/whats-new/2026/10/aws-bedrock-attributes-in-cost-explorer/) — *AWS What's New* (Thu, 08 Oct 2026 18:51:00 GMT)
+
 ## 2026-10-07
 
 - [Claude Haiku 5.5 is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/10/claude-haiku-5-5-aws/) — *AWS What's New* (Wed, 07 Oct 2026 14:00:00 GMT)
