@@ -15,6 +15,7 @@
 #   OIDC_ISSUER            OIDC discovery base
 #   OIDC_CLIENT_ID         OAuth client id
 #   ALLOWED_EMAIL_DOMAINS  comma-separated, e.g. "example.com,corp.example.com"
+#   BEDROCK_ROLE_ARN       IAM role the gateway assumes (per developer) to call Bedrock
 #   DB_NAME                Postgres database name (default: claude_gateway)
 #   TEMPLATE               input template path  (default: ./gateway.yaml.template)
 #   OUT                    output config path    (default: ./gateway.yaml)
@@ -22,7 +23,8 @@
 # Usage:
 #   PUBLIC_URL=https://claude-gateway.example.com AWS_REGION=us-east-1 \
 #   OIDC_ISSUER=https://example.okta.com OIDC_CLIENT_ID=0oa1example2 \
-#   ALLOWED_EMAIL_DOMAINS=example.com ./stamp-config.sh
+#   ALLOWED_EMAIL_DOMAINS=example.com \
+#   BEDROCK_ROLE_ARN=arn:aws:iam::123456789012:role/claude-gateway-bedrock-role ./stamp-config.sh
 
 set -euo pipefail
 
@@ -40,6 +42,7 @@ die() { echo "stamp-config: ERROR: $*" >&2; exit 1; }
 : "${OIDC_ISSUER:?set OIDC_ISSUER (OIDC discovery base)}"
 : "${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID (OAuth client id)}"
 : "${ALLOWED_EMAIL_DOMAINS:?set ALLOWED_EMAIL_DOMAINS (comma-separated)}"
+: "${BEDROCK_ROLE_ARN:?set BEDROCK_ROLE_ARN (the role the gateway assumes for Bedrock)}"
 
 # allowed_email_domains is rendered as a YAML flow sequence: example.com,corp.com
 # -> "example.com, corp.com" so the template's [@@ALLOWED_EMAIL_DOMAINS@@] is valid.
@@ -82,6 +85,7 @@ subst '@@PUBLIC_URL@@'            "${PUBLIC_URL}"            < "${TEMPLATE}" \
   | subst '@@ALLOWED_EMAIL_DOMAINS@@' "${domains_yaml}" \
   | subst '@@OIDC_GOOGLE_BLOCK@@'     "${google_block}" \
   | subst '@@DB_NAME@@'               "${DB_NAME}" \
+  | subst '@@BEDROCK_ROLE_ARN@@'      "${BEDROCK_ROLE_ARN}" \
   > "${tmp}"
 
 # Guard: refuse to emit a config that still has an unstamped @@...@@ placeholder —

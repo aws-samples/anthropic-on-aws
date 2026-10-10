@@ -30,7 +30,7 @@ export interface GatewayStackProps extends cdk.StackProps {
   /**
    * Create the interface + S3 VPC endpoints (default true). Set false ONLY when
    * reusing a VPC (`vpcId`) that ALREADY provides private egress to Bedrock,
-   * Secrets Manager, ECR, CloudWatch Logs/Monitoring, and S3 — otherwise the
+   * Secrets Manager, ECR, CloudWatch Logs/Monitoring, STS, and S3 — otherwise the
    * gateway loses its "AWS traffic never touches the internet" posture. AWS
    * permits only one private-DNS-enabled interface endpoint per service per VPC,
    * so recreating endpoints a reused VPC already has fails the deploy; this flag
@@ -155,6 +155,11 @@ export class GatewayStack extends cdk.Stack {
       addIfaceEndpoint('EcrDockerEndpoint', ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER);
       addIfaceEndpoint('CloudWatchLogsEndpoint', ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS);
       addIfaceEndpoint('CloudWatchMonitoringEndpoint', ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_MONITORING);
+      // STS: the gateway calls sts:AssumeRole at request time (assume_role in
+      // gateway.yaml), at the regional sts.<region>.amazonaws.com endpoint. This
+      // endpoint covers the deploy region; a bedrockRegion elsewhere reaches its
+      // STS (like its Bedrock runtime) via NAT.
+      addIfaceEndpoint('StsEndpoint', ec2.InterfaceVpcEndpointAwsService.STS);
       vpc.addGatewayEndpoint('S3Endpoint', { service: ec2.GatewayVpcEndpointAwsService.S3 });
     }
 
@@ -238,15 +243,41 @@ export class GatewayStack extends cdk.Stack {
     });
 
 
-    // ── Gateway task role: dual-ARN Bedrock policy ────────────────────────────
-    // BOTH inference-profile (global.anthropic.*) AND foundation-model (anthropic.*)
-    // ARNs — missing either yields 403 on invoke. auth: {} in gateway.yaml picks
-    // this up via the ECS container-credentials endpoint (no IMDS, no hop-limit trap).
+    // ── Gateway task role: STS + CloudWatch only (no Bedrock grant) ───────────
+    // auth: {} in gateway.yaml picks this up via the ECS container-credentials
+    // endpoint (no IMDS, no hop-limit trap). With assume_role set on the Bedrock
+    // upstream, the task role's only Bedrock-path job is sts:AssumeRole on the
+    // Bedrock role below; the gateway signs every Bedrock call (CountTokens
+    // included) with the assumed role's credentials.
     const taskRole = new iam.Role(this, 'TaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'Claude gateway task role: Bedrock invoke + CloudWatch metrics',
+      description: 'Claude gateway task role: assume the Bedrock role + CloudWatch metrics',
     });
     taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+      }),
+    );
+
+    // ── Bedrock role: dual-ARN Bedrock policy, assumed per developer ──────────
+    // gateway.yaml's assume_role (session_name: email, gateway >= 2.1.281) makes the
+    // gateway assume this role once per developer per hour with RoleSessionName =
+    // the developer's email, so Bedrock calls reach AWS as
+    // assumed-role/<this role>/<email> — per-developer attribution in AWS billing.
+    // FIXED name on purpose: gateway.yaml is baked into the image before this stack
+    // creates the role, so deploy.sh / setup.sh stamp the ARN from
+    // arn:aws:iam::<account>:role/<gatewayName>-bedrock-role. Keep the two in sync.
+    //
+    // BOTH inference-profile (global.anthropic.*) AND foundation-model (anthropic.*)
+    // ARNs — missing either yields 403 on invoke.
+    const bedrockRole = new iam.Role(this, 'BedrockRole', {
+      roleName: `${gatewayName}-bedrock-role`,
+      assumedBy: taskRole,
+      description: 'Claude gateway Bedrock role: assumed per developer (session name = email)',
+    });
+    bedrockRole.grantAssumeRole(taskRole);
+    bedrockRole.addToPolicy(
       new iam.PolicyStatement({
         actions: [
           'bedrock:InvokeModel',
@@ -259,7 +290,8 @@ export class GatewayStack extends cdk.Stack {
           // strips the global./us. prefix itself), and of this catalog only
           // anthropic.claude-haiku-4-5-20251001-v1:0 supports it — Opus 5 and Sonnet 5
           // return "The provided model doesn't support counting tokens", so they take
-          // the fallback whatever IAM says.
+          // the fallback whatever IAM says. With assume_role, these calls are signed
+          // by the shared claude-apps-gateway session, not a developer's.
           'bedrock:CountTokens',
         ],
         resources: [
@@ -270,12 +302,6 @@ export class GatewayStack extends cdk.Stack {
           `arn:aws:bedrock:${bedrockRegion}:${this.account}:inference-profile/global.anthropic.*`,
           'arn:aws:bedrock:*::foundation-model/anthropic.*',
         ],
-      }),
-    );
-    taskRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ['cloudwatch:PutMetricData'],
-        resources: ['*'],
       }),
     );
 
@@ -404,6 +430,10 @@ export class GatewayStack extends cdk.Stack {
       description: 'Register this redirect URI on your OIDC client',
     });
     new cdk.CfnOutput(this, 'TaskRoleArn', { value: taskRole.roleArn });
+    new cdk.CfnOutput(this, 'BedrockRoleArn', {
+      value: bedrockRole.roleArn,
+      description: 'Role the gateway assumes per developer; must match assume_role.role_arn in gateway.yaml',
+    });
     new cdk.CfnOutput(this, 'RdsEndpoint', { value: db.dbInstanceEndpointAddress });
     new cdk.CfnOutput(this, 'CertFingerprintHint', {
       value: `openssl s_client -connect ${recordHost}:443 -servername ${recordHost} | openssl x509 -noout -fingerprint -sha256`,

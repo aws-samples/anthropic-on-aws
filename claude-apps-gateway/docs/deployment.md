@@ -178,16 +178,19 @@ output. The stamped config and verified binary must sit next to the `Dockerfile`
 `cdk/`:
 
 ```bash
-# Stamp gateway.yaml from the template (fails if any placeholder is unresolved)
+# Stamp gateway.yaml from the template (fails if any placeholder is unresolved).
+# BEDROCK_ROLE_ARN is the role pass 2 creates as <gatewayName>-bedrock-role (the
+# stack's BedrockRoleArn output); the gateway assumes it per developer.
 PUBLIC_URL=https://claude-gateway.example.com AWS_REGION=us-east-1 \
 OIDC_ISSUER=https://example.okta.com OIDC_CLIENT_ID=0oa1example2 \
 ALLOWED_EMAIL_DOMAINS=example.com \
+BEDROCK_ROLE_ARN="arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/claude-gateway-bedrock-role" \
 ./scripts/stamp-config.sh
 
 # Download the pinned linux-x64 binary and verify it (versions must match the
 # claudeVersion pin in bin/app.ts). setup.sh's phase 2 shows the full
 # GPG-signed-manifest verification; the abbreviated form:
-CLAUDE_VERSION=2.1.274
+CLAUDE_VERSION=2.1.294
 curl -fL -o claude "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude"
 curl -fsSL "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/manifest.json" \
   | jq -r '.platforms["linux-x64"].checksum' | xargs -I{} sh -c 'echo "{}  claude" | shasum -a 256 -c'
@@ -238,7 +241,7 @@ To roll a new image later: push a new tag, then re-run pass 2 with
 > editing `gateway.yaml.template` has no effect until you rebuild **and** point the
 > service at the new image. The tag above is the bare `CLAUDE_VERSION`, which does not
 > change when only the config does — so re-running the build would overwrite
-> `:2.1.274` in place, and re-running pass 2 with the same `-c imageTag` leaves the
+> `:2.1.294` in place, and re-running pass 2 with the same `-c imageTag` leaves the
 > task definition unchanged, meaning ECS may not redeploy at all. Either symptom looks
 > like a successful deploy that silently kept the old config.
 >
@@ -277,13 +280,14 @@ with those four ranges free; anything else fails at `create-subnet`. The CDK tra
 imports the VPC's existing subnets instead, so any CIDR works.
 
 **Endpoint security groups.** If the VPC already has the Bedrock / Secrets Manager /
-ECR / CloudWatch **interface** endpoints, tell the CDK track not to recreate them with
+ECR / CloudWatch / STS **interface** endpoints, tell the CDK track not to recreate them with
 `CREATE_VPC_ENDPOINTS=false` (`deploy.sh`) or `-c createVpcEndpoints=false` (by hand)
 — AWS allows one private-DNS endpoint per service per VPC. `setup.sh` has no such
 flag and needs none: it describes before creating, so it adopts endpoints already in
 the VPC. Neither track then touches those endpoints' security groups, so **you** must
 allow 443 from the gateway tasks on each — see **Ordering** below for which source to
-use when — or tasks time out fetching secrets, images, and logs. S3 is a *gateway*
+use when — or tasks time out fetching secrets, images, and logs (and, for STS, every
+Bedrock request fails because the gateway can't assume the Bedrock role). S3 is a *gateway*
 endpoint: no SG, no 443 — it just needs an association with the tasks' private route
 table.
 
@@ -361,7 +365,7 @@ Claude Desktop connects to the same gateway, but through Desktop's own managed
 configuration and a different key — `bootstrapUrl`, pointed at `<public_url>/user/bootstrap`
 — plus a server-side opt-in: the policy matching the user must carry a `desktop` key or
 `/user/bootstrap` returns `404`. The gateway server must be on v2.1.203 or later (this
-example pins 2.1.274). Desktop then runs the same browser SSO and fetches its config from
+example pins 2.1.294). Desktop then runs the same browser SSO and fetches its config from
 the gateway; per-group model access and policy match the CLI's. The endpoint shares the
 gateway's host and port, so the ALB needs no extra listener rule. See the
 [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#claude-desktop-overlay)
