@@ -494,3 +494,21 @@ For which keys are gated and from which release, read the
 [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config) and the
 [changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md) — this example
 doesn't keep a second copy of Anthropic's version gates.
+
+---
+
+## 21. CloudTrail shows one principal for every developer
+
+**Symptom:** the gateway's audit log and OTLP metrics break usage down per developer, but
+CloudTrail and Bedrock invocation logging attribute every Bedrock call to one IAM
+principal, the ECS task role.
+
+**Why:** developers hold no AWS credentials. Unless a Bedrock upstream sets
+`assume_role`, the gateway signs every call with its own principal, which `auth: {}`
+resolves to the task role.
+
+**Fix:** [Cost attribution on AWS](https://code.claude.com/docs/en/claude-apps-gateway-on-aws#cost-attribution)
+covers both routes: one STS session per developer with `assume_role` and `session_name`,
+and per-team application inference profiles. It lists the IAM grants and network path
+each route needs. Check the [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#per-developer-aws-cost-attribution)
+for the gateway version `assume_role` requires; an older gateway refuses to start on the key.

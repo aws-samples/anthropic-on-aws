@@ -318,6 +318,14 @@ See [`docs/deployment.md`](docs/deployment.md#telemetry) for deployment details.
 - The gateway itself does not log or store prompt/completion content
 - Configuring `telemetry.forward_to` automatically pushes OTEL environment variables to all connected clients
 
+> [!NOTE]
+> That per-user identity lives in the gateway's own records: its audit log and these
+> metrics. Unless the Bedrock upstream sets `assume_role`, AWS sees every Bedrock call
+> under the gateway's one IAM principal, so CloudTrail and Bedrock invocation logs don't
+> split by developer. [Cost attribution on AWS](https://code.claude.com/docs/en/claude-apps-gateway-on-aws#cost-attribution)
+> covers per-developer and per-team attribution in AWS's records; see also
+> [`docs/gotchas.md` §21](docs/gotchas.md#21-cloudtrail-shows-one-principal-for-every-developer).
+
 ---
 
 ### 4. Routing: inference with failover
