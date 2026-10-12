@@ -45,9 +45,11 @@ oidc:
   client_secret: ${OIDC_CLIENT_SECRET}   # the one secret in this block (env-injected)
   allowed_email_domains: [@@ALLOWED_EMAIL_DOMAINS@@]
   # Amazon Cognito: offline_access is not a Cognito scope, so the FIRST /login fails
-  # with invalid_scope until you uncomment the override below. Unlike Google, Cognito
-  # still returns a refresh token on the authorization_code grant (its lifetime is an
-  # app-client setting), so session.ttl_hours below stays at 1.
+  # with invalid_scope until you uncomment the override below (the app client must
+  # allow all three scopes; Cognito rejects any it doesn't). Unlike Google, Cognito
+  # still returns a refresh token on every authorization_code grant (its lifetime is
+  # an app-client setting), so session.ttl_hours below stays at 1:
+  # https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html
   # scopes: [openid, email, profile]
   # Per-IdP notes — uncomment what your provider needs:
   #   Okta (org server https://example.okta.com): id_token omits email/groups →

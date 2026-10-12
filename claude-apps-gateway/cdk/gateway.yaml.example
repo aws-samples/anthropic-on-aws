@@ -68,8 +68,9 @@ session:
   #     scopes: [openid, profile, email]
   #     extra_auth_params: { access_type: offline, prompt: consent }
   #   Cognito: drop offline_access (`scopes: [openid, email, profile]`, or the first
-  #     /login 400s invalid_scope) — refresh tokens come from the authorization_code
-  #     grant regardless, so leave ttl_hours at 1.
+  #     /login fails with invalid_scope) — refresh tokens come with every
+  #     authorization_code grant regardless, so leave ttl_hours at 1:
+  #     https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html
   # Opt-out: ONLY if your IdP can't issue refresh tokens, raise ttl_hours to 8-12
   # (no silent renewal otherwise) — deprovisioning then lags by that TTL.
 
