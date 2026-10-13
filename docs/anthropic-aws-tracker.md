@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-13
+
+- [AWS Weekly Roundup: Prime Day 2026 by the numbers, Claude Haiku 5.5, Amazon Nova 2.5 Sonic, and more (October 13, 2026)](https://aws.amazon.com/blogs/aws/aws-weekly-roundup-prime-day-2026-by-the-numbers-claude-haiku-5-5-amazon-nova-2-5-sonic-and-more-october-13-2026/) — *AWS News Blog* (Tue, 13 Oct 2026 15:59:06 +0000)
+
 ## 2026-10-09
 
 - [Anthropic Claude Sonnet 5.5 and Claude Opus 5.5 are now available on Kiro in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/06/kiro-claude-5-5-aws-govcloud-us/) — *AWS What's New* (Fri, 09 Oct 2026 17:13:00 GMT)
