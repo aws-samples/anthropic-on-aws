@@ -19,7 +19,9 @@ This CDK stack creates all the AWS infrastructure needed to run it:
 | **ACM certificate** | Free TLS certificate for the ALB. Auto-renews. |
 | **RDS PostgreSQL (db.t4g.micro)** | Stores short-lived sign-in state (device codes, rate limits). Smallest tier is sufficient. |
 | **ECR repository** | Holds the gateway container image you build and push. |
-| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`, plus `CountTokens`, which 2.1.260+ uses to count aborted requests for free where Bedrock supports it). No static keys. |
+| **IAM task role** | The gateway container's own identity. Holds no Bedrock permission: it can only `sts:AssumeRole` the Bedrock role below (plus `cloudwatch:PutMetricData` for the telemetry sidecar). No static keys. |
+| **IAM Bedrock role** (`<gatewayName>-bedrock-role`) | Holds the Bedrock grant (`InvokeModel` + `InvokeModelWithResponseStream`, plus `CountTokens`, which 2.1.260+ uses to count aborted requests for free where Bedrock supports it) and trusts only the task role. The gateway assumes it once per developer per hour with the session name set to their email (`assume_role` in `gateway.yaml`), so AWS attributes each Bedrock call to `assumed-role/<role>/<email>`. Fixed name because the role ARN is baked into `gateway.yaml` before the stack creates it. |
+| **VPC endpoints** | Interface endpoints for Bedrock runtime, Secrets Manager, ECR (API + Docker), CloudWatch Logs + Monitoring, and STS (the per-developer `AssumeRole` calls), plus an S3 gateway endpoint, so AWS-service traffic stays off the NAT. |
 | **IAM execution role** | Lets ECS pull the image from ECR and write logs to CloudWatch. |
 | **Security groups** | Network rules: ALB accepts HTTPS (443), ECS accepts traffic from ALB only (8080), RDS accepts traffic from ECS only (5432). |
 | **Route53 A record** | Points your gateway hostname at the ALB so developers can reach it by name. |
@@ -41,7 +43,7 @@ This CDK stack creates all the AWS infrastructure needed to run it:
 1. Developer asks Claude a question in Claude Code
 2. CLI sends the request to the gateway (via ALB) with the session token
 3. Gateway validates the token, checks the developer's model access policy
-4. Gateway calls Amazon Bedrock using the ECS task role
+4. Gateway assumes the Bedrock role for that developer (STS session named after their email; cached for an hour) and calls Amazon Bedrock with those credentials
 5. Amazon Bedrock streams the response back through the gateway to the developer
 
 **Telemetry (fire-and-forget, alongside every request):**
@@ -297,7 +299,7 @@ pass 2 (default) deploys the full stack.
 | `zoneId` | 2 | no | Hosted-zone id (looked up from `zoneName` if omitted) |
 | `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
 | `vpcId` | 2 | no | Import an existing VPC instead of creating one |
-| `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch interface endpoints (+ the S3 gateway endpoint) — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy. Then authorize 443 yourself: [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
+| `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch/STS interface endpoints (+ the S3 gateway endpoint) — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy. Then authorize 443 yourself: [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
 
 ### Regions & data residency
 

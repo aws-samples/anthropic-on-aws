@@ -98,7 +98,7 @@ for SEC in "$P-jwt-secret" "$P-oidc-client-secret"; do
   aws secretsmanager delete-secret --secret-id "$SEC" --force-delete-without-recovery --region "$AWS_REGION"
 done
 # IAM roles: delete inline policies + detach managed, then the role
-for R in "$P-exec-role" "$P-task-role"; do
+for R in "$P-exec-role" "$P-task-role" "$P-bedrock-role"; do
   for P_INLINE in $(aws iam list-role-policies --role-name "$R" --query 'PolicyNames[]' --output text 2>/dev/null); do
     aws iam delete-role-policy --role-name "$R" --policy-name "$P_INLINE"
   done

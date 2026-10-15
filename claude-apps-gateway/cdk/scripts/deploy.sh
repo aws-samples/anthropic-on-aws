@@ -369,12 +369,16 @@ fi
 # the template, so a template change can't skip this convenience path.
 # AWS_REGION here is the Bedrock endpoint region (the upstream `region:` the
 # template bakes); DB_NAME defaults inside stamp-config.sh to match the stack.
+# BEDROCK_ROLE_ARN is the stack's fixed-name BedrockRole (<gatewayName>-bedrock-role),
+# derived here because the image is built before pass 2 creates the role; the
+# stack's BedrockRoleArn output must match it.
 echo "   Stamping gateway.yaml from gateway.yaml.template..."
 PUBLIC_URL="https://${GATEWAY_HOSTNAME}" \
 AWS_REGION="${BEDROCK_REGION}" \
 OIDC_ISSUER="${OIDC_ISSUER}" \
 OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
+BEDROCK_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${GATEWAY_NAME}-bedrock-role" \
 TEMPLATE="${PROJECT_DIR}/gateway.yaml.template" \
 OUT="/tmp/gw-gateway.yaml" \
   "${SCRIPT_DIR}/stamp-config.sh"
