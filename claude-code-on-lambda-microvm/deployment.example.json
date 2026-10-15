@@ -4,7 +4,7 @@
   "projectName": "claude-microvm",
   "trustedClientCidr": "10.100.0.0/22",
   "inferenceMode": "bedrock",
-  "bedrockModelId": "anthropic.claude-sonnet-5",
+  "bedrockModelId": "us.anthropic.claude-sonnet-5",
   "allowClaudeAiSubscription": false,
   "enablePortal": false,
   "idleAfterSeconds": 900,
