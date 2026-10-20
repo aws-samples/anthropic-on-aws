@@ -143,10 +143,12 @@ PROJECT="${PROJECT:-claude-gateway}"
 # SSE keepalive pings on streaming responses (Bedrock included), 2.1.232 widened
 # the desktop block to Claude Desktop's full settings schema (and tightened boot
 # validation of match.groups / email_domain / admin_groups), and 2.1.233 made
-# 400/413 errors carry the upstream's own message. See the README "Claude Code
+# 400/413 errors carry the upstream's own message, and 2.1.281 added assume_role on
+# Bedrock upstreams — which this example uses for per-developer cost attribution, so
+# keep this >= 2.1.281 (earlier gateways refuse to start on the key). See the README "Claude Code
 # versions: one pin, two axes"; Anthropic's CHANGELOG is the source of truth
 # for these gates.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.274}"
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.294}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).
@@ -214,6 +216,11 @@ info "container tool: ${CTR}"
 ACCOUNT_ID="${ACCOUNT_ID:-$(aws_q sts get-caller-identity --query Account)}"
 [[ -n "${ACCOUNT_ID}" && "${ACCOUNT_ID}" != "None" ]] || die "could not resolve AWS account id - is the aws CLI authenticated?"
 info "account ${ACCOUNT_ID}, region ${AWS_REGION}"
+# The role the gateway assumes per developer for Bedrock (gateway.yaml assume_role).
+# Its ARN is derived, not looked up: the config is stamped in phase 2, before phase 5
+# creates the role. Mirrors the CDK stack's fixed-name BedrockRole.
+BEDROCK_ROLE="${PROJECT}-bedrock-role"
+BEDROCK_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${BEDROCK_ROLE}"
 info "TLS: imported cert ${CERT_ARN}"
 info "caller $(aws_q sts get-caller-identity --query Arn)"
 # Fail fast on the OIDC client secret BEFORE the slow phases (RDS alone is ~9 min).
@@ -251,6 +258,7 @@ info "stamping gateway.yaml from template"
 PUBLIC_URL="${PUBLIC_URL}" AWS_REGION="${AWS_REGION}" \
 OIDC_ISSUER="${OIDC_ISSUER}" OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
+BEDROCK_ROLE_ARN="${BEDROCK_ROLE_ARN}" \
 DB_NAME="${DB_NAME}" \
 "${SCRIPT_DIR}/stamp-config.sh"
 
@@ -489,7 +497,8 @@ ensure_interface_endpoint() {
     --region "${AWS_REGION}" >/dev/null
   info "created vpc endpoint ${svc}"
 }
-for svc in bedrock-runtime secretsmanager ecr.api ecr.dkr logs monitoring; do
+# sts: the gateway calls sts:AssumeRole at request time (gateway.yaml assume_role).
+for svc in bedrock-runtime secretsmanager ecr.api ecr.dkr logs monitoring sts; do
   ensure_interface_endpoint "${svc}"
 done
 # S3 gateway endpoint — ECR layer pulls go to S3.
@@ -639,27 +648,18 @@ aws iam put-role-policy --role-name "${EXEC_ROLE}" \
   --policy-name "${PROJECT}-exec-secrets" --policy-document "${EXEC_SECRETS_POLICY}" >/dev/null
 EXEC_ROLE_ARN="$(aws iam get-role --role-name "${EXEC_ROLE}" --query Role.Arn --output text)"
 
-# 5b. Task role — the gateway's runtime identity. Dual-ARN Bedrock policy: BOTH
-# inference-profile (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or
-# invoke 403s. Matches gateway.yaml.template's global.anthropic.* model catalog, so
-# any region works. auth: {} in gateway.yaml picks this up via the ECS creds endpoint.
-# bedrock:CountTokens: from 2.1.260 the gateway counts an ABORTED request's input tokens
-# with Bedrock's free CountTokens API, falling back to a max_tokens:1 invoke (plus one
-# warning) when the call fails — so the grant buys a free path, it doesn't fix a metering
-# gap. Bedrock takes only a BARE foundation-model id here, and of this catalog only
-# anthropic.claude-haiku-4-5-20251001-v1:0 supports it today; Opus 5 and Sonnet 5 fall
-# back regardless. Also grants cloudwatch:PutMetricData so the ADOT sidecar can push
-# OTLP metrics to CloudWatch via SigV4 (PutMetricData takes no resource scope, hence "*").
+# 5b. Task role — the gateway's runtime identity. auth: {} in gateway.yaml picks this
+# up via the ECS creds endpoint. It holds NO Bedrock grant: with assume_role on the
+# Bedrock upstream, its only Bedrock-path job is sts:AssumeRole on the role in 5c.
+# Also grants cloudwatch:PutMetricData so the ADOT sidecar can push OTLP metrics to
+# CloudWatch via SigV4 (PutMetricData takes no resource scope, hence "*").
 TASK_ROLE="${PROJECT}-task-role"
 ensure_role "${TASK_ROLE}"
-BEDROCK_POLICY=$(cat <<JSON
+TASK_POLICY=$(cat <<JSON
 {"Version":"2012-10-17","Statement":[
   {"Effect":"Allow",
-   "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream","bedrock:CountTokens"],
-   "Resource":[
-     "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/global.anthropic.*",
-     "arn:aws:bedrock:*::foundation-model/anthropic.*"
-   ]},
+   "Action":["sts:AssumeRole"],
+   "Resource":["${BEDROCK_ROLE_ARN}"]},
   {"Effect":"Allow",
    "Action":["cloudwatch:PutMetricData"],
    "Resource":["*"]}
@@ -667,10 +667,70 @@ BEDROCK_POLICY=$(cat <<JSON
 JSON
 )
 aws iam put-role-policy --role-name "${TASK_ROLE}" \
-  --policy-name "${PROJECT}-bedrock-invoke" --policy-document "${BEDROCK_POLICY}" >/dev/null
+  --policy-name "${PROJECT}-task-policy" --policy-document "${TASK_POLICY}" >/dev/null
+# Deployments from before assume_role put Bedrock invoke directly on the task role.
+# That policy is removed in 6g, once the new tasks are serving — the old tasks still
+# run the old config (no assume_role) and would 403 if it went away first.
+LEGACY_TASK_BEDROCK_POLICY=""
+if aws iam get-role-policy --role-name "${TASK_ROLE}" \
+     --policy-name "${PROJECT}-bedrock-invoke" >/dev/null 2>&1; then
+  LEGACY_TASK_BEDROCK_POLICY=1
+fi
 TASK_ROLE_ARN="$(aws iam get-role --role-name "${TASK_ROLE}" --query Role.Arn --output text)"
+
+# 5c. Bedrock role — assumed by the gateway once per developer per hour with
+# RoleSessionName = the developer's email (gateway.yaml assume_role, session_name:
+# email; gateway >= 2.1.281), so Bedrock calls reach AWS as
+# assumed-role/${BEDROCK_ROLE}/<email> for per-developer cost attribution. Trusts
+# only the task role. Dual-ARN Bedrock policy: BOTH inference-profile
+# (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or invoke 403s.
+# Matches gateway.yaml.template's global.anthropic.* model catalog, so any region works.
+# bedrock:CountTokens: from 2.1.260 the gateway counts an ABORTED request's input tokens
+# with Bedrock's free CountTokens API, falling back to a max_tokens:1 invoke (plus one
+# warning) when the call fails — so the grant buys a free path, it doesn't fix a metering
+# gap. Bedrock takes only a BARE foundation-model id here, and of this catalog only
+# anthropic.claude-haiku-4-5-20251001-v1:0 supports it today; Opus 5 and Sonnet 5 fall
+# back regardless. These calls are signed by the shared claude-apps-gateway session.
+BEDROCK_TRUST=$(cat <<JSON
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow",
+  "Principal":{"AWS":"${TASK_ROLE_ARN}"},"Action":"sts:AssumeRole"}]}
+JSON
+)
+if aws iam get-role --role-name "${BEDROCK_ROLE}" >/dev/null 2>&1; then
+  # Re-assert the trust on every run: IAM pins a trust principal to the role's
+  # unique id, so a recreated task role would otherwise silently lose access.
+  aws iam update-assume-role-policy --role-name "${BEDROCK_ROLE}" \
+    --policy-document "${BEDROCK_TRUST}" >/dev/null
+  skip "iam role ${BEDROCK_ROLE}"
+else
+  # A just-created task role can take a few seconds to become a valid principal;
+  # until then create-role fails with MalformedPolicyDocument (invalid principal).
+  for attempt in 1 2 3 4 5 6; do
+    if aws iam create-role --role-name "${BEDROCK_ROLE}" \
+         --assume-role-policy-document "${BEDROCK_TRUST}" \
+         --tags "Key=Project,Value=${PROJECT}" >/dev/null 2>&1; then
+      info "created iam role ${BEDROCK_ROLE}"; break
+    fi
+    [[ "${attempt}" -lt 6 ]] || die "could not create iam role ${BEDROCK_ROLE} (trusting ${TASK_ROLE_ARN})"
+    sleep 10
+  done
+fi
+BEDROCK_POLICY=$(cat <<JSON
+{"Version":"2012-10-17","Statement":[
+  {"Effect":"Allow",
+   "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream","bedrock:CountTokens"],
+   "Resource":[
+     "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/global.anthropic.*",
+     "arn:aws:bedrock:*::foundation-model/anthropic.*"
+   ]}
+]}
+JSON
+)
+aws iam put-role-policy --role-name "${BEDROCK_ROLE}" \
+  --policy-name "${PROJECT}-bedrock-invoke" --policy-document "${BEDROCK_POLICY}" >/dev/null
 info "exec=${EXEC_ROLE_ARN}"
 info "task=${TASK_ROLE_ARN}"
+info "bedrock=${BEDROCK_ROLE_ARN} (assumed per developer)"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 6 — ECS cluster, ALB, gateway service (with ADOT telemetry sidecar)
@@ -872,6 +932,16 @@ else
   info "created gateway service ${SERVICE} (desiredCount ${DESIRED_COUNT})"
 fi
 
+# 6g. Upgrade from a pre-assume_role deployment: once the rolling deploy has replaced
+# every old task, drop the task role's direct Bedrock grant so Bedrock is reachable
+# only through the per-developer sessions on the Bedrock role.
+if [[ -n "${LEGACY_TASK_BEDROCK_POLICY}" ]]; then
+  info "waiting for ${SERVICE} to stabilize before removing the task role's legacy Bedrock policy"
+  aws ecs wait services-stable --cluster "${CLUSTER}" --services "${SERVICE}" --region "${AWS_REGION}"
+  aws iam delete-role-policy --role-name "${TASK_ROLE}" --policy-name "${PROJECT}-bedrock-invoke" >/dev/null
+  info "removed legacy ${PROJECT}-bedrock-invoke policy from ${TASK_ROLE}"
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Final summary
 # ──────────────────────────────────────────────────────────────────────────────
@@ -893,6 +963,7 @@ $(log "Deploy complete")
   Internal ALB DNS ... ${ALB_DNS}
   RDS endpoint ....... ${DB_HOST}
   Task role ARN ...... ${TASK_ROLE_ARN}
+  Bedrock role ARN ... ${BEDROCK_ROLE_ARN} (assumed per developer, session = email)
   Log group .......... ${LOG_GROUP}
 
   NEXT STEPS

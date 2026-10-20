@@ -105,6 +105,8 @@ The gateway's IAM principal needs:
 }
 ```
 
+In this example's deployment the gateway's own principal holds none of this: the Bedrock upstream sets `assume_role` with `session_name: email`, so the policy above sits on a separate Bedrock role the gateway assumes once per developer, and the task role only needs `sts:AssumeRole` on it. AWS then attributes each Bedrock call to `assumed-role/<role>/<email>`. See [Per-developer cost attribution](../../README.md#per-developer-cost-attribution-assume_role).
+
 For Claude Platform on AWS, the IAM principal needs the `aws-external-anthropic` actions documented in the IAM action reference, or use an API key instead.
 
 ## How to verify it
