@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-20
+
+- [Structured outputs for Claude models available on Amazon Bedrock](https://aws.amazon.com/about-aws/whats-new/2026/10/claude-structured-outputs-bedrock/) — *AWS What's New* (Tue, 20 Oct 2026 14:00:00 GMT)
+- [Structured outputs for Anthropic Claude models on Amazon Bedrock](https://aws.amazon.com/blogs/machine-learning/structured-outputs-for-anthropic-claude-models-on-amazon-bedrock/) — *AWS Machine Learning Blog* (Mon, 19 Oct 2026 23:32:19 +0000)
+
 ## 2026-10-13
 
 - [AWS Weekly Roundup: Prime Day 2026 by the numbers, Claude Haiku 5.5, Amazon Nova 2.5 Sonic, and more (October 13, 2026)](https://aws.amazon.com/blogs/aws/aws-weekly-roundup-prime-day-2026-by-the-numbers-claude-haiku-5-5-amazon-nova-2-5-sonic-and-more-october-13-2026/) — *AWS News Blog* (Tue, 13 Oct 2026 15:59:06 +0000)
