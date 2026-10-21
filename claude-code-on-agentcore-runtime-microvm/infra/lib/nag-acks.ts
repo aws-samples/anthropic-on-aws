@@ -167,7 +167,7 @@ export function applyNagAcknowledgements(
       'invocation is limited to InvokeModel/InvokeModelWithResponseStream.',
   });
   ack('RuntimeExecutionRole/DefaultPolicy/Resource', {
-    id: 'AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:bedrock:us-west-2:<AWS::AccountId>:inference-profile/*]',
+    id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:bedrock:${region}:<AWS::AccountId>:inference-profile/*]`,
     reason:
       'Same rationale as the foundation-model wildcard above, for ' +
       'cross-region inference profiles.',
