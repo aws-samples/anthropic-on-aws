@@ -91,6 +91,52 @@ class CheckpointTest(unittest.TestCase):
         )
         self.assertEqual(self.uploads, [])
 
+    def test_symlinks_outside_workspace_do_not_abort_the_archive(self) -> None:
+        # Regression: python3 -m venv links .venv/bin/python3 to
+        # /usr/bin/python3. validate_symlink() used to raise on that, which
+        # aborted every checkpoint and silently stopped the workspace
+        # from saving.
+        (self.workspace / "notes.txt").write_text("top level\n")
+        bin_directory = self.workspace / ".venv" / "bin"
+        bin_directory.mkdir(parents=True)
+        (bin_directory / "python3").symlink_to("/usr/bin/python3")
+        (bin_directory / "python").symlink_to("python3")
+        (self.workspace / "escape").symlink_to("../outside")
+        (self.workspace / "data").mkdir()
+        (self.workspace / "data" / "real.txt").write_text("x\n")
+        # An absolute link that stays inside the workspace is kept, as a
+        # relative link, so it still resolves after a restore.
+        (bin_directory / "data").symlink_to(self.workspace / "data")
+
+        archive = agent.create_workspace_archive()
+        try:
+            with tarfile.open(archive) as source:
+                members = {member.name: member for member in source.getmembers()}
+            restored = Path(self._directory.name) / "restored"
+            restored.mkdir()
+            agent.extract_archive_safely(archive, restored)
+        finally:
+            archive.unlink()
+
+        self.assertIn("notes.txt", members)
+        self.assertIn("data/real.txt", members)
+        self.assertNotIn(".venv/bin/python3", members)
+        self.assertNotIn("escape", members)
+        self.assertEqual(members[".venv/bin/python"].linkname, "python3")
+        self.assertEqual(members[".venv/bin/data"].linkname, "../../data")
+        self.assertEqual(
+            (restored / ".venv" / "bin" / "data" / "real.txt").read_text(), "x\n"
+        )
+        self.assertEqual((restored / "notes.txt").read_text(), "top level\n")
+
+    def test_checkpoint_still_uploads_with_a_virtualenv(self) -> None:
+        (self.workspace / "notes.txt").write_text("top level\n")
+        (self.workspace / "python3").symlink_to("/usr/bin/python3")
+        self.assertEqual(
+            self.runtime.checkpoint("terminate")["status"], "checkpointed"
+        )
+        self.assertEqual(len(self.uploads), 1)
+
 
 class GithubMcpServerTest(unittest.TestCase):
     """Covers parse_run_hook_payload's optional githubGatewayUrl/

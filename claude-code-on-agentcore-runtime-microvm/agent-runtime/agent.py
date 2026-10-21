@@ -687,6 +687,37 @@ def validate_symlink(relative: Path, linkname: str) -> None:
             depth += 1
 
 
+def archive_symlink_target(relative: Path, linkname: str) -> str | None:
+    """Link target to store for a workspace symlink, or None to skip it.
+
+    Restore (extract_archive_safely) only accepts relative links that stay
+    inside the workspace, and that rule must hold: agent.py runs as root
+    and writes into well-known workspace paths after a restore. But
+    ordinary tools create other links all the time (python3 -m venv links
+    .venv/bin/python3 to /usr/bin/python3), and raising here used to abort
+    the whole archive, so every later checkpoint failed and the workspace
+    silently stopped saving. Instead, rewrite absolute links into the
+    workspace as relative ones and skip links that leave it.
+    """
+    if "\x00" in linkname:
+        return None
+    if PurePosixPath(linkname).is_absolute():
+        resolved = PurePosixPath(os.path.normpath(linkname))
+        try:
+            inside = resolved.relative_to(PurePosixPath(WORKSPACE))
+        except ValueError:
+            return None
+        linkname = os.path.relpath(
+            str(PurePosixPath("/") / inside),
+            str(PurePosixPath("/") / PurePosixPath(*relative.parent.parts)),
+        )
+    try:
+        validate_symlink(relative, linkname)
+    except ValueError:
+        return None
+    return linkname
+
+
 def safe_mode(mode: int, directory: bool) -> int:
     permissions = mode & 0o777
     if directory:
@@ -702,6 +733,7 @@ def create_workspace_archive() -> Path:
     os.close(descriptor)
     archive = Path(name)
     total_bytes = 0
+    skipped_symlinks: list[str] = []
 
     def archive_filter(member: tarfile.TarInfo) -> tarfile.TarInfo | None:
         nonlocal total_bytes
@@ -719,7 +751,11 @@ def create_workspace_archive() -> Path:
             return member
         if member.issym():
             relative = safe_member_path(member.name)
-            validate_symlink(relative, member.linkname)
+            target = archive_symlink_target(relative, member.linkname)
+            if target is None:
+                skipped_symlinks.append(member.name)
+                return None
+            member.linkname = target
             return member
         return None
 
@@ -739,6 +775,13 @@ def create_workspace_archive() -> Path:
                 )
         if archive.stat().st_size > MAX_CHECKPOINT_BYTES:
             raise RuntimeError("Compressed checkpoint exceeds the size limit")
+        if skipped_symlinks:
+            LOG.warning(
+                "checkpoint skipped %d symbolic link(s) that point outside "
+                "/workspace, e.g. %s",
+                len(skipped_symlinks),
+                ", ".join(skipped_symlinks[:5]),
+            )
         return archive
     except Exception:
         archive.unlink(missing_ok=True)

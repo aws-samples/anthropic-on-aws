@@ -212,7 +212,11 @@ While a session runs, the container checkpoints `/workspace` to S3 as a
 `agent-runtime/agent.py`; an unchanged workspace is not re-uploaded), and
 again on `suspend` and `terminate`. The next `start` for the same workspace
 restores it, and the portal's "saved" time and download link reflect the
-latest checkpoint. Sessions are checkpoint-terminated 45 minutes before the
+latest checkpoint. Symbolic links that point outside `/workspace` (for
+example `.venv/bin/python3 -> /usr/bin/python3`) are skipped rather than
+saved, so re-run `python3 -m venv .venv` after a restore; absolute links
+that stay inside `/workspace` are kept as relative links. Sessions are
+checkpoint-terminated 45 minutes before the
 8h AgentCore Runtime hard cap. There is no idle-based termination yet:
 `idleAfterSeconds` is passed to AgentCore Runtime's own idle timeout, but the
 control plane's once-a-minute liveness probe counts as activity, so sessions
