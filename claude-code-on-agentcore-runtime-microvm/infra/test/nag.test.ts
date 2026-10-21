@@ -33,5 +33,7 @@ describe.each([
       Match.stringLikeRegexp('AwsSolutions-.*'),
     );
     expect(errors.map((error) => error.entry.data)).toEqual([]);
-  });
+    // Synthesis bundles the Lambda assets; under a parallel full-suite run
+    // that can exceed vitest's 5s default.
+  }, 60_000);
 });

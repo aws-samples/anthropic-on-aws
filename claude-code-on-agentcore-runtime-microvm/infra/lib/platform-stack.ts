@@ -298,11 +298,6 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
       ec2.Port.tcp(443),
       'Trusted private clients calling the control API',
     );
-    apiEndpointSg.addIngressRule(
-      runtimeSecurityGroup,
-      ec2.Port.tcp(443),
-      'AgentCore Runtime refreshing checkpoint URLs',
-    );
     runtimeSecurityGroup.addEgressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(443),
@@ -731,21 +726,6 @@ export class AgentCoreRuntimeStack extends cdk.Stack {
     byId.addResource('connect').addMethod('POST', integration, methodOptions);
     byId.addResource('suspend').addMethod('POST', integration, methodOptions);
     byId.addResource('resume').addMethod('POST', integration, methodOptions);
-    byId
-      .addResource('checkpoint-urls')
-      .addMethod('POST', integration, methodOptions);
-    runtimeExecutionRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ['execute-api:Invoke'],
-        resources: [
-          api.arnForExecuteApi(
-            'POST',
-            '/sessions/*/checkpoint-urls',
-            api.deploymentStage.stageName,
-          ),
-        ],
-      }),
-    );
 
     if (enablePortal) {
       const portalUrl =

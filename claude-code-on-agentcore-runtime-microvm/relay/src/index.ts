@@ -281,9 +281,8 @@ async function consumeRelayToken(
   token: string,
 ): Promise<RelayTokenRecord | undefined> {
   // DeleteCommand with ReturnValues makes lookup and single-use consumption
-  // atomic: a token can only ever be redeemed once, closing the same class
-  // of "caller-supplied identifier trusted without verification" gap this
-  // sample's checkpoint-urls route has (see PR review). ConditionExpression
+  // atomic: a token can only ever be redeemed once, so a caller-supplied
+  // identifier is never trusted without verification. ConditionExpression
   // guards against redeeming a token that already expired but has not yet
   // been swept by DynamoDB TTL (TTL deletion is not instantaneous).
   const now = Math.floor(Date.now() / 1_000);

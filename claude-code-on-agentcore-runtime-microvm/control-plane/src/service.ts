@@ -437,37 +437,13 @@ export class ControlService {
     return { ...record, state: 'TERMINATED', updatedAt: finalUpdatedAt };
   }
 
-  public async checkpointUrls(
-    sessionId: string,
-    runtimeSessionId: string,
-  ): Promise<WorkspaceCheckpointAccess> {
-    const record = await this.options.repository.get(sessionId);
-    if (
-      !record ||
-      !record.runtimeSessionId ||
-      record.runtimeSessionId !== runtimeSessionId
-    ) {
-      throw new ControlError(404, 'Session not found');
-    }
-    if (!isActive(record.state)) {
-      throw new ControlError(409, 'Session is no longer active');
-    }
-    return this.options.checkpoints.createAccess(
-      record.ownerHash,
-      record.workspaceId,
-    );
-  }
-
-  // Portal/CLI-facing, read-only counterpart to checkpointUrls() above.
-  // Deliberately reuses the same ownership check as every other portal
-  // session route (getOwned -- Cognito sub, or the CLI's IAM principal,
-  // must own the session record) rather than the runtime-session-id check
-  // checkpointUrls() uses, because this is not being called by the running
-  // container checkpointing itself -- it is being called by whoever owns
-  // the workspace, whether or not any session against it is currently
-  // running. checkpoints.getInfo() never returns an upload URL, so this
-  // route can only ever let an owner look at and download their own saved
-  // files, never overwrite them.
+  // Portal/CLI-facing, read-only view of a workspace's checkpoint. Uses
+  // the same ownership check as every other session route (getOwned --
+  // Cognito sub, or the CLI's IAM principal, must own the session record).
+  // checkpoints.getInfo() never returns an upload URL, so this route can
+  // only let an owner look at and download their own saved files, never
+  // overwrite them. Upload URLs reach the container only in the bootstrap
+  // payload sent by start().
   public async workspaceInfo(
     ownerPrincipal: string,
     sessionId: string,

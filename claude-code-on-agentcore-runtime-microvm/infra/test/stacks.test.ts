@@ -231,6 +231,20 @@ describe('control and runtime permissions', () => {
     );
   });
 
+  // Regression: sandboxes used to be able to call
+  // POST /sessions/{id}/checkpoint-urls with the shared execution role and
+  // mint S3 URLs for another owner's workspace. Containers get their URLs
+  // only in the bootstrap payload now, so neither the route nor any
+  // execute-api grant on the runtime role may exist.
+  it('gives sandboxes no route to mint checkpoint URLs', () => {
+    template.resourcePropertiesCountIs(
+      'AWS::ApiGateway::Resource',
+      { PathPart: 'checkpoint-urls' },
+      0,
+    );
+    expect(JSON.stringify(template.toJSON())).not.toContain('checkpoint-urls');
+  });
+
   it('grants the control function the AgentCore Runtime data-plane actions', () => {
     const actions = iamActions(template);
     expect(actions).toEqual(

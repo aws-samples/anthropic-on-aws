@@ -501,26 +501,6 @@ describe('ControlService.reconcile', () => {
   });
 });
 
-describe('ControlService.checkpointUrls', () => {
-  it('rejects a mismatched runtimeSessionId', async () => {
-    const { service } = newService();
-    const started = await service.start(OWNER, 'default');
-    await expect(
-      service.checkpointUrls(started.record.sessionId, 'wrong-runtime-id'),
-    ).rejects.toMatchObject({ statusCode: 404 });
-  });
-
-  it('returns checkpoint access for the active session', async () => {
-    const { service } = newService();
-    const started = await service.start(OWNER, 'default');
-    const access = await service.checkpointUrls(
-      started.record.sessionId,
-      started.record.runtimeSessionId!,
-    );
-    expect(access.uploadUrl).toContain('https://');
-  });
-});
-
 describe('ControlService.listWorkspaces', () => {
   it('groups multiple past sessions on the same workspace into one entry', async () => {
     const { service } = newService();

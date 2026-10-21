@@ -250,13 +250,6 @@ export function applyNagAcknowledgements(
       'pull access itself is scoped to the one agent image repository.',
   });
   ack('RuntimeExecutionRole/DefaultPolicy/Resource', {
-    id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:execute-api:${region}:<AWS::AccountId>:<ControlApiAC3A38A3>/<ControlApiDeploymentStagev10C21D0B1>/POST/sessions/*/checkpoint-urls]`,
-    reason:
-      'Session-id path wildcard on exactly one route (checkpoint URL ' +
-      'refresh); the handler additionally verifies the caller is the ' +
-      'execution role and owns the session.',
-  });
-  ack('RuntimeExecutionRole/DefaultPolicy/Resource', {
     id: `AwsSolutions-IAM5[Resource::arn:<AWS::Partition>:logs:${region}:<AWS::AccountId>:log-group:/${projectName}/agentcore-runtime:*]`,
     reason:
       'Log-stream wildcard beneath the single dedicated AgentCore ' +

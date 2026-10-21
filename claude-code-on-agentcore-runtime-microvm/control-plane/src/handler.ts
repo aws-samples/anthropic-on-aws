@@ -83,30 +83,6 @@ export async function handler(
     const path = portal ? portalRoutePath(event.resource) : event.resource;
     const sessionId = event.pathParameters?.sessionId;
 
-    if (
-      method === 'POST' &&
-      !portal &&
-      path === '/sessions/{sessionId}/checkpoint-urls'
-    ) {
-      if (!sessionId) {
-        throw new ControlError(404, 'Route not found');
-      }
-      assertRuntimeExecutionCaller(ownerPrincipal);
-      const body = parseBody(event);
-      const runtimeSessionId = optionalString(body.runtimeSessionId);
-      if (!runtimeSessionId) {
-        throw new ControlError(400, 'runtimeSessionId is required');
-      }
-      const access = await service.checkpointUrls(
-        sessionId,
-        runtimeSessionId,
-      );
-      return response(200, {
-        downloadUrl: access.downloadUrl,
-        uploadUrl: access.uploadUrl,
-      });
-    }
-
     if (method === 'GET' && path === '/sessions') {
       const sessions = await service.list(ownerPrincipal, true);
       return response(200, { sessions: sessions.map(publicSession) });
@@ -262,22 +238,6 @@ function observeApiUrl(event: APIGatewayProxyEvent): void {
       configurationCache.value.controlApiUrl =
         process.env.CONTROL_API_URL || observedApiUrl;
     }
-  }
-}
-
-function assertRuntimeExecutionCaller(principal: string): void {
-  const executionRoleArn = requiredEnvironment('RUNTIME_EXECUTION_ROLE_ARN');
-  const roleName = executionRoleArn.split('/').pop();
-  const principalRoleName = principal.split('/').slice(-2, -1)[0];
-  if (
-    !roleName ||
-    !principal.includes(':assumed-role/') ||
-    principalRoleName !== roleName
-  ) {
-    throw new ControlError(
-      403,
-      'Caller is not the AgentCore Runtime execution role',
-    );
   }
 }
 
