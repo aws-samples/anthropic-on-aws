@@ -37,8 +37,9 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
 
 - **Bedrock IAM needs two ARN families.** Grant `bedrock:InvokeModel` +
   `bedrock:InvokeModelWithResponseStream` + `bedrock:CountTokens` (2.1.260+ counts aborted
-  requests through it, falling back to a `max_tokens:1` invoke; Bedrock supports it for
-  Haiku 4.5 only right now, so it's a cost nicety, not a correctness gate)
+  requests through it, 2.1.295+ also `/context` and large file reads, falling back to a
+  `max_tokens:1` invoke; Bedrock supports it for Haiku 4.5 only right now, so it's a cost
+  nicety, not a correctness gate)
   on *both* `inference-profile/global.anthropic.*` *and*
   `foundation-model/anthropic.*`. Missing either yields 403s. The gateway uses **global**
   cross-region inference profiles (`global.anthropic.*`) so any Bedrock region works; the

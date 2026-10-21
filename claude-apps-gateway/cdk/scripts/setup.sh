@@ -146,7 +146,7 @@ PROJECT="${PROJECT:-claude-gateway}"
 # 400/413 errors carry the upstream's own message. See the README "Claude Code
 # versions: one pin, two axes"; Anthropic's CHANGELOG is the source of truth
 # for these gates.
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.274}"
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.299}"
 RELEASES_URL="${RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
 KEYS_URL="${KEYS_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
 # Anthropic Claude Code release signing key fingerprint (verify the imported key).

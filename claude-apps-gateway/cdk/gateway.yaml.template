@@ -213,9 +213,11 @@ managed:
       # feature gates with no CLI equivalent; each one omitted keeps Desktop's own
       # default. As of gateway 2.1.232 this block accepts every released Claude
       # Desktop setting and is validated at boot against Desktop's OWN schema, so
-      # an UNKNOWN key — or a recognized key with a value Desktop would reject, a
-      # legacy alias, or a key the gateway computes itself (inference connection,
-      # model list, OTLP relay) — fails gateway boot. The rest of the response
+      # a recognized key with a value Desktop would reject, a legacy alias, or a
+      # key the gateway computes itself (inference connection, model list, OTLP
+      # relay) fails gateway boot. From 2.1.295 a key the pin's bundled schema
+      # doesn't know only logs a warning and is sent to Desktop as written, so a
+      # misspelled key name boots: read the boot log. The rest of the response
       # comes from the cli: block above — availableModels, bare tool-name
       # permissions.deny entries, sandbox.network.allowedDomains, and an OTLP endpoint
       # when telemetry.forward_to is set. hooks and scoped rules like Bash(npm *) have
@@ -224,6 +226,10 @@ managed:
       # Desktop clients need the other half: `bootstrapUrl` set to
       # <public_url>/user/bootstrap in Claude Desktop's own managed configuration — a
       # DIFFERENT key from the CLI's forceLoginGatewayUrl.
+      # With a desktop: key present the gateway warns at boot that cli: settings
+      # don't reach Desktop's Code tab. That needs the policy's settings under the
+      # code: key instead (2.1.296+), which also changes how Desktop runs Cowork and
+      # Chat — read "Choose cli or code" in the config reference before renaming.
       # desktop:
       #   modelDiscoveryEnabled: false          # rely only on availableModels above
       #   coworkTabEnabled: true

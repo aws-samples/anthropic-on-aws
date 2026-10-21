@@ -198,8 +198,9 @@ endpoint region.
 *Model access* (or the API) — for each Claude model you list in `availableModels`,
 per region global may route to. After that the 403 is gone permanently and the task
 role only ever needs `bedrock:InvokeModel` / `bedrock:InvokeModelWithResponseStream`
-(plus `bedrock:CountTokens`, which gateway 2.1.260+ uses to count aborted requests for
-free where Bedrock supports it, falling back to a `max_tokens:1` invoke where it doesn't).
+(plus `bedrock:CountTokens`, which the gateway uses for token counts — aborted requests
+from 2.1.260, and `/context` and large file reads from 2.1.295 — for free where Bedrock
+supports it, falling back to a `max_tokens:1` invoke where it doesn't).
 This is the **#1 Bedrock-through-gateway failure** and it's easy to miss because IAM
 looks correct.
 
@@ -440,7 +441,7 @@ config, so a fleet that only uses the CLI is never accidentally exposing a Deskt
 base layer to opt in everyone who inherits it. `desktop: {}` alone is enough; the optional
 feature gates (`isLocalDevMcpEnabled`, `banner`, …) are documented on capability 2 in the
 [README](../README.md#claude-desktop-overlay). The gateway server must be on **v2.1.203+**
-(this example pins 2.1.274). The template ships this block commented out —
+(this example pins 2.1.299). The template ships this block commented out —
 [`cdk/gateway.yaml.template`](../cdk/gateway.yaml.template), under the `match: {}` policy.
 
 **Not the same as** `parentSettingsBehavior: "merge"`. That key governs a *different*
@@ -472,20 +473,23 @@ there was no way to re-enable it from either side (filed upstream as
 fixed in 2.1.227, which this example now pins past). It's now a choice rather than a dead
 end, but the default still costs you the tab.
 
-**An unknown key crash-loops the ECS task.**
-The block is validated *strictly* and what it accepts is bounded by the pinned gateway
-version, so a key copied from the docs page for a newer release fails boot — the container
-exits, ECS restarts it, and the service never stabilises. As of **2.1.232** (this example
-pins 2.1.274) the block takes every released Claude Desktop setting and is checked against
-Desktop's *own* schema, which widens what's accepted but also what can fail: besides an
-unknown key, boot also fails on a recognized key whose value Desktop would reject or
-silently drop (an empty value, a misspelled sub-key inside `banner`), a legacy alias of a
-current key, a key Desktop reads only from MDM such as `bootstrapUrl`, and a key the gateway
-computes itself (the inference connection, the model list, the OTLP relay). Probe a new key
-against the pinned binary before shipping it:
+**A bad value crash-loops the ECS task; an unknown key only warns.**
+The block is checked at boot against the Claude Desktop schema bundled with the pinned
+gateway. Boot fails — the container exits, ECS restarts it, and the service never
+stabilises — on a recognized key whose value Desktop would reject or silently drop (an
+empty value, a misspelled sub-key inside `banner`), a legacy alias of a current key, a key
+Desktop reads only from MDM such as `bootstrapUrl`, and a key the gateway computes itself
+(the inference connection, the model list, the OTLP relay). A key the bundled schema
+doesn't know at all no longer fails boot on this example's pin (2.1.299; the change landed
+in 2.1.295): the gateway logs `unknown to the apps gateway's bundled Claude Desktop schema
+(it may be newer). Sent to Claude Desktop as written.` and starts. So a misspelled
+top-level key now reaches Desktop instead of stopping the deploy — read the boot log after
+adding one. Later releases tighten this again for some keys, so re-probe when you bump.
+Probe a new key against the pinned binary before shipping it:
 
 ```bash
-# reports `Unrecognized key(s) in object: '<key>'` if the pin doesn't know it
+# a bad value fails with `managed.policies[0].desktop invalid:` and names the key;
+# an unknown key logs the warning above and boots
 claude gateway --config /tmp/probe.yaml
 ```
 
