@@ -194,7 +194,7 @@ requirements in its canonical deployment documentation.
 
 ### Local tools
 
-- Node.js 20 or later on deployment and operator systems
+- Node.js 22.12 or later on deployment and operator systems (matches the Lambda runtime and MicroVM image)
 - npm
 - Python 3.12 for local MicroVM agent tests
 - AWS CLI v2
