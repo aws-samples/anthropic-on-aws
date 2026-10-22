@@ -132,6 +132,7 @@ server pin can't deliver, so it's worth telling a fleet about:
 | Client version | What it gives a developer |
 |---|---|
 | **v2.1.237**, **v2.1.248** | Prompt caching fixed on gateway sessions — the latter a roughly hourly cache miss caused by an OAuth token refresh |
+| **v2.1.242** | Honours a policy's `promptCacheTtl` / `subagentPromptCacheTtl` (one-hour prompt cache, §2). Older clients ignore both keys |
 | **v2.1.247** | First-run setup no longer exits with "Unable to connect to Anthropic services" when managed settings force gateway sign-in and Anthropic's own endpoints are unreachable — the normal case on a restricted-egress network |
 | **v2.1.248**, **v2.1.251** | `/login` no longer hangs on the managed-settings approval dialog; the dialog stops re-appearing on every re-sign-in and narrows to the settings that changed |
 | **v2.1.251** | The **Spend limit** bar in `/usage`, for developers behind a gateway with spend limits configured. Needs nothing newer than v2.1.225 on the *server* |
@@ -221,6 +222,7 @@ managed:
 - `availableModels` is enforced both client-side (model picker) and server-side (400 on unauthorized model)
 - `disableBypassPermissionsMode: disable` prevents developers from using `--dangerously-skip-permissions`
 - Settings refresh hourly; policy changes reach developers within an hour of redeployment
+- One-hour prompt caching is opt-in: `promptCacheTtl: 1h`, plus `subagentPromptCacheTtl: 1h` for subagents and background requests ([config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#one-hour-prompt-cache)). Bedrock offers it for every model in this example's catalog; check any model you add, because a rejected TTL fails the request with no 5-minute retry. One-hour cache writes cost more than five-minute ones
 - This example writes each policy's settings under `cli`. From 2.1.296 the gateway also accepts `code`, the key the [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#choose-cli-or-code) now recommends: same contents, and it can also reach Claude Desktop's Code tab. The example keeps `cli` because switching needs a `desktop` key and client-side setup, and turns off web search in Claude Desktop — read that section before you rename. A policy can't carry both keys; the gateway refuses to start
 
 **What's enforced server-side vs. client-side:** the gateway sits on the inference path (`/v1/messages`), so it hard-enforces anything about a model request; it cannot enforce what happens on a developer's machine.
@@ -585,7 +587,10 @@ still reports list price. A discount has no such client floor.
   them *instead of* `multiplier: 1.1`, not with it (both together meter 1.21×). Name each model
   by the id the gateway sends Bedrock, date suffix included where the model has one: an
   undated `us.anthropic.claude-haiku-4-5` row matches nothing. A model you don't list
-  silently falls back to list price.
+  silently falls back to list price. A row has one `cache_write` rate and the meter applies
+  it to one-hour cache writes too, so with `promptCacheTtl: 1h` these rows under-count
+  them (geo-tier Opus 5: 6.875 metered, 11.00 billed). The built-in rates `multiplier` scales
+  price both TTLs correctly.
 - **More than one upstream on different rate cards** — `multiplier` is a single value for the
   whole gateway, so the failover stacks the template sketches (an in-region primary with a
   global fallback, or `bedrock` alongside a first-party upstream on its own rate card and its
@@ -716,7 +721,6 @@ Existing signed-in developers keep working (tokens validate locally). New sign-i
 ## Known limitations
 
 - Server-side web search is disabled through the gateway
-- 1-hour prompt caching is not available (5-minute only)
 - No Helm chart provided (use a standard Kubernetes Deployment)
 - No admin UI (configuration is the YAML file; redeploy to change it)
 - One OIDC issuer per gateway instance (multi-tenant needs multiple gateways)

@@ -176,6 +176,11 @@ managed:
           - claude-haiku-4-5
           # - claude-fable-5   # opt-in — see the models: block note below
         enforceAvailableModels: true
+        # One-hour prompt cache instead of the 5-minute default. Bedrock offers it for every
+        # model in this catalog; a model that rejects it fails the request (no 5m retry).
+        # 1h cache writes cost more. https://code.claude.com/docs/en/claude-apps-gateway-config#one-hour-prompt-cache
+        # promptCacheTtl: 1h
+        # subagentPromptCacheTtl: 1h
         # CLAUDE DESKTOP, part 1 of 2 (uncomment if you deploy Desktop). Desktop hands
         # this policy to the embedded Claude Code sessions it launches as PARENT
         # settings, and Claude Code IGNORES parent settings on a machine with an
@@ -323,7 +328,8 @@ managed:
 #   # All four rates are REQUIRED and each must be > 0 — omit one and boot fails with the
 #   # unhelpful "Expected number, received nan", and a zero-rated cache read is rejected.
 #   # There is only ONE cache_write rate, but Bedrock prices 5m and 1h cache writes apart
-#   # (geo-tier Opus 5: 6.875 vs 11.00), so a row can carry only one of the two.
+#   # (geo-tier Opus 5: 6.875 vs 11.00). The meter applies it to both, so with promptCacheTtl: 1h
+#   # these rows under-count the 1h writes; `multiplier` alone prices them right.
 #   # `upstream` must name an upstreams[] entry; the bedrock entry above sets no explicit
 #   # `name:`, so it is addressable as its provider, `bedrock`. An unknown name fails boot
 #   # with "references unknown upstream '...'".
