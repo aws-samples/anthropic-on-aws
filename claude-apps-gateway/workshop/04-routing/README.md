@@ -79,11 +79,11 @@ upstreams:
       aws_secret_access_key: ${ACCT2_SK}
 
 models:
-  - id: claude-opus-4-8
-    label: Claude Opus 4.8
+  - id: claude-opus-5
+    label: Claude Opus 5
     upstream_model:
       bedrock-pt: arn:aws:bedrock:us-east-1:111111111111:provisioned-model/abcdef
-      bedrock-od: us.anthropic.claude-opus-4-8
+      bedrock-od: us.anthropic.claude-opus-5
 ```
 
 ### IAM permissions required (Bedrock)

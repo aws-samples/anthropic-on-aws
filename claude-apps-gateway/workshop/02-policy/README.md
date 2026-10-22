@@ -28,7 +28,7 @@ managed:
     # Engineers: full access with some guardrails
     - match: { groups: [engineers] }
       cli:
-        availableModels: [claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5]
+        availableModels: [claude-opus-5, claude-sonnet-4-6, claude-haiku-4-5]
         permissions:
           allow: [Read, Grep, Bash, Edit]
           deny: ["Read(./.env)", "Read(./secrets/**)"]

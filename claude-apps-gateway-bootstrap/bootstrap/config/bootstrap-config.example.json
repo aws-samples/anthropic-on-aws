@@ -1,6 +1,8 @@
 {
   "allowUserAddedMcpServers": false,
   "chatTabEnabled": true,
+  "coworkTabEnabled": true,
+  "isClaudeCodeForDesktopEnabled": true,
   "coworkWebSearchEnabled": false,
   "disableNonessentialTelemetry": true,
   "disabledBuiltinTools": [
@@ -17,7 +19,7 @@
     "deployment.environment": "prod"
   },
   "inferenceModels": [
-    "claude-opus-4-8",
+    "claude-opus-5",
     "claude-fable-5",
     "claude-sonnet-5",
     "claude-haiku-4-5"

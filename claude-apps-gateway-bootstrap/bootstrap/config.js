@@ -7,7 +7,7 @@
 //
 // S3 object schema (bootstrap/config/bootstrap-config.json):
 //   {
-//     "inferenceModels": ["claude-opus-4-8", ...],
+//     "inferenceModels": ["claude-opus-5", ...],
 //     "coworkEgressAllowedHosts": ["*.internal.claude.local"],
 //     "mcpServers": [
 //       { "name": "web-search", "transport": "http", "upstream": "https://.../mcp" },   // remote (proxied)
