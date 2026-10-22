@@ -95,7 +95,8 @@ The gateway's IAM principal needs:
   "Effect": "Allow",
   "Action": [
     "bedrock:InvokeModel",
-    "bedrock:InvokeModelWithResponseStream"
+    "bedrock:InvokeModelWithResponseStream",
+    "bedrock:CountTokens"
   ],
   "Resource": [
     "arn:aws:bedrock:<region>:<account>:inference-profile/us.anthropic.*",

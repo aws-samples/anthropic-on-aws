@@ -1,23 +1,10 @@
-
-queue_rules:
-  - name: default
-    update_method: merge
-    queue_conditions:
-      - "#approved-reviews-by>=1"
-      - -label~=(do-not-merge)
-      - status-success=build
-    merge_method: squash
-    commit_message_format:
-      title: pr-title
-      body: pr-body
-pull_request_rules:
-  - name: Automatic merge on approval and successful build
-    actions:
-      queue:
-        name: default
-    conditions:
-      - "#approved-reviews-by>=1"
-      - -label~=(do-not-merge)
-      - status-success=build
+# Mergify is installed on this repo but not used for merging (aws-samples
+# policy: a human reviews and merges every PR). This config keeps the app
+# quiet: no rules, no queue-control checkbox, no status or merge-protection
+# comments.
+pull_request_rules: []
 merge_queue:
-  max_parallel_checks: 1
+  queue_controls_comment: false
+  status_comments: none
+merge_protections_settings:
+  post_comment: false

@@ -1,6 +1,5 @@
 /.projen/
 permissions-backup.acl
-/.mergify.yml
 /test/
 /tsconfig.dev.json
 /src/

@@ -104,9 +104,9 @@ current equivalents; names/paths drift as these samples evolve) before making an
 Cite `file:line` for non-obvious claims in the plan so the admin can verify them.
 
 Before trusting any specifics, check how current your copies of the three repos are (recent
-commit dates, version strings in `CHANGELOG.md` / `cdk/scripts/*` / `docs/upstream-watch.md`).
+commit dates, version strings in `CHANGELOG.md` / `cdk/scripts/*`).
 claude-apps-gateway in particular pins a narrow, fast-moving Claude Code CLI version floor
-(see `docs/upstream-watch.md`) and reconciles its CDK/`gateway.yaml` template on every upstream
+(`CLAUDE_VERSION` in `cdk/scripts/setup.sh`) and reconciles its CDK/`gateway.yaml` template on every upstream
 bump — a mapping written even a few weeks ago can be stale. Tell the admin the age of what
 you're citing so they know whether to double check it themselves before deploying.
 

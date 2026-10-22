@@ -36,7 +36,11 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
 ## Non-obvious constraints (these break the gateway if missed)
 
 - **Bedrock IAM needs two ARN families.** Grant `bedrock:InvokeModel` +
-  `bedrock:InvokeModelWithResponseStream` on *both* `inference-profile/global.anthropic.*` *and*
+  `bedrock:InvokeModelWithResponseStream` + `bedrock:CountTokens` (2.1.260+ counts aborted
+  requests through it, 2.1.295+ also `/context` and large file reads, falling back to a
+  `max_tokens:1` invoke; Bedrock supports it for Haiku 4.5 only right now, so it's a cost
+  nicety, not a correctness gate)
+  on *both* `inference-profile/global.anthropic.*` *and*
   `foundation-model/anthropic.*`. Missing either yields 403s. The gateway uses **global**
   cross-region inference profiles (`global.anthropic.*`) so any Bedrock region works; the
   inference-profile ARN prefix must match the profile prefix in `gateway.yaml`'s `models:`
@@ -55,6 +59,13 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
   pass provisions and prints the ALB hostname; set it as `public_url` (and register
   `<public_url>/oauth/callback` on the OIDC client), then redeploy.
 - **Raise the ALB idle timeout** (e.g. 3600s) or long streaming responses get cut off.
+- **The container `stopTimeout` must outlast the gateway's SIGTERM drain.** From 2.1.274 the
+  gateway lets in-flight requests finish for up to 25s before exiting
+  (`CLAUDE_GATEWAY_DRAIN_TIMEOUT_MS`); ECS SIGKILLs at `stopTimeout`, so a shorter value
+  truncates the drain and a rolling deploy severs live streams â€” the same failure the raised
+  ALB idle timeout exists to prevent. Both tracks pin it to **40s** (CDK: a property override,
+  since `taskImageOptions` exposes no `stopTimeout`; `setup.sh`: in the task-def JSON), and a
+  CDK test asserts the `web` container's value is above 25. Raise both together, never one.
 - **Config secret guard:** `setup.sh` must refuse to publish `gateway.yaml` while any `REPLACE_ME`
   placeholder remains.
 - **Container image:** distroless glibc base (`gcr.io/distroless/cc-debian12:nonroot`) around the
@@ -80,6 +91,36 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
 - `setup.sh` is idempotent (describe-before-create); `set -euo pipefail`; `trap`-clean partial binary
   downloads. Mirror the env-var-with-defaults convention from the GCP `setup.sh`.
 
+## Scope guardrails: 1p-first (read before adding anything)
+
+This sample teaches the supported Anthropic path on AWS. Anything that lags a 1p change
+misleads readers, because sample code looks authoritative. Before adding code, a script, or a
+doc paragraph, check each of these. If any applies, don't build it; write a short doc note that
+links the published Anthropic docs instead.
+
+- **Wrapping or re-implementing an Anthropic product surface** (admin API client, gateway
+  config schema, CLI behavior, managed-settings keys). This becomes a second source of truth
+  that goes stale on every product release. Helper scripts and admin CLIs are DIY tooling that
+  customers own; they do not land in this tree. Moving them to `workshop/` or `docs/` is still
+  hosting them.
+- **Working around current product behavior**: reverse-engineered schemas, "until X ships
+  in-region" relays, version gates such as `Desktop >= x`, disabling a feature to dodge a
+  provider 400. If truly unavoidable, quarantine it in a clearly labeled temporary section
+  that names what supersedes it.
+- **Shipping a finished surface Anthropic may own**: dashboards, spend/usage UIs, management
+  views. Keep such layers thin and explicitly "example". Show the data exists; don't render it.
+- **Adding a capability rather than a fix.** A new mode or branch must (a) unlock something the
+  existing config can't already reach, (b) teach the 1p product rather than generic AWS, PKI,
+  or DNS plumbing, and (c) justify its permanent maintenance cost. Concretely: TLS stays the
+  single imported-cert `CERT_ARN` path, and the first-login fingerprint prompt is intended 1p
+  behavior, not something to engineer around.
+- **Prose restating product API behavior** (wire formats, pagination quirks, field semantics)
+  lags the same way code does. Keep notes thin and defer to the reference docs below as the
+  only authority.
+
+Fixes to real breakage (crash, broken link, failed deploy on a supported config) are always
+welcome and should not be bundled with a debatable feature in the same PR.
+
 ## Verification
 
 No live AWS account is wired up here, so verification is local/static:
@@ -92,9 +133,12 @@ No live AWS account is wired up here, so verification is local/static:
   synthesized template â€” dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
   ADOT telemetry sidecar, `createVpcEndpoints` opt-out, imported-cert TLS),
   `./test/stamp-config.test.sh`
-  (dependency-free bash: placeholder guard + Google scope auto-injection), and
+  (dependency-free bash: placeholder guard + Google scope auto-injection),
   `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers â€” container-tool
-  detection / `--provenance` gating + the OIDC-secret preflight). None
+  detection / `--provenance` gating + the OIDC-secret preflight), and
+  `./test/deploy-helpers.test.sh` (deploy.sh's pass-1 gate â€” the destructive branch's
+  status allowlist, fail-closed status query, and leaving CDK-recoverable statuses to
+  CDK rather than bailing). None
   needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
 - Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).

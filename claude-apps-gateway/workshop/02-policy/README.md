@@ -113,8 +113,9 @@ strictKnownMarketplaces:
 The same per-group policy can serve Claude Desktop, but only for policies that opt in. Add a
 `desktop` key **alongside** `cli` and the gateway serves that policy's users at
 `/user/bootstrap` (Desktop's config endpoint); leave it out and `/user/bootstrap` returns
-`404`. `desktop: {}` alone opts a policy in — the keys below are Desktop-only feature gates,
-and unknown keys fail gateway boot. Needs the gateway server on v2.1.203+.
+`404`. `desktop: {}` alone opts a policy in — the keys below are Desktop-only feature gates.
+A bad value fails gateway boot; on this example's pin an unknown key logs a warning and
+is passed to Desktop as written. Needs the gateway server on v2.1.203+.
 ```yaml
 - match: { groups: [contractors] }
   cli:

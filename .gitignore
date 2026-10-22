@@ -28,7 +28,6 @@ jspm_packages/
 !/.github/workflows/build.yml
 /dist/changelog.md
 /dist/version.txt
-!/.mergify.yml
 !/.github/pull_request_template.md
 !/.github/workflows/build-metaprompt-generator.yml
 !/.github/workflows/build-claude-tools-chatbot.yml
