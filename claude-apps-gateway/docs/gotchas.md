@@ -517,8 +517,9 @@ for the gateway version `assume_role` requires; an older gateway refuses to star
 
 ## 22. Data residency costs 10% more than the spend meter counts
 
-**Symptom:** with the `admin:` block enabled (README §5), `period_to_date_spend` and every cap
-decision sit **~9% below** what the provider actually bills, so a $500/month cap admits about
+**Symptom:** with the `admin:` block enabled
+([README §5](../README.md#5-spend-caps-per-user-budget-enforcement)), `period_to_date_spend`
+and every cap decision sit **~9% below** what the provider actually bills, so a $500/month cap admits about
 $550 of real spend. The same rates are pushed to signed-in clients, so developers' `/cost` and
 your telemetry read low by the same margin. Nothing in the config, the boot log, or the audit
 events says so. Harmless on this example's shipped defaults; live the moment you pin inference
@@ -548,16 +549,19 @@ Claude tables — "Global Cross-region Inference" and "Geo and In-region Cross-r
 
 **Fix, and where it runs out:**
 
-- **This example as shipped is fine.** The `models:` catalog maps every id to
-  `global.anthropic.*`, which is list price, so the meter already agrees with the bill.
-- **Bedrock geographic profiles** (swapped in for data residency — see the README's "Regions &
-  data residency"): one line corrects it — `pricing: {multiplier: 1.1}`. A `multiplier` above
-  `1` marks metered spend *up*, so the per-model `pricing.overrides` table is now needed only
-  for a genuinely per-model contract or to separate two upstreams on different rate cards.
-  Recipe and the current numbers:
-  [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates).
-  **The fix lands server-side first.** Honouring a markup is a *client* capability (README §4's
-  client-version table), so until the fleet catches up the caps and the gateway's own spend
+- **This example as shipped needs no tier correction.** The `models:` catalog maps every id to
+  `global.anthropic.*`, which is list price. Separately from the tier premium, gateways before
+  2.1.286 under-count on every tier: they meter 1-hour cache writes at the 5-minute rate and
+  count only the first model call's input tokens on streamed turns that run a server-side tool.
+- **Bedrock geographic profiles** (swapped in for data residency — see [`cdk/README.md`
+  "Regions & data residency"](../cdk/README.md#regions--data-residency)): one line corrects
+  it — `pricing: {multiplier: 1.1}`. A `multiplier` above `1` marks metered spend *up*, so
+  the per-model `pricing.overrides` table is now needed only for a genuinely per-model
+  contract or to separate two upstreams on different rate cards. Recipe and the current
+  numbers: [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates).
+  **The fix lands server-side first.** Honouring a markup is a *client* capability
+  ([README §4](../README.md#4-claude-code-versions-one-pin-two-axes)'s client-version
+  table), so until the fleet catches up the caps and the gateway's own spend
   records are corrected while developers' `/cost` still reads list price. The gateway says so at
   boot: *"Claude Code clients older than v2.1.270 ignore a multiplier above 1 and show costs
   without the markup."* A discount needs no client floor.

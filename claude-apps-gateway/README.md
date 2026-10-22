@@ -572,14 +572,18 @@ still reports list price. A discount has no such client floor.
     overrides:   # us-east-1 geo tier, 2026-09-15 — re-check per region and model
       - { upstream: bedrock, model: us.anthropic.claude-opus-5,   input: 5.50, output: 27.50, cache_read: 0.55, cache_write: 6.875 }
       - { upstream: bedrock, model: us.anthropic.claude-sonnet-5,  input: 2.20, output: 11.00, cache_read: 0.22, cache_write: 2.75  }
-      - { upstream: bedrock, model: us.anthropic.claude-haiku-4-5, input: 1.10, output: 5.50,  cache_read: 0.11, cache_write: 1.375 }
+      - { upstream: bedrock, model: us.anthropic.claude-haiku-4-5-20251001-v1:0, input: 1.10, output: 5.50, cache_read: 0.11, cache_write: 1.375 }
   ```
-  A model you don't list silently falls back to list price.
+  These rows are already the geo-tier rate, and `multiplier` applies on top of a row, so use
+  them *instead of* `multiplier: 1.1`, not with it (both together meter 1.21×). Name each model
+  by the id the gateway sends Bedrock, date suffix included where the model has one: an
+  undated `us.anthropic.claude-haiku-4-5` row matches nothing. A model you don't list
+  silently falls back to list price.
 - **More than one upstream on different rate cards** — `multiplier` is a single value for the
   whole gateway, so the failover stacks the template sketches (an in-region primary with a
   global fallback, or `bedrock` alongside a first-party upstream on its own rate card and its
   own discount) can't be priced with one. Only `overrides`, whose rows are per-upstream, can
-  separate them. `multiplier` still applies on top of a row.
+  separate them.
 
 ---
 
