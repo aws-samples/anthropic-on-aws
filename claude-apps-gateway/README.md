@@ -716,7 +716,7 @@ Existing signed-in developers keep working (tokens validate locally). New sign-i
 ## Known limitations
 
 - Server-side web search is disabled through the gateway
-- 1-hour prompt caching is opt-in per policy ([`promptCacheTtl: 1h`](https://code.claude.com/docs/en/claude-apps-gateway-config#one-hour-prompt-cache)) and safe only where every upstream offers it for every model served: a rejected TTL fails the request, with no 5-minute retry
+- 1-hour prompt caching is not available (5-minute only)
 - No Helm chart provided (use a standard Kubernetes Deployment)
 - No admin UI (configuration is the YAML file; redeploy to change it)
 - One OIDC issuer per gateway instance (multi-tenant needs multiple gateways)
