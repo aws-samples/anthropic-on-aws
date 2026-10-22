@@ -153,7 +153,7 @@ app.get('/user/bootstrap', async (req, res) => {
     // README's Claude Desktop overlay table). Omitting chatTabEnabled from the S3 config costs
     // Desktop users the Chat tab, not "keeps the default" — set it explicitly if you want Chat
     // visible. Gateway requires >= 2.1.227 for the key on that side; see
-    // ../../claude-apps-gateway/docs/upstream-watch.md.
+    // ../../claude-apps-gateway/docs/gotchas.md §20.
     ...(cfg.chatTabEnabled === undefined ? {} : { chatTabEnabled: cfg.chatTabEnabled }),
     ...(cfg.coworkTabEnabled === undefined ? {} : { coworkTabEnabled: cfg.coworkTabEnabled }),
     ...(cfg.isClaudeCodeForDesktopEnabled === undefined
