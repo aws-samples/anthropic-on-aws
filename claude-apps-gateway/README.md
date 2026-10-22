@@ -107,13 +107,13 @@ The IAM policy for the task role looks like:
 }
 ```
 
-`bedrock:CountTokens` is there because the gateway counts an aborted request's input tokens through Bedrock's free `CountTokens` API. It is not load-bearing: when the call fails the gateway logs one warning per upstream and falls back to a `max_tokens:1` invoke, so the tokens are still counted — you just pay for the probe. Two limits are worth knowing before you expect the free path (both verified against Bedrock, us-east-1, 2026-09-15): `CountTokens` accepts only a **bare foundation-model id**, not an inference profile (the gateway strips the `global.`/`us.` prefix itself), and of this example's catalog only `anthropic.claude-haiku-4-5-20251001-v1:0` supports it — `anthropic.claude-opus-5` and `anthropic.claude-sonnet-5` return `ValidationException: The provided model doesn't support counting tokens`. Those two therefore take the fallback whatever the IAM policy says.
+`bedrock:CountTokens` is there because the gateway counts tokens through Bedrock's free `CountTokens` API: an aborted request's input tokens, and from 2.1.295 the counts `/context` and large file reads use. It is not load-bearing: when the call fails the gateway logs one warning per upstream and falls back to a `max_tokens:1` invoke, so the tokens are still counted — you just pay for the probe. Two limits are worth knowing before you expect the free path (both verified against Bedrock, us-east-1, 2026-09-15): `CountTokens` accepts only a **bare foundation-model id**, not an inference profile (the gateway strips the `global.`/`us.` prefix itself), and of this example's catalog only `anthropic.claude-haiku-4-5-20251001-v1:0` supports it — `anthropic.claude-opus-5` and `anthropic.claude-sonnet-5` return `ValidationException: The provided model doesn't support counting tokens`. Those two therefore take the fallback whatever the IAM policy says.
 
 The gateway uses **global** cross-region inference profiles (e.g., `global.anthropic.claude-opus-5`), so the IAM prefix is `global.anthropic.*` and any Bedrock region works. Enable Bedrock model access for the models you list; global profiles route to any commercial region, so enable access where global may route. (For data residency, switch the `gateway.yaml` `models:` block and this ARN to a geo prefix — `us.`/`eu.`/`au.`, and `jp.` for some models, since geo coverage varies per model — together; see [`cdk/README.md`](cdk/README.md) "Regions & data residency".)
 
 ### 4. Claude Code versions: one pin, two axes
 
-**This example is built and validated on Claude Code `2.1.274`.** That single version is the
+**This example is built and validated on Claude Code `2.1.299`.** That single version is the
 gateway server: it sets `CLAUDE_VERSION` in [`cdk/scripts/setup.sh`](cdk/scripts/setup.sh) and
 `claudeVersion` in [`cdk/bin/app.ts`](cdk/bin/app.ts), drives the binary download, and is baked
 into the container image. Everything documented in this README describes that version's
@@ -137,11 +137,16 @@ server pin can't deliver, so it's worth telling a fleet about:
 | **v2.1.251** | The **Spend limit** bar in `/usage`, for developers behind a gateway with spend limits configured. Needs nothing newer than v2.1.225 on the *server* |
 | **v2.1.260** | Bedrock model discovery, token counting and AWS SSO/STS calls no longer fail with "unable to get local issuer certificate" when the corporate root CA is only in the OS certificate store |
 | **v2.1.270** | Honours a `pricing.multiplier` **above 1** (the data-residency correction in §5). Older clients ignore a markup and report `/cost` at list price, even though the gateway's caps and spend records already carry it |
+| **v2.1.287** | `/model` shows every model in an enforced `availableModels` list. Before it, Bedrock startup model checks could collapse the picker to one Opus row — this example's exact config |
+| **v2.1.299** | `forceLoginMethod` from MDM is no longer hidden or replaced by server-managed settings, which this topology always has |
 
-**One client version to skip: 2.1.265.** It made the undocumented `CLAUDE_CODE_USE_GATEWAY`
+**Two client versions to skip.** **2.1.265** made the undocumented `CLAUDE_CODE_USE_GATEWAY`
 variable force Cloud-gateway sign-in on its own, so machines that set it alongside an API key,
 `apiKeyHelper` or custom auth headers failed every request with "Not signed in to the Cloud
-gateway". v2.1.266 restored the old behaviour with no configuration change needed.
+gateway". v2.1.266 restored the old behaviour with no configuration change needed. **2.1.304**
+turned tool search on by default behind a gateway, and every request failed where the endpoint
+or gateway rejects it; v2.1.305 retries without it. 2.1.304 has been a `stable` channel release,
+so a fleet that follows `stable` can land on it.
 
 ### 5. Device management (for pushing settings to developers)
 
@@ -216,6 +221,7 @@ managed:
 - `availableModels` is enforced both client-side (model picker) and server-side (400 on unauthorized model)
 - `disableBypassPermissionsMode: disable` prevents developers from using `--dangerously-skip-permissions`
 - Settings refresh hourly; policy changes reach developers within an hour of redeployment
+- This example writes each policy's settings under `cli`. From 2.1.296 the gateway also accepts `code`, the key the [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#choose-cli-or-code) now recommends: same contents, and it can also reach Claude Desktop's Code tab. The example keeps `cli` because switching needs a `desktop` key and client-side setup, and turns off web search in Claude Desktop — read that section before you rename. A policy can't carry both keys; the gateway refuses to start
 
 **What's enforced server-side vs. client-side:** the gateway sits on the inference path (`/v1/messages`), so it hard-enforces anything about a model request; it cannot enforce what happens on a developer's machine.
 
@@ -257,9 +263,10 @@ which fans out to your destinations. Keys with no Desktop equivalent are omitted
 it as a bare tool name.
 
 The `desktop:` block itself holds the Desktop-specific settings that have no CLI
-equivalent. Every key is optional (Desktop applies its own default for anything omitted),
-and unknown keys **fail gateway boot**. The block accepts every released Claude Desktop
-setting and is validated against Desktop's own schema, so the table
+equivalent. Every key is optional (Desktop applies its own default for anything omitted).
+A value Desktop would reject **fails gateway boot**; a key the pinned gateway's bundled
+Desktop schema doesn't know logs a warning and is sent to Desktop as written. The block
+accepts every released Claude Desktop setting and is validated against Desktop's own schema, so the table
 below is the useful subset for a gateway deployment, not the whole accepted set — write any
 key from Claude Desktop's [managed configuration reference](https://claude.com/docs/third-party/claude-desktop/configuration)
 as a flat key name:
@@ -278,8 +285,8 @@ as a flat key name:
 | `coworkEgressAllowedHosts` | Cowork egress allowlist — **replaces** the list derived from `sandbox.network.allowedDomains` |
 | `managedMcpServers` | Desktop-only, and an **array** of entries — not the CLI's object, so don't copy one into the other. To push MCP servers to *CLI* clients, set `managedMcpServers` (an object keyed by server name) in the `cli` block instead; that needs **≥ 2.1.259**, which this pin satisfies. Only the `.mcp.json` spelling `mcpServers` is rejected in a `cli` block |
 
-Three traps bite here — a banner that renders nothing, a silently missing Chat tab, and an
-unknown key that crash-loops the ECS task; all three are written up in
+Three traps bite here — a banner that renders nothing, a silently missing Chat tab, and a
+bad value that crash-loops the ECS task; all three are written up in
 [`docs/gotchas.md`](docs/gotchas.md#20-three-ways-the-desktop-block-itself-bites).
 
 If you don't deploy Claude Desktop, leave `desktop` out entirely — `/user/bootstrap` then
