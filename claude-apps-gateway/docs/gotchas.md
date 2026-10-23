@@ -557,6 +557,9 @@ Claude tables — "Global Cross-region Inference" and "Geo and In-region Cross-r
   `global.anthropic.*`, which is list price. Separately from the tier premium, gateways before
   2.1.286 under-count on every tier: they meter 1-hour cache writes at the 5-minute rate and
   count only the first model call's input tokens on streamed turns that run a server-side tool.
+  2.1.286 fixed the 1-hour rate only for the built-in rates: a `pricing.overrides` row has one
+  `cache_write` rate and still meters 1-hour writes at it (see
+  [README §5](../README.md#metering-at-your-real-bedrock-rate-endpoint-tier-and-negotiated-rates)).
 - **Bedrock geographic profiles** (swapped in for data residency — see [`cdk/README.md`
   "Regions & data residency"](../cdk/README.md#regions--data-residency)): one line corrects
   it — `pricing: {multiplier: 1.1}`. A `multiplier` above `1` marks metered spend *up*, so

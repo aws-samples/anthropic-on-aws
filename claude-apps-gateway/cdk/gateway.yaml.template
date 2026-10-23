@@ -187,8 +187,9 @@ managed:
           # - claude-fable-5   # opt-in — see the models: block note below
         enforceAvailableModels: true
         # One-hour prompt cache instead of the 5-minute default. Bedrock offers it for every
-        # model in this catalog; a model that rejects it fails the request (no 5m retry).
-        # 1h cache writes cost more. https://code.claude.com/docs/en/claude-apps-gateway-config#one-hour-prompt-cache
+        # model in this catalog, but EVERY upstream you route to must: a rejected TTL fails
+        # the request (no 5m retry). 1h cache writes cost more. See
+        # https://code.claude.com/docs/en/claude-apps-gateway-config#one-hour-prompt-cache
         # promptCacheTtl: 1h
         # subagentPromptCacheTtl: 1h
         # CLAUDE DESKTOP, part 1 of 2 (uncomment if you deploy Desktop). Desktop hands
