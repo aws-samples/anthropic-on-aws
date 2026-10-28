@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-10-28
+
+- [AWS Lambda supports Seekable OCI (SOCI) lazy loading for Lambda Managed Instances](https://aws.amazon.com/about-aws/whats-new/2026/10/aws-lambda-seekable-oci-soci/) — *AWS What's New* (Wed, 28 Oct 2026 18:44:00 GMT)
+
 ## 2026-10-20
 
 - [Structured outputs for Claude models available on Amazon Bedrock](https://aws.amazon.com/about-aws/whats-new/2026/10/claude-structured-outputs-bedrock/) — *AWS What's New* (Tue, 20 Oct 2026 14:00:00 GMT)
