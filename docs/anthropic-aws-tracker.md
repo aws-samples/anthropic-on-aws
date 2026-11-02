@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-02
+
+- [Haiku 5.5 now available on Kiro in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/11/kiro-haiku-5-5-aws-govcloud-us/) — *AWS What's New* (Mon, 02 Nov 2026 20:45:00 GMT)
+
 ## 2026-10-30
 
 - [Amazon Bedrock now offers Canada cross-Region inference for Claude Haiku 5.5](https://aws.amazon.com/about-aws/whats-new/2026/10/claude-haiku-5-5-canada-cris/) — *AWS What's New* (Tue, 27 Oct 2026 08:00:00 GMT)
