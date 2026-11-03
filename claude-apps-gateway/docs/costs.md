@@ -131,14 +131,3 @@ OTLP metrics, not the logs, are the analytics surface.
 
 **Tear down when idle.** A demo or pilot bills ~$188/month whether or not anyone
 signs in. See [`teardown.md`](teardown.md).
-
----
-
-## One inference-cost note
-
-Not a lever, just a thing to know: from gateway 2.1.260 an aborted request's input
-tokens are counted with Bedrock's free `CountTokens` API instead of a billable
-`max_tokens:1` probe — which is why the task role grants `bedrock:CountTokens`. Of
-this example's catalog only Haiku 4.5 supports it today, so Opus 5 and Sonnet 5 still
-take the probe. This example pins **2.1.274**, so the behaviour is present.
-
