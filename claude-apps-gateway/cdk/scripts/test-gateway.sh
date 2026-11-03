@@ -48,6 +48,7 @@ echo "✅ Database: $DB_NAME"
 
 # 4. Load .env if present
 if [ -f "$PROJECT_DIR/.env" ]; then
+  # shellcheck source=/dev/null
   source "$PROJECT_DIR/.env"
   echo "✅ Loaded .env"
 else
@@ -59,7 +60,7 @@ fi
 
 # 5. Write temporary gateway config
 TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+trap 'rm -rf "$TMPDIR"' EXIT
 
 cat > "$TMPDIR/gateway.yaml" <<EOF
 listen:

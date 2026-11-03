@@ -100,6 +100,7 @@ if [ ! -f .env ]; then
   echo "❌ .env file not found. Run: cp .env.example .env and fill in your values."
   exit 1
 fi
+# shellcheck source=/dev/null
 source .env
 
 echo "=== Claude Gateway Deploy ==="

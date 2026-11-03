@@ -4,9 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A **worked example for deploying the Claude apps gateway on AWS**, modeled on Anthropic's official
-GCP example (`github.com/anthropics/claude-code/tree/main/examples/gateway/gcp`). It is reference
-material for customer-managed infrastructure — *a working example, not a supported production
+A **worked example for deploying the Claude apps gateway on AWS**. It is reference material for
+customer-managed infrastructure — *a working example, not a supported production
 artifact*. Every doc and README must preserve that framing.
 
 The Claude apps gateway is a self-hosted service built into the `claude` binary
@@ -17,11 +16,11 @@ OTLP telemetry. This repo's upstream is **Amazon Bedrock**.
 
 The implementation is built out — `setup.sh` and the CDK app (`cdk/`) provision the Fargate track,
 with the EKS track documented in `docs/`. When adding or changing files, follow the existing
-structure and keep the `setup.sh` and CDK paths in sync rather than diverging.
+structure.
 
 ## Architecture
 
-Two deployment tracks, mirroring how the GCP example splits Cloud Run (automated) vs GKE (notes):
+Two deployment tracks:
 
 - **ECS Fargate** behind an **internal IPv4 ALB** — the primary, fully-automated track, delivered as
   both `setup.sh` (idempotent `aws`-CLI) and a CDK app (`cdk/`, TypeScript).
@@ -36,10 +35,10 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways �
 ## Non-obvious constraints (these break the gateway if missed)
 
 - **Bedrock IAM needs two ARN families.** Grant `bedrock:InvokeModel` +
-  `bedrock:InvokeModelWithResponseStream` + `bedrock:CountTokens` (2.1.260+ counts aborted
-  requests through it, 2.1.295+ also `/context` and large file reads, falling back to a
-  `max_tokens:1` invoke; Bedrock supports it for Haiku 4.5 only right now, so it's a cost
-  nicety, not a correctness gate)
+  `bedrock:InvokeModelWithResponseStream` + `bedrock:CountTokens` (free token counts: aborted
+  requests from 2.1.260, `/context` and large file reads from 2.1.295; where it fails, the
+  gateway falls back to a billable `max_tokens:1` invoke, so it's a cost nicety, not a
+  correctness gate — model coverage is noted in `cdk/lib/claude-gateway-stack.ts`)
   on *both* `inference-profile/global.anthropic.*` *and*
   `foundation-model/anthropic.*`. Missing either yields 403s. The gateway uses **global**
   cross-region inference profiles (`global.anthropic.*`) so any Bedrock region works; the
@@ -89,7 +88,7 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways �
   pointing it at `/readyz` would drain *all* replicas on a transient Postgres blip. Weigh that before
   changing the probe target.
 - `setup.sh` is idempotent (describe-before-create); `set -euo pipefail`; `trap`-clean partial binary
-  downloads. Mirror the env-var-with-defaults convention from the GCP `setup.sh`.
+  downloads. Inputs are env vars with defaults (`${VAR:-default}`).
 
 ## Scope guardrails: 1p-first (read before adding anything)
 
@@ -125,9 +124,11 @@ welcome and should not be bundled with a debatable feature in the same PR.
 
 No live AWS account is wired up here, so verification is local/static:
 
-- Shell: `bash -n setup.sh`, and `shellcheck setup.sh` if available.
+- Shell: `bash -n cdk/scripts/*.sh`, and `shellcheck cdk/scripts/*.sh` if available.
 - CDK (strongest automated check — type-checks TS + validates construct wiring without deploying):
-  `cd cdk && npm install && npx cdk synth`. Deploy a single stack with `npx cdk deploy <StackName>`.
+  `cd cdk && npm install && npx cdk synth -c imageReady=false` (pass 1). Pass 2 needs the `-c`
+  context listed at the top of `cdk/bin/app.ts`; add `-c zoneId=...` so synth skips the
+  `fromLookup` credential call. Deploy a single stack with `npx cdk deploy <StackName>`.
 - Tests (run these after changing the stack or `stamp-config.sh`, and add cases when
   fixing a deployment trap): `cd cdk && npm test` (Jest + CDK `assertions` over the
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
@@ -139,17 +140,43 @@ No live AWS account is wired up here, so verification is local/static:
   `./test/deploy-helpers.test.sh` (deploy.sh's pass-1 gate — the destructive branch's
   status allowlist, fail-closed status query, and leaving CDK-recoverable statuses to
   CDK rather than bailing). None
-  needs an AWS account. CDK tests pass `-c zoneId` to skip the `fromLookup` credential call.
-- Config: `python3 -c 'import yaml; yaml.safe_load(open("gateway.yaml.example"))'` (the `${...}`
+  needs an AWS account. CDK tests pass `zoneId` in the stack props to skip the `fromLookup` credential call.
+- Config: `python3 -c 'import yaml; yaml.safe_load(open("cdk/gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).
 - `docker build` is deferred — it needs the real pinned `claude` binary that `setup.sh` stages.
 
 End-to-end smoke tests (against a real account + OIDC IdP) are the user's, per the gateway quickstart:
 `/.well-known/oauth-authorization-server`, `/oauth/device_authorization`, then the browser sign-in leg.
 
+### Before every PR push: re-check the whole diff
+
+The checks above prove a change loads, synthesizes or parses, not that it does what the docs say.
+Small commits that each pass review can still add up to a wrong result: a markup applied twice, a
+config row that matches nothing. So before opening a PR, before every push to an open one, and
+before re-requesting review, re-check the **whole** diff against `main` on aws-samples
+(`upstream/main` in a fork), not just the latest commit:
+
+1. **Run every check in this section on the final tree**, not only the ones the last commit touched.
+2. **Re-read each changed block as one unit, the way a reader will use it.** Editing one line can
+   change what the lines next to it mean.
+3. **Run examples the way the docs tell users to.** Uncomment config exactly as instructed and run
+   it with `claude gateway --config` on the pinned version. Check the effect (the resulting rate,
+   which row matches, which route is taken), not just that it boots.
+4. **Check every identifier against what the sample ships.** Model IDs and prefixes against the
+   `models:` catalog (date suffixes included), plus keys and paths. Test exactly the values the
+   docs name, not a convenient subset.
+5. **Open every link and anchor the diff adds or touches**, including cross-file `§N` references,
+   which go stale when headings move.
+6. **Re-check version claims** against releases and changelog entries since the last push if the
+   PR has been open a while, was rebased, or depends on another PR.
+7. **Re-read the PR body against the final diff** (file list, section numbers) and state which
+   checks you ran.
+
+Verify reviewers' comments against the code the same way before applying them, and push back where
+they're wrong.
+
 ## Reference docs
 
 - Gateway overview / quickstart: https://code.claude.com/docs/en/claude-apps-gateway
 - Config reference (every `gateway.yaml` option): https://code.claude.com/docs/en/claude-apps-gateway-config
 - Deployment & operations (IAM, image, health, security): https://code.claude.com/docs/en/claude-apps-gateway-deploy
-- The GCP worked example this mirrors: https://code.claude.com/docs/en/claude-apps-gateway-on-gcp
