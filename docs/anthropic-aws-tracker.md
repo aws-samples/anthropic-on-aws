@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-06
+
+- [Extend Claude Code to remote sessions on Amazon Bedrock AgentCore with security controls](https://aws.amazon.com/blogs/machine-learning/extend-claude-code-to-remote-sessions-on-amazon-bedrock-agentcore-with-security-controls/) — *AWS Machine Learning Blog* (Fri, 06 Nov 2026 16:45:58 +0000)
+
 ## 2026-11-02
 
 - [Haiku 5.5 now available on Kiro in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/11/kiro-haiku-5-5-aws-govcloud-us/) — *AWS What's New* (Mon, 02 Nov 2026 20:45:00 GMT)
