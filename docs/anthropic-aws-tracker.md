@@ -1,6 +1,13 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-09
+
+- [Amazon Bedrock now offers Claude Mythos 5.2 to Eligible Customers in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/11/bedrock-claude-mythos-5-2-govcloud/) — *AWS What's New* (Mon, 09 Nov 2026 18:30:00 GMT)
+- [Claude Fable 5.2 is now available on AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/11/claude-fable-5-2-aws-govcloud/) — *AWS What's New* (Mon, 09 Nov 2026 18:30:00 GMT)
+- [Claude Fable 5.2 is now available on AWS](https://aws.amazon.com/about-aws/whats-new/2026/11/claude-fable-5-2-aws/) — *AWS What's New* (Mon, 09 Nov 2026 15:00:00 GMT)
+- [Introducing Claude Fable 5.2 on AWS](https://aws.amazon.com/blogs/machine-learning/introducing-claude-fable-5-2-on-aws/) — *AWS Machine Learning Blog* (Mon, 09 Nov 2026 20:04:37 +0000)
+
 ## 2026-11-06
 
 - [Extend Claude Code to remote sessions on Amazon Bedrock AgentCore with security controls](https://aws.amazon.com/blogs/machine-learning/extend-claude-code-to-remote-sessions-on-amazon-bedrock-agentcore-with-security-controls/) — *AWS Machine Learning Blog* (Fri, 06 Nov 2026 16:45:58 +0000)
