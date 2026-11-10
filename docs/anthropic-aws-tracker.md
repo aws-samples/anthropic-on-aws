@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-10
+
+- [AWS Glue adds 100 new native connectors for popular SaaS applications](https://aws.amazon.com/about-aws/whats-new/2026/11/aws-glue-adds-100-new-native-connectors/) — *AWS What's New* (Mon, 09 Nov 2026 21:33:00 GMT)
+
 ## 2026-11-09
 
 - [Amazon Bedrock now offers Claude Mythos 5.2 to Eligible Customers in AWS GovCloud (US)](https://aws.amazon.com/about-aws/whats-new/2026/11/bedrock-claude-mythos-5-2-govcloud/) — *AWS What's New* (Mon, 09 Nov 2026 18:30:00 GMT)
