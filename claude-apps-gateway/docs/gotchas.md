@@ -616,6 +616,9 @@ Enterprise VPCs often have several private subnets per AZ (app, data, and shared
 the ALB gets two or more per AZ and the create fails. The Fargate tasks and the RDS subnet
 group accept several subnets per AZ, which is why only the ALB fails.
 
+This is CDK-track only. `setup.sh` creates its own two private subnets, one per AZ, and puts
+the ALB in those, so it doesn't hit this.
+
 Two things make this harder to fix than it looks:
 
 - **There is no subnet-selection flag.** `-c subnetIds=...` is not read by the stack. CDK
@@ -658,8 +661,8 @@ jq '.Resources[] | select(.Type=="AWS::ElasticLoadBalancingV2::LoadBalancer") | 
 
 ## 24. Re-running pass 1 or deleting the stack resets more than the stack  **[hit live]**
 
-**Symptom:** after re-running pass 1 (`-c imageReady=false`) on a stack that had reached
-pass 2, or deleting and recreating the stack, one or more of these appears:
+**Symptom (CDK track):** after re-running pass 1 (`-c imageReady=false`) on a stack that had
+reached pass 2, or deleting and recreating the stack, one or more of these appears:
 
 - `aws ecs update-service` fails with
   `ClusterNotFoundException: The referenced cluster was inactive`.
@@ -694,7 +697,7 @@ work through the table above before testing sign-in.
 ## 25. The OIDC client secret must be the secret *value*, not its ID  **[hit live]**
 
 **Symptom:** the browser SSO step succeeds, then the gateway shows "Sign-in failed". The
-IdP's sign-in logs show no failure. The gateway log shows:
+user's interactive sign-in shows as successful in the IdP. The gateway log shows:
 
 ```
 token exchange failed ... invalid_client (AADSTS7000215: Invalid client secret provided.
@@ -738,18 +741,13 @@ Bedrock evaluates global routing against a region-agnostic foundation-model ARN 
 commonly deny exactly that in an SCP.
 
 **Fix:** switch to a geographic profile (`us.`, `eu.`, `au.`, or `jp.` where available) in
-**two places**, then rebuild the image and redeploy:
+**two places**, the `models:` block of `gateway.yaml.template` and the task role's
+`inference-profile/global.anthropic.*` ARN, then rebuild the image and redeploy.
+[`cdk/README.md` "Regions & data residency"](../cdk/README.md#regions--data-residency) has the
+steps. The README names the ARN in `cdk/lib/claude-gateway-stack.ts`; on the `setup.sh` track
+the same ARN is in `setup.sh`'s task-role policy.
 
-1. **`gateway.yaml.template`, `models:` block:** change every `upstream_model` from
-   `global.anthropic.<model>` to the geo prefix. Haiku 4.5 needs its dated ID (for example,
-   `us.anthropic.claude-haiku-4-5-20251001-v1:0`). Confirm the IDs with
-   `aws bedrock list-inference-profiles`. Afterwards, `grep -n "global\." gateway.yaml` should
-   return nothing.
-2. **Task role policy in `cdk/lib/claude-gateway-stack.ts`:** change
-   `inference-profile/global.anthropic.*` to the same prefix. The foundation-model ARN already
-   uses a region wildcard, so it needs no change.
-
-If you change step 1 but not step 2, the error changes to
+If you change the `models:` block but not the ARN, the error changes to
 `... inference-profile/us.anthropic.<model> because no identity-based policy allows the action`.
 Also check that the SCP allows every destination Region of the geo profile;
 `aws bedrock get-inference-profile` lists them. Geo profiles carry the 10% premium described
