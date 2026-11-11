@@ -269,7 +269,7 @@ To roll a new image later: push a new tag, then re-run pass 2 with
 
 Both tracks can deploy into a VPC you already have — `VPC_ID=vpc-...` for `setup.sh`,
 `-c vpcId=vpc-...` for CDK — typically to keep an existing Client VPN association
-intact. Three things to know.
+intact. Four things to know.
 
 **CIDR.** `setup.sh` creates subnets at fixed CIDRs (`10.20.0.0/24`, `10.20.1.0/24`,
 `10.20.10.0/24`, `10.20.11.0/24`), so the VPC must be `10.20.0.0/16` or a superset
@@ -301,6 +301,12 @@ Once the stack is up, tighten each rule to the task SG (`TaskSg`, or `$P-task-sg
 drop the rule referencing it — one more reason to deploy **pass 2 only** and never
 re-run pass 1 (see the caution under [Track B](#track-b--cdk-two-pass));
 `deploy.sh` skips it for you.
+
+**One subnet per AZ for the ALB.** The stack places the internal ALB in every subnet CDK
+classifies as private, and an ALB accepts only one subnet per Availability Zone. If the
+reused VPC has more than one private subnet per AZ, pass 2 fails at the load balancer. Pin
+the ALB to one subnet per AZ before deploying; see
+[`gotchas.md` §23](gotchas.md#23-reusing-a-vpc-with-more-than-one-private-subnet-per-az-fails-at-the-alb--hit-live).
 
 Tearing down a reused VPC needs care too — see
 [Reused VPC](teardown.md#reused-vpc) in the teardown guide.
