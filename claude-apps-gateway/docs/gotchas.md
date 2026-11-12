@@ -597,3 +597,161 @@ discounts can't be priced), and applying the documented 1.1× from the `usage.in
 meter is already handed, which is the only route that fixes `anthropic` / `anthropicAws`. Treat
 the 10% as a figure to re-verify, not a constant: check it against your own invoice, and
 re-check when the pin moves.
+
+---
+
+## 23. Reusing a VPC with more than one private subnet per AZ fails at the ALB  **[hit live]**
+
+**Symptom:** pass 2 stops at the load balancer and the stack rolls back, deleting the VPC
+endpoints it just created:
+
+```
+CREATE_FAILED | AWS::ElasticLoadBalancingV2::LoadBalancer | Gateway/LB
+A load balancer cannot be attached to multiple subnets in the same Availability Zone
+```
+
+**Why:** with `-c vpcId=...`, the stack imports the VPC and places the internal ALB in every
+subnet CDK classifies as private. An ALB accepts only one subnet per Availability Zone.
+Enterprise VPCs often have several private subnets per AZ (app, data, and shared tiers), so
+the ALB gets two or more per AZ and the create fails. The Fargate tasks and the RDS subnet
+group accept several subnets per AZ, which is why only the ALB fails.
+
+This is CDK-track only. `setup.sh` creates its own two private subnets, one per AZ, and puts
+the ALB in those, so it doesn't hit this.
+
+Two things make this harder to fix than it looks:
+
+- **There is no subnet-selection flag.** `-c subnetIds=...` is not read by the stack. CDK
+  ignores unknown context keys silently, so the deploy runs with the default selection and
+  fails the same way.
+- **Tagging only the subnets you want doesn't work.** CDK treats any untagged subnet without
+  an internet-gateway route as private, so tagging two subnets
+  `aws-cdk:subnet-type = Private` leaves the others private too. CDK also caches the VPC
+  lookup in `cdk.context.json`, so tag changes aren't seen until you clear it.
+
+**Fix:** pin the ALB to one subnet per AZ. Only the ALB needs this; the tasks and RDS can keep
+the default selection, and the ALB still reaches tasks in any subnet in its AZ. Add this right
+after the `ApplicationLoadBalancedFargateService` is created:
+
+```ts
+const cfnLb = fargate.loadBalancer.node.defaultChild as elbv2.CfnLoadBalancer;
+cfnLb.addPropertyOverride('Subnets', [
+  '<subnet-in-az-a>',
+  '<subnet-in-az-b>',
+]);
+```
+
+Alternatively, tag every subnet you don't want `aws-cdk:subnet-type = Isolated`, then run
+`npx cdk context --clear`. Only CDK reads these tags, but check that no other CDK app in the
+account depends on them first.
+
+Either way, check the synthesized template before deploying. This takes seconds; a failed
+deploy and rollback takes much longer:
+
+```bash
+npx cdk synth <your -c flags> > /dev/null
+jq '.Resources[] | select(.Type=="AWS::ElasticLoadBalancingV2::LoadBalancer") | .Properties.Subnets' \
+  cdk.out/*.template.json   # expect exactly one subnet per AZ
+```
+
+> Takeaway: list the VPC's subnets per AZ before deploying into an existing VPC. More than
+> one private subnet per AZ means you need to pin the ALB.
+
+---
+
+## 24. Re-running pass 1 or deleting the stack resets more than the stack  **[hit live]**
+
+**Symptom (CDK track):** after re-running pass 1 (`-c imageReady=false`) on a stack that had
+reached pass 2, or deleting and recreating the stack, one or more of these appears:
+
+- `aws ecs update-service` fails with
+  `ClusterNotFoundException: The referenced cluster was inactive`.
+- Sign-in reaches the IdP but fails with `AADSTS7000215: Invalid client secret provided`
+  (Entra ID) or the equivalent `invalid_client` from another IdP.
+- `<public_url>` stops resolving or times out from laptops.
+- Every developer has to run `claude /login` again.
+- After a stack delete, the service fails with `CannotPullContainerError`, and
+  `aws ecr list-images` returns `RepositoryNotFoundException`.
+
+**Why:** the pass 1 template contains only the ECR repository, so deploying it over a full
+stack deletes everything else (see the caution under Track B in `deployment.md`). The second
+deploy then creates new resources, each with a side effect:
+
+| Recreated resource | Side effect | Fix |
+|---|---|---|
+| ECS cluster and service | Gone until pass 2 runs | Run pass 2 (`-c imageReady=true`), not `update-service` |
+| `claude-gateway-oidc-client-secret` | New CDK-generated placeholder. CloudFormation sets a secret's value only at creation, so later `cdk deploy` runs never overwrite it | `aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret --secret-string '<value>'`, then `aws ecs update-service --cluster claude-gateway --service claude-gateway --force-new-deployment` |
+| Internal ALB | New DNS name | Update any DNS record you manage outside Route 53 (for example, a corporate CNAME) to the new `AlbDnsName` output |
+| RDS instance | Sign-in state is gone | Developers run `claude /login` again |
+| ECR repository (stack delete only) | `removalPolicy: DESTROY` with `emptyOnDelete` removes the repo and its images | Run pass 1, rebuild and push the image, then pass 2 |
+
+**Fix:** to change an existing deployment, run pass 2 only. After any delete or pass 1 run,
+work through the table above before testing sign-in.
+
+> Takeaway: when a deploy fails, fix it and redeploy pass 2 rather than deleting the stack.
+> Each delete adds an image rebuild, a secret reset, and possibly a DNS change to the next
+> attempt.
+
+---
+
+## 25. The OIDC client secret must be the secret *value*, not its ID  **[hit live]**
+
+**Symptom:** the browser SSO step succeeds, then the gateway shows "Sign-in failed". The
+user's interactive sign-in shows as successful in the IdP. The gateway log shows:
+
+```
+token exchange failed ... invalid_client (AADSTS7000215: Invalid client secret provided.
+Ensure the secret being sent in the request is the client secret value, not the client secret ID ...)
+```
+
+**Why:** the browser leg of the flow worked, but the gateway's server-side token exchange was
+rejected. Entra ID shows two fields for each client secret: a **Value** (shown only once, when
+the secret is created) and a **Secret ID** (a GUID). Only the Value works. The same symptom
+appears if the Secrets Manager secret still holds the placeholder value (see gotcha 24).
+
+**Fix:** copy the Value when you create the client secret. If it's no longer visible, create
+a new client secret. Then:
+
+```bash
+aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret \
+  --secret-string '<client secret VALUE>' --region <region>
+aws ecs update-service --cluster claude-gateway --service claude-gateway \
+  --force-new-deployment --region <region>
+```
+
+A rebuild isn't needed, because the secret is injected at task start, not baked into the
+image.
+
+---
+
+## 26. An SCP that blocks global routing denies every request  **[hit live]**
+
+**Symptom:** sign-in works, but every prompt fails with a 403 from the upstream:
+
+```
+... is not authorized to perform: bedrock:InvokeModelWithResponseStream on resource:
+arn:aws:bedrock:::foundation-model/anthropic.<model> with an explicit deny in a service control policy
+```
+
+The empty region in that ARN (`:::`) is the giveaway.
+
+**Why:** this example routes every model through `global.anthropic.*` inference profiles.
+Bedrock evaluates global routing against a region-agnostic foundation-model ARN with
+`aws:RequestedRegion` set to `unspecified`. Organizations with data-residency requirements
+commonly deny exactly that in an SCP.
+
+**Fix:** switch to a geographic profile (`us.`, `eu.`, `au.`, or `jp.` where available) in
+**two places**, the `models:` block of `gateway.yaml.template` and the task role's
+`inference-profile/global.anthropic.*` ARN, then rebuild the image and redeploy.
+[`cdk/README.md` "Regions & data residency"](../cdk/README.md#regions--data-residency) has the
+steps. The README names the ARN in `cdk/lib/claude-gateway-stack.ts`; on the `setup.sh` track
+the same ARN is in `setup.sh`'s task-role policy.
+
+If you change the `models:` block but not the ARN, the error changes to
+`... inference-profile/us.anthropic.<model> because no identity-based policy allows the action`.
+Also check that the SCP allows every destination Region of the geo profile;
+`aws bedrock get-inference-profile` lists them. Geo profiles carry the 10% premium described
+in gotcha 22. See also gotcha 9.
+
+> Takeaway: ask whether the organization's SCPs restrict regions before the first deploy. If
+> they do, set the geo prefix in both places from the start.
