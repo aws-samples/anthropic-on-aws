@@ -105,7 +105,7 @@ Docker is not required.
 - An AWS account with Lambda MicroVM and Amazon Bedrock model access in the
   selected Region
 - AWS CLI v2 and a deployment profile
-- Node.js 20 or later
+- Node.js 22.12 or later (matches the Lambda runtime and MicroVM image)
 - Python 3.12 for the MicroVM agent tests
 - CDK bootstrap resources in the target account and Region
 - Organization-managed private routing and DNS from developer devices to the
