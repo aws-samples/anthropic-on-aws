@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-12
+
+- [Amazon Managed Service for Apache Flink introduces enhanced snapshots](https://aws.amazon.com/about-aws/whats-new/2026/11/managed-flink-enhanced-snapshots/) — *AWS What's New* (Thu, 12 Nov 2026 08:00:00 GMT)
+
 ## 2026-11-10
 
 - [AWS Glue adds 100 new native connectors for popular SaaS applications](https://aws.amazon.com/about-aws/whats-new/2026/11/aws-glue-adds-100-new-native-connectors/) — *AWS What's New* (Mon, 09 Nov 2026 21:33:00 GMT)
