@@ -90,6 +90,53 @@ find_linux_binary() {
   return 1
 }
 
+# ensure_build_bucket — make sure the CodeBuild source bucket exists AND belongs to
+# this account. Returns 0 only when it does; prints the reason and returns 1 otherwise.
+# Args: bucket, expected owner account ID, region.
+#
+# The name is derived from the account ID and region, and the bucket is in S3's
+# shared global namespace, where a name belongs to whichever account creates it
+# first. Step 3 uploads the build input here and CodeBuild builds from it, so the
+# bucket must be one this account owns.
+#
+# So: head-bucket with --expected-bucket-owner (S3 returns 403 when another account
+# owns the bucket). Create ONLY on a 404. Any other failure (403, expired credentials,
+# throttling) aborts, as does any create error, including BucketAlreadyExists when
+# someone takes the name between the check and the create. Creating only on a 404 also
+# avoids re-creating a bucket we own, which in us-east-1 succeeds and resets its ACLs.
+# https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucket-owner-condition.html
+ensure_build_bucket() {
+  local bucket="$1" owner="$2" region="$3" err
+  if err="$(aws s3api head-bucket --bucket "$bucket" --expected-bucket-owner "$owner" \
+      --region "$region" 2>&1 >/dev/null)"; then
+    return 0
+  fi
+  case "$err" in
+    *"(404)"*) ;;  # absent: create it below
+    *)
+      echo "❌ Could not confirm that account $owner owns the build bucket s3://$bucket:"
+      printf '%s\n' "$err" | sed '/^[[:space:]]*$/d; s/^/   /'
+      echo "   A 403 usually means another account owns this name (or your credentials"
+      echo "   lack s3:ListBucket on it). Do not deploy into a bucket you don't own:"
+      echo "   CodeBuild would build whatever it holds."
+      return 1
+      ;;
+  esac
+  if ! aws s3 mb "s3://$bucket" --region "$region" >/dev/null; then
+    echo "❌ Could not create the build bucket s3://$bucket (error above)."
+    return 1
+  fi
+}
+
+# put_build_input — upload one build-input file, refusing a bucket another account
+# owns. Args: bucket, key, file, expected owner account ID, region. Uses put-object
+# rather than `aws s3 cp`, which has no --expected-bucket-owner flag, so every write
+# repeats the ownership check and the stamped gateway.yaml never lands elsewhere.
+put_build_input() {
+  aws s3api put-object --bucket "$1" --key "$2" --body "$3" \
+    --expected-bucket-owner "$4" --region "$5" >/dev/null
+}
+
 # Test hook: `DEPLOY_SH_LIB_ONLY=1 source deploy.sh` loads only the helpers above
 # (see test/deploy-helpers.test.sh) — no .env, no required env, no AWS calls.
 # shellcheck disable=SC2317  # the exit is the executed-not-sourced fallback
@@ -289,7 +336,8 @@ BUCKET="claude-gateway-build-${ACCOUNT_ID}-${DEPLOY_REGION}"
 # Create the S3 build bucket BEFORE the CodeBuild project, which references it as
 # its source location — create-project fails with "Bucket ... does not exist"
 # otherwise (only bites a first-ever run, where the project doesn't yet exist).
-aws s3 mb "s3://$BUCKET" --region "$DEPLOY_REGION" 2>/dev/null || true
+# Fails closed if another account owns the name; see ensure_build_bucket.
+ensure_build_bucket "$BUCKET" "$ACCOUNT_ID" "$DEPLOY_REGION" || exit 1
 
 # CodeBuild role + policy. The project has a FIXED name (CodeBuild projects are
 # region-scoped, so the same name in another region is a separate project); the
@@ -321,11 +369,15 @@ if [ "$ROLE_RC" -ne 0 ] && ! grep -q 'EntityAlreadyExists' "$ROLE_ERR_FILE"; the
 fi
 rm -f "$ROLE_ERR_FILE"
 
+# The S3 grant is conditioned on aws:ResourceAccount, so the role can read source only
+# from a bucket in THIS account. If the build bucket is ever deleted (teardown) and
+# someone else takes the name, a later start-build fails instead of building their files.
+#
 # No 2>/dev/null: put-role-policy is quiet on success, and this now runs on EVERY
 # deploy — silencing it would turn a real IAM failure into the script dying right
 # after "Step 3/5" with nothing printed (set -e, no `|| true`).
 aws iam put-role-policy --role-name claude-gateway-codebuild --policy-name build-perms \
-  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::${BUCKET}\",\"arn:aws:s3:::${BUCKET}/*\"]},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}"
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::${BUCKET}\",\"arn:aws:s3:::${BUCKET}/*\"],\"Condition\":{\"StringEquals\":{\"aws:ResourceAccount\":\"${ACCOUNT_ID}\"}}},{\"Effect\":\"Allow\",\"Action\":[\"ecr:GetAuthorizationToken\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:PutImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\"],\"Resource\":\"arn:aws:ecr:${DEPLOY_REGION}:${ACCOUNT_ID}:repository/${REPO_NAME}\"},{ \"Effect\":\"Allow\",\"Action\":[\"logs:CreateLogGroup\",\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":\"*\"}]}"
 
 # IAM is eventually consistent, and the policy above is scoped to THIS deploy's ECR
 # repo and region — so any repo/region change rewrites it, on a run where the project
@@ -399,10 +451,11 @@ phases:
       - docker push ${ECR_URI}:latest
 EOF
 
-aws s3 cp /tmp/gw-buildspec.yml "s3://$BUCKET/buildspec.yml" --quiet
-aws s3 cp "${PROJECT_DIR}/Dockerfile" "s3://$BUCKET/Dockerfile" --quiet
-aws s3 cp /tmp/gw-gateway.yaml "s3://$BUCKET/gateway.yaml" --quiet
-aws s3 cp "$LINUX_BINARY" "s3://$BUCKET/claude" --quiet
+# Ownership-checked uploads; see put_build_input.
+put_build_input "$BUCKET" buildspec.yml /tmp/gw-buildspec.yml "$ACCOUNT_ID" "$DEPLOY_REGION"
+put_build_input "$BUCKET" Dockerfile "${PROJECT_DIR}/Dockerfile" "$ACCOUNT_ID" "$DEPLOY_REGION"
+put_build_input "$BUCKET" gateway.yaml /tmp/gw-gateway.yaml "$ACCOUNT_ID" "$DEPLOY_REGION"
+put_build_input "$BUCKET" claude "$LINUX_BINARY" "$ACCOUNT_ID" "$DEPLOY_REGION"
 
 echo "   Starting build..."
 BUILD_ID=$(aws codebuild start-build --project-name claude-gateway-build --query "build.id" --output text)
