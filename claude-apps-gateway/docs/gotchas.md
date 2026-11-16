@@ -630,8 +630,9 @@ Two things make this harder to fix than it looks:
   lookup in `cdk.context.json`, so tag changes aren't seen until you clear it.
 
 **Fix:** pin the ALB to one subnet per AZ. Only the ALB needs this; the tasks and RDS can keep
-the default selection, and the ALB still reaches tasks in any subnet in its AZ. Add this right
-after the `ApplicationLoadBalancedFargateService` is created:
+the default selection, and the ALB still reaches tasks in any subnet in its AZ. The snippet
+below is interim: a follow-up change replaces it with a context flag. Until then, add this
+right after the `ApplicationLoadBalancedFargateService` is created:
 
 ```ts
 const cfnLb = fargate.loadBalancer.node.defaultChild as elbv2.CfnLoadBalancer;
@@ -680,7 +681,7 @@ deploy then creates new resources, each with a side effect:
 | Recreated resource | Side effect | Fix |
 |---|---|---|
 | ECS cluster and service | Gone until pass 2 runs | Run pass 2 (`-c imageReady=true`), not `update-service` |
-| `claude-gateway-oidc-client-secret` | New CDK-generated placeholder. CloudFormation sets a secret's value only at creation, so later `cdk deploy` runs never overwrite it | `aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret --secret-string '<value>'`, then `aws ecs update-service --cluster claude-gateway --service claude-gateway --force-new-deployment` |
+| `<GATEWAY_NAME>-oidc-client-secret` | New CDK-generated placeholder. CloudFormation sets a secret's value only at creation, so later `cdk deploy` runs never overwrite it | Reseed it and restart the service with the commands in the "Driving CDK by hand (Option B)?" note at the end of [`cdk/README.md` "Regions & data residency"](../cdk/README.md#regions--data-residency) |
 | Internal ALB | New DNS name | Update any DNS record you manage outside Route 53 (for example, a corporate CNAME) to the new `AlbDnsName` output |
 | RDS instance | Sign-in state is gone | Developers run `claude /login` again |
 | ECR repository (stack delete only) | `removalPolicy: DESTROY` with `emptyOnDelete` removes the repo and its images | Run pass 1, rebuild and push the image, then pass 2 |
@@ -710,14 +711,10 @@ the secret is created) and a **Secret ID** (a GUID). Only the Value works. The s
 appears if the Secrets Manager secret still holds the placeholder value (see gotcha 24).
 
 **Fix:** copy the Value when you create the client secret. If it's no longer visible, create
-a new client secret. Then:
-
-```bash
-aws secretsmanager put-secret-value --secret-id claude-gateway-oidc-client-secret \
-  --secret-string '<client secret VALUE>' --region <region>
-aws ecs update-service --cluster claude-gateway --service claude-gateway \
-  --force-new-deployment --region <region>
-```
+a new client secret. Then store the Value in `<GATEWAY_NAME>-oidc-client-secret` (on the
+`setup.sh` track, `<PROJECT>-oidc-client-secret`) and force a new deployment of the service,
+using the commands in the "Driving CDK by hand (Option B)?" note at the end of
+[`cdk/README.md` "Regions & data residency"](../cdk/README.md#regions--data-residency).
 
 A rebuild isn't needed, because the secret is injected at task start, not baked into the
 image.
@@ -737,21 +734,32 @@ The empty region in that ARN (`:::`) is the giveaway.
 
 **Why:** this example routes every model through `global.anthropic.*` inference profiles.
 Bedrock evaluates global routing against a region-agnostic foundation-model ARN with
-`aws:RequestedRegion` set to `unspecified`. Organizations with data-residency requirements
-commonly deny exactly that in an SCP.
+`aws:RequestedRegion` set to `unspecified`. An SCP that denies requests outside an approved
+list of Regions denies that evaluation too, unless the list allows `unspecified`.
 
-**Fix:** switch to a geographic profile (`us.`, `eu.`, `au.`, or `jp.` where available) in
-**two places**, the `models:` block of `gateway.yaml.template` and the task role's
+**Fix:** there are two, and which one fits depends on why the SCP exists.
+
+**If the SCP only blocks unused Regions, change the SCP.** This keeps the global profiles and
+avoids the 10% geo premium described in gotcha 22. AWS documents two ways: allow
+`"unspecified"`, or exempt cross-Region routing with the `bedrock:InferenceProfileArn`
+condition key. See
+[Service Control Policy requirements for Global cross-Region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html#global-cris-scp-setup).
+The change is made by whoever owns the organization's SCPs, not in this stack.
+
+**If inference must stay in one geography, switch to geographic profiles.** A data-residency
+requirement rules out global routing, so leave the SCP as it is and switch to a geographic
+profile (`us.`, `eu.`, `au.`, or `jp.` where available) in **two places**, the
+`models:` block of `gateway.yaml.template` and the task role's
 `inference-profile/global.anthropic.*` ARN, then rebuild the image and redeploy.
 [`cdk/README.md` "Regions & data residency"](../cdk/README.md#regions--data-residency) has the
 steps. The README names the ARN in `cdk/lib/claude-gateway-stack.ts`; on the `setup.sh` track
-the same ARN is in `setup.sh`'s task-role policy.
+the same ARN is in `setup.sh`'s task-role policy. Geo profiles carry the 10% premium.
 
 If you change the `models:` block but not the ARN, the error changes to
 `... inference-profile/us.anthropic.<model> because no identity-based policy allows the action`.
 Also check that the SCP allows every destination Region of the geo profile;
-`aws bedrock get-inference-profile` lists them. Geo profiles carry the 10% premium described
-in gotcha 22. See also gotcha 9.
+`aws bedrock get-inference-profile` lists them. See also gotcha 9.
 
-> Takeaway: ask whether the organization's SCPs restrict regions before the first deploy. If
-> they do, set the geo prefix in both places from the start.
+> Takeaway: before the first deploy, ask whether the organization's SCPs restrict Regions, and
+> why. A Region allowlist can be changed to allow global routing; a residency requirement means
+> setting the geo prefix in both places from the start.
