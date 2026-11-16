@@ -11,6 +11,8 @@
 # so they get asserted here rather than reasoned about:
 #   - classify_stack_query: not-found means "first deploy"; ANY other failure aborts
 #   - needs_pass_one:       the destructive branch's narrow allowlist
+# It also covers ensure_build_bucket, which keeps Step 3 from uploading build input
+# to a same-named bucket in someone else's account.
 
 set -uo pipefail
 
@@ -165,6 +167,124 @@ if [[ "$?" -ne 0 && -z "${out}" ]]; then
   pass "missing binary fails silently for the caller to report"
 else
   fail "missing binary fails silently for the caller to report" "got '${out}'"
+fi
+
+# ── 5. ensure_build_bucket — never build from a bucket another account owns ──
+# The bucket name is derived from the account ID and region, so another account can
+# create it first. `aws` is stubbed: head-bucket prints HEAD_ERR to stderr and returns
+# HEAD_RC (0 = ours); `s3 mb` returns MB_RC. CALLS records whether the create ran
+# (head-bucket runs inside $(...), so its own call isn't recorded here).
+NOT_FOUND_ERR='An error occurred (404) when calling the HeadBucket operation: Not Found'
+FORBIDDEN_ERR='An error occurred (403) when calling the HeadBucket operation: Forbidden'
+CALLS=""
+# shellcheck disable=SC2329  # invoked indirectly, by ensure_build_bucket
+aws() {
+  CALLS+="$1:$2 "
+  case "$1 $2" in
+    "s3api head-bucket") [[ -n "${HEAD_ERR}" ]] && echo "${HEAD_ERR}" >&2; return "${HEAD_RC}" ;;
+    "s3 mb")             return "${MB_RC}" ;;
+    *)                   return 99 ;;
+  esac
+}
+
+HEAD_RC=0 HEAD_ERR="" MB_RC=0 CALLS=""
+if ensure_build_bucket b 123456789012 us-east-1 >/dev/null && [[ "${CALLS}" != *"s3:mb"* ]]; then
+  pass "a bucket we already own is reused without a create"
+else
+  fail "a bucket we already own is reused without a create" "calls: ${CALLS}"
+fi
+
+HEAD_RC=254 HEAD_ERR="${NOT_FOUND_ERR}" MB_RC=0 CALLS=""
+if ensure_build_bucket b 123456789012 us-east-1 >/dev/null && [[ "${CALLS}" == *"s3:mb"* ]]; then
+  pass "an absent bucket (404) is created"
+else
+  fail "an absent bucket (404) is created" "calls: ${CALLS}"
+fi
+
+# Another account holds the name, so head-bucket with the expected owner gets 403.
+# Abort without trying to create.
+HEAD_RC=254 HEAD_ERR="${FORBIDDEN_ERR}" MB_RC=0 CALLS=""
+if ensure_build_bucket b 123456789012 us-east-1 >/dev/null 2>&1; then
+  fail "a bucket owned by another account (403) aborts the deploy" "expected non-zero exit"
+elif [[ "${CALLS}" == *"s3:mb"* ]]; then
+  fail "a bucket owned by another account (403) aborts the deploy" "create was attempted: ${CALLS}"
+else
+  pass "a bucket owned by another account (403) aborts the deploy"
+fi
+
+# Any other head-bucket failure (expired credentials, throttling) also aborts.
+HEAD_RC=254 HEAD_ERR='An error occurred (400) when calling the HeadBucket operation: Bad Request' MB_RC=0 CALLS=""
+if ! ensure_build_bucket b 123456789012 us-east-1 >/dev/null 2>&1 && [[ "${CALLS}" != *"s3:mb"* ]]; then
+  pass "a non-404 head-bucket failure aborts without a create"
+else
+  fail "a non-404 head-bucket failure aborts without a create" "calls: ${CALLS}"
+fi
+
+# Someone takes the name between the 404 and our create: BucketAlreadyExists aborts.
+HEAD_RC=254 HEAD_ERR="${NOT_FOUND_ERR}" MB_RC=1 CALLS=""
+if ensure_build_bucket b 123456789012 us-east-1 >/dev/null 2>&1; then
+  fail "a failed create after a 404 aborts the deploy" "expected non-zero exit"
+else
+  pass "a failed create after a 404 aborts the deploy"
+fi
+
+# The ownership check must actually pass the expected owner, or S3 never refuses.
+# head-bucket runs inside $(...), so log to a file rather than a variable.
+CALLS_FILE="$(mktemp)"
+# shellcheck disable=SC2329  # invoked indirectly, by ensure_build_bucket
+aws() { echo "$*" >>"${CALLS_FILE}"; return 0; }
+ensure_build_bucket b 123456789012 us-east-1 >/dev/null
+CALLS="$(cat "${CALLS_FILE}")"; rm -f "${CALLS_FILE}"
+if [[ "${CALLS}" == *"head-bucket --bucket b --expected-bucket-owner 123456789012"* ]]; then
+  pass "head-bucket is called with --expected-bucket-owner"
+else
+  fail "head-bucket is called with --expected-bucket-owner" "calls: ${CALLS}"
+fi
+
+# Uploads repeat the check on every write.
+CALLS=""
+# shellcheck disable=SC2329  # invoked indirectly, by put_build_input
+aws() { CALLS+="$* "; return 0; }
+put_build_input b claude /tmp/x 123456789012 us-east-1
+if [[ "${CALLS}" == *"put-object"*"--expected-bucket-owner 123456789012"* ]]; then
+  pass "put_build_input sends --expected-bucket-owner"
+else
+  fail "put_build_input sends --expected-bucket-owner" "calls: ${CALLS}"
+fi
+unset -f aws
+
+# The CodeBuild role may read source only from a bucket in this account, so a
+# same-named bucket created after teardown can't feed a build.
+# shellcheck disable=SC2016  # ${ACCOUNT_ID} is matched literally, as deploy.sh spells it
+if grep 'put-role-policy --role-name claude-gateway-codebuild' -A1 "${DEPLOY}" \
+    | grep -q '\\"s3:GetObject\\".*\\"Condition\\":{\\"StringEquals\\":{\\"aws:ResourceAccount\\":\\"${ACCOUNT_ID}\\"}}'; then
+  pass "CodeBuild role's S3 grant is conditioned on aws:ResourceAccount"
+else
+  fail "CodeBuild role's S3 grant is conditioned on aws:ResourceAccount"
+fi
+
+# The helpers only help if Step 3 uses them. Check the call sites, so restoring the
+# old `aws s3 mb ... || true` or `aws s3 cp ... s3://$BUCKET` fails here.
+BODY="$(sed -n '/^if \[ "\${DEPLOY_SH_LIB_ONLY:-}" = "1" \]/,$p' "${DEPLOY}" | grep -v '^[[:space:]]*#')"
+# shellcheck disable=SC2016  # the \$ names are matched literally
+if grep -qx 'ensure_build_bucket "\$BUCKET" "\$ACCOUNT_ID" "\$DEPLOY_REGION" || exit 1' <<<"${BODY}"; then
+  pass "Step 3 gates on ensure_build_bucket"
+else
+  fail "Step 3 gates on ensure_build_bucket"
+fi
+missing=""
+for key in buildspec.yml Dockerfile gateway.yaml claude; do
+  grep -qE "^put_build_input \"\\\$BUCKET\" ${key} .* \"\\\$ACCOUNT_ID\" \"\\\$DEPLOY_REGION\"$" <<<"${BODY}" || missing+="${key} "
+done
+if [[ -z "${missing}" ]]; then
+  pass "all four build inputs upload through put_build_input"
+else
+  fail "all four build inputs upload through put_build_input" "missing: ${missing}"
+fi
+if grep -qE 'aws s3 (mb|cp|sync|mv)\b' <<<"${BODY}"; then
+  fail "no unchecked aws s3 mb/cp/sync/mv after the helpers" "$(grep -nE 'aws s3 (mb|cp|sync|mv)\b' <<<"${BODY}")"
+else
+  pass "no unchecked aws s3 mb/cp/sync/mv after the helpers"
 fi
 
 echo ""

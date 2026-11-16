@@ -139,7 +139,8 @@ No live AWS account is wired up here, so verification is local/static:
   detection / `--provenance` gating + the OIDC-secret preflight), and
   `./test/deploy-helpers.test.sh` (deploy.sh's pass-1 gate — the destructive branch's
   status allowlist, fail-closed status query, and leaving CDK-recoverable statuses to
-  CDK rather than bailing). None
+  CDK rather than bailing — plus the build bucket's ownership check, which refuses a
+  same-named bucket owned by another account). None
   needs an AWS account. CDK tests pass `zoneId` in the stack props to skip the `fromLookup` credential call.
 - Config: `python3 -c 'import yaml; yaml.safe_load(open("cdk/gateway.yaml.example"))'` (the `${...}`
   placeholders are plain strings to YAML).
