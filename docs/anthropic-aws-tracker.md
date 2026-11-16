@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-16
+
+- [Set up, connect, and govern AI agents faster with Amazon WorkSpaces](https://aws.amazon.com/about-aws/whats-new/2026/11/amazon-workspaces-AI-agents-connect-govern) — *AWS What's New* (Mon, 16 Nov 2026 18:00:00 GMT)
+
 ## 2026-11-12
 
 - [Amazon Managed Service for Apache Flink introduces enhanced snapshots](https://aws.amazon.com/about-aws/whats-new/2026/11/managed-flink-enhanced-snapshots/) — *AWS What's New* (Thu, 12 Nov 2026 08:00:00 GMT)
