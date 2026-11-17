@@ -9,7 +9,8 @@
   },
   "resolutions": {
     "fast-xml-parser": "^4.5.4",
-    "shell-quote": "^1.8.4"
+    "shell-quote": "^1.8.4",
+    "node-forge": "^1.4.3"
   },
   "dependencies": {
     "@apollo/client": "^3.10.4",
