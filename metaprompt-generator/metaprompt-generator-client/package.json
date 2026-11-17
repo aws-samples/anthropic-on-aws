@@ -8,7 +8,7 @@
     "build": "webpack --config webpack.config.js --mode production"
   },
   "resolutions": {
-    "fast-xml-parser": "^4.5.4",
+    "fast-xml-parser": "^5.12.0",
     "shell-quote": "^1.8.4",
     "node-forge": "^1.4.3"
   },
@@ -28,7 +28,6 @@
     "html-react-parser": "^5.1.10",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "react-router-dom": "^6.22.3",
     "react-window": "^1.8.10",
     "styled-components": "^6.1.8"
   },
@@ -36,8 +35,8 @@
     "@babel/core": "^7.29.6",
     "@babel/preset-env": "^7.16.11",
     "@babel/preset-react": "^7.16.7",
-    "@typescript-eslint/eslint-plugin": "^6.19.1",
-    "@typescript-eslint/parser": "^6.19.1",
+    "@typescript-eslint/eslint-plugin": "^8",
+    "@typescript-eslint/parser": "^8",
     "css-loader": "^6.6.0",
     "eslint-plugin-react": "^7.33.2",
     "html-webpack-plugin": "^5.5.0",
@@ -46,6 +45,6 @@
     "typescript": "^5.4.2",
     "webpack": "^5.76.0",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^4.15.1"
+    "webpack-dev-server": "^5.2.6"
   }
 }
