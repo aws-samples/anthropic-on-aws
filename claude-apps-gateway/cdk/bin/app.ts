@@ -28,6 +28,8 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *     zoneId          private hosted-zone id (optional; looked up from zoneName if omitted)
  *     ingressCidr     VPN/corp CLIENT CIDR developers connect from — NOT the VPC CIDR   (required for pass 2)
  *     vpcId           import an existing VPC instead of creating one (optional)
+ *     albSubnetIds    with vpcId: comma-separated subnet IDs for the ALB, one per AZ
+ *                     (default: the first private subnet in each AZ) (optional)
  *     createVpcEndpoints  "false" to skip VPC endpoint creation when reusing a VPC
  *                     (`vpcId`) that already has them; default true (optional)
  *     imageReady      "false" for pass 1 (repo only), "true"/unset for pass 2
@@ -39,6 +41,15 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
 const app = new cdk.App();
 
 const ctx = (k: string): string | undefined => app.node.tryGetContext(k);
+// A list from context: comma-separated on the command line (-c k=a,b), or a JSON
+// array in cdk.json. Unset or empty means "not given".
+const listCtx = (k: string): string[] | undefined => {
+  const v: unknown = app.node.tryGetContext(k);
+  if (v === undefined || v === '') return undefined;
+  return (Array.isArray(v) ? v : String(v).split(','))
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+};
 const region = ctx('region') ?? process.env.CDK_DEFAULT_REGION ?? 'us-east-1';
 // Region of the Bedrock endpoint the task calls. Defaults to the deploy region
 // (the common single-region case); set -c bedrockRegion to point the upstream +
@@ -59,6 +70,8 @@ new GatewayStack(app, 'ClaudeGatewayStack', {
   zoneId: ctx('zoneId'),
   ingressCidr: ctx('ingressCidr'),
   vpcId: ctx('vpcId'),
+  // Reused VPC only: the ALB's subnets, one per AZ (docs/gotchas.md §23).
+  albSubnetIds: listCtx('albSubnetIds'),
   // Default true; only 'false' opts out (for a reused VPC that already has endpoints).
   createVpcEndpoints: ctx('createVpcEndpoints') !== 'false',
   // Pass 1 sets imageReady=false to create just the ECR repo; pass 2 (default)

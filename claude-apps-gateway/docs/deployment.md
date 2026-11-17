@@ -302,11 +302,12 @@ drop the rule referencing it — one more reason to deploy **pass 2 only** and n
 re-run pass 1 (see the caution under [Track B](#track-b--cdk-two-pass));
 `deploy.sh` skips it for you.
 
-**One subnet per AZ for the ALB (CDK track).** The CDK stack places the internal ALB in every
-subnet CDK classifies as private, and an ALB accepts only one subnet per Availability Zone. If
-the reused VPC has more than one private subnet per AZ, pass 2 fails at the load balancer. Pin
-the ALB to one subnet per AZ before deploying. `setup.sh` isn't affected: it puts the ALB in
-the two private subnets it creates. See
+**One subnet per AZ for the ALB (CDK track).** An ALB accepts only one subnet per Availability
+Zone, so in a reused VPC the CDK stack puts the internal ALB in the first private subnet of
+each AZ, and synth warns if an AZ had several to choose from. If those aren't the subnets
+developers' laptops reach over the VPN, set `ALB_SUBNET_IDS` (`deploy.sh`) or
+`-c albSubnetIds=...` to one subnet per AZ. `setup.sh` isn't affected: it puts the ALB in the
+two private subnets it creates. See
 [`gotchas.md` §23](gotchas.md#23-reusing-a-vpc-with-more-than-one-private-subnet-per-az-fails-at-the-alb--hit-live).
 
 Tearing down a reused VPC needs care too — see
