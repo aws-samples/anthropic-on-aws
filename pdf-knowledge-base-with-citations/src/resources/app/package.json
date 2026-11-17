@@ -10,7 +10,7 @@
     "lint": "next lint"
   },
   "resolutions": {
-    "fast-xml-parser": "^4.5.4"
+    "fast-xml-parser": "^5.12.0"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agent-runtime": "^3.620.0",
@@ -19,18 +19,17 @@
     "@cloudscape-design/components": "^3.0.727",
     "@cloudscape-design/global-styles": "^1.0.32",
     "@mui/styles": "^5.16.5",
-    "@types/react-pdf": "^7.0.0",
-    "next": "14.2.25",
+    "next": "15.5.29",
     "react": "^18",
     "react-dom": "^18",
-    "react-pdf": "8"
+    "react-pdf": "^9"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
-    "eslint-config-next": "14.2.5",
+    "eslint-config-next": "15.5.29",
     "typescript": "^5"
   }
 }

@@ -13,7 +13,7 @@ import { useAppContext } from '../AppContext';
 import { findCitationPages } from '../utils/citationUtils';
 
 // Add this line at the top of your file, after the imports
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 const BedrockQuery: React.FC<{
   onGoToPage: (page: number) => void;

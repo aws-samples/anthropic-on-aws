@@ -6,11 +6,11 @@ import {
 } from '@cloudscape-design/components';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
-import 'react-pdf/dist/esm/Page/TextLayer.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 import { useAppContext } from '../AppContext';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const PDFViewer: React.FC = () => {
   const { currentPdfFile, currentPage, setCurrentPage, pdfText, setPdfText } =
@@ -21,8 +21,8 @@ const PDFViewer: React.FC = () => {
   const [goToPage, setGoToPage] = useState('');
   const [isPdfTextLoaded, setIsPdfTextLoaded] = useState(false);
 
-  const pdfUrl = currentPdfFile ? 
-    (currentPdfFile.startsWith('/api') ? currentPdfFile : `/api/documents/${currentPdfFile}`) 
+  const pdfUrl = currentPdfFile ?
+    (currentPdfFile.startsWith('/api') ? currentPdfFile : `/api/documents/${currentPdfFile}`)
     : null;
 
   const onDocumentLoadSuccess = useCallback(
