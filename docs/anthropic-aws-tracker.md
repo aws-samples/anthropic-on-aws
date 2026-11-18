@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-18
+
+- [AWS Lambda adds support for GPU instances on Lambda Managed Instances](https://aws.amazon.com/about-aws/whats-new/2026/11/aws-lambda-gpu-managed-instances/) — *AWS What's New* (Wed, 18 Nov 2026 18:00:00 GMT)
+
 ## 2026-11-17
 
 - [AWS announces agentic account creation for agentic coding harnesses](https://aws.amazon.com/about-aws/whats-new/2026/11/agentic-account-creation/) — *AWS What's New* (Tue, 17 Nov 2026 08:00:00 GMT)
