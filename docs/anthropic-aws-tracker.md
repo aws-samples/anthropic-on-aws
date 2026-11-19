@@ -1,6 +1,10 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-19
+
+- [AWS Lambda now supports a 30-minute timeout for on-demand Event Functions](https://aws.amazon.com/about-aws/whats-new/2026/11/aws-lambda-30-minute-ondemand-event-functions/) — *AWS What's New* (Thu, 19 Nov 2026 19:00:00 GMT)
+
 ## 2026-11-18
 
 - [AWS Lambda adds support for GPU instances on Lambda Managed Instances](https://aws.amazon.com/about-aws/whats-new/2026/11/aws-lambda-gpu-managed-instances/) — *AWS What's New* (Wed, 18 Nov 2026 18:00:00 GMT)
