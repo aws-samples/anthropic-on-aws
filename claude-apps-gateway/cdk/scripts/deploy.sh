@@ -242,6 +242,9 @@ fi
 # also set CREATE_VPC_ENDPOINTS=false — the stack refuses to recreate them.
 [ -n "${VPC_ID:-}" ] && CDK_CTX+=(-c "vpcId=${VPC_ID}")
 [ -n "${CREATE_VPC_ENDPOINTS:-}" ] && CDK_CTX+=(-c "createVpcEndpoints=${CREATE_VPC_ENDPOINTS}")
+# With VPC_ID: comma-separated ALB subnets, one per AZ. Unset, the stack uses the
+# first private subnet in each AZ and warns if an AZ had several (gotchas.md §23).
+[ -n "${ALB_SUBNET_IDS:-}" ] && CDK_CTX+=(-c "albSubnetIds=${ALB_SUBNET_IDS}")
 
 # --- Step 1: CDK pass 1 — ECR repository only ---
 # The ECS service can't start until its image exists, so the stack splits the

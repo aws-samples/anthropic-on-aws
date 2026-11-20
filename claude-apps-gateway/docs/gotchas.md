@@ -610,53 +610,56 @@ CREATE_FAILED | AWS::ElasticLoadBalancingV2::LoadBalancer | Gateway/LB
 A load balancer cannot be attached to multiple subnets in the same Availability Zone
 ```
 
-**Why:** with `-c vpcId=...`, the stack imports the VPC and places the internal ALB in every
-subnet CDK classifies as private. An ALB accepts only one subnet per Availability Zone.
-Enterprise VPCs often have several private subnets per AZ (app, data, and shared tiers), so
-the ALB gets two or more per AZ and the create fails. The Fargate tasks and the RDS subnet
-group accept several subnets per AZ, which is why only the ALB fails.
+**Why:** with `-c vpcId=...`, the stack imports the VPC, and the load-balancer pattern placed
+the internal ALB in every subnet CDK classifies as private. An ALB accepts only one subnet per
+Availability Zone. Enterprise VPCs often have several private subnets per AZ (app, data, and
+shared tiers), so the ALB got two or more per AZ and the create failed. The Fargate tasks and
+the RDS subnet group accept several subnets per AZ, which is why only the ALB failed.
 
 This is CDK-track only. `setup.sh` creates its own two private subnets, one per AZ, and puts
 the ALB in those, so it doesn't hit this.
 
-Two things make this harder to fix than it looks:
+**Fix:** with `vpcId` set, the stack now puts the ALB in one subnet per AZ. Only the ALB
+changes: the tasks and RDS keep every private subnet, and the ALB still reaches tasks in any
+subnet of its AZs. A VPC the stack creates already has one private subnet per AZ, so nothing
+changes there.
 
-- **There is no subnet-selection flag.** `-c subnetIds=...` is not read by the stack. CDK
-  ignores unknown context keys silently, so the deploy runs with the default selection and
-  fails the same way.
-- **Tagging only the subnets you want doesn't work.** CDK treats any untagged subnet without
-  an internet-gateway route as private, so tagging two subnets
-  `aws-cdk:subnet-type = Private` leaves the others private too. CDK also caches the VPC
-  lookup in `cdk.context.json`, so tag changes aren't seen until you clear it.
+- **By default,** the ALB gets the first private subnet in each AZ. If an AZ has more than one,
+  `cdk synth` and `cdk deploy` print a warning naming the subnet chosen in each AZ.
+- **To choose the subnets,** set `-c albSubnetIds=<subnet-in-az-a>,<subnet-in-az-b>`
+  (`ALB_SUBNET_IDS` in `.env` for `deploy.sh`), exactly one per AZ. Any subnet of the VPC
+  works, including ones tagged `aws-cdk:subnet-type = Isolated`. Synth fails if an ID isn't in
+  the VPC, two are in the same AZ, or fewer than two are given.
 
-**Fix:** pin the ALB to one subnet per AZ. Only the ALB needs this; the tasks and RDS can keep
-the default selection, and the ALB still reaches tasks in any subnet in its AZ. The snippet
-below is interim: a follow-up change replaces it with a context flag. Until then, add this
-right after the `ApplicationLoadBalancedFargateService` is created:
+When the warning appears, check that the chosen subnets are the ones developers' laptops reach
+over the VPN. The first subnet in an AZ can be a data tier with no route from the VPN, and an
+ALB there deploys cleanly but times out from laptops. If synth says a subnet you just created
+isn't in the VPC, run `npx cdk context --clear`: CDK caches the VPC lookup in
+`cdk.context.json`.
 
-```ts
-const cfnLb = fargate.loadBalancer.node.defaultChild as elbv2.CfnLoadBalancer;
-cfnLb.addPropertyOverride('Subnets', [
-  '<subnet-in-az-a>',
-  '<subnet-in-az-b>',
-]);
-```
-
-Alternatively, tag every subnet you don't want `aws-cdk:subnet-type = Isolated`, then run
-`npx cdk context --clear`. Only CDK reads these tags, but check that no other CDK app in the
-account depends on them first.
-
-Either way, check the synthesized template before deploying. This takes seconds; a failed
-deploy and rollback takes much longer:
+Check the synthesized template before deploying. This takes seconds; a failed deploy and
+rollback takes much longer:
 
 ```bash
 npx cdk synth <your -c flags> > /dev/null
 jq '.Resources[] | select(.Type=="AWS::ElasticLoadBalancingV2::LoadBalancer") | .Properties.Subnets' \
-  cdk.out/*.template.json   # expect exactly one subnet per AZ
+  cdk.out/*.template.json   # expect the subnets you meant, exactly one per AZ
 ```
 
-> Takeaway: list the VPC's subnets per AZ before deploying into an existing VPC. More than
-> one private subnet per AZ means you need to pin the ALB.
+**Upgrading from the interim snippet.** An earlier version of this entry had you add
+`addPropertyOverride('Subnets', ...)` to the stack yourself. To move to the setting:
+
+1. Remove the `addPropertyOverride('Subnets', ...)` lines from your stack.
+2. Set `ALB_SUBNET_IDS` (or `-c albSubnetIds=...`) to the **same** subnet IDs, in the same order.
+3. Run `npx cdk diff` and confirm it shows no change to `Gateway/LB`.
+
+Without step 2, the default may pick different subnets in a VPC with several per AZ and move
+the ALB to subnets that laptops can't reach. If you used the earlier `Isolated`-tag workaround
+instead, and exactly one private subnet per AZ remains, the default already picks those.
+
+> Takeaway: list the VPC's subnets per AZ before deploying into an existing VPC. If an AZ has
+> more than one private subnet, decide which one the ALB belongs in and set `albSubnetIds`
+> rather than relying on the default.
 
 ---
 
