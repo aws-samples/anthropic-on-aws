@@ -277,6 +277,7 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 | `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
 | `CREATE_VPC_ENDPOINTS` | Optional. Set `false` with `VPC_ID` when the reused VPC already has the interface endpoints; maps to `createVpcEndpoints`. You must then authorize 443 from the task SG on those endpoints yourself — see [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
+| `ALB_SUBNET_IDS` | Optional, with `VPC_ID`. Comma-separated subnet IDs for the internal ALB, exactly one per AZ; maps to `albSubnetIds`. Unset, the stack uses the first private subnet in each AZ — see [`gotchas.md` §23](../docs/gotchas.md#23-reusing-a-vpc-with-more-than-one-private-subnet-per-az-fails-at-the-alb--hit-live) |
 
 ### CDK context variables
 
@@ -298,6 +299,7 @@ pass 2 (default) deploys the full stack.
 | `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
 | `vpcId` | 2 | no | Import an existing VPC instead of creating one |
 | `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch interface endpoints (+ the S3 gateway endpoint) — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy. Then authorize 443 yourself: [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
+| `albSubnetIds` | 2 | no | With `vpcId`: comma-separated subnet IDs for the internal ALB, exactly one per AZ in at least two AZs (any subnet of the VPC, including isolated ones). Default: the first private subnet in each AZ, with a synth warning if an AZ has several. Tasks and RDS are unaffected. See [`gotchas.md` §23](../docs/gotchas.md#23-reusing-a-vpc-with-more-than-one-private-subnet-per-az-fails-at-the-alb--hit-live) |
 
 ### Regions & data residency
 

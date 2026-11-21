@@ -132,7 +132,9 @@ No live AWS account is wired up here, so verification is local/static:
 - Tests (run these after changing the stack or `stamp-config.sh`, and add cases when
   fixing a deployment trap): `cd cdk && npm test` (Jest + CDK `assertions` over the
   synthesized template — dual-ARN Bedrock policy, IPv4 internal ALB, `/healthz` probe,
-  ADOT telemetry sidecar, `createVpcEndpoints` opt-out, imported-cert TLS),
+  ADOT telemetry sidecar, `createVpcEndpoints` opt-out, imported-cert TLS, and in
+  `alb-subnets.test.ts` one ALB subnet per AZ in a reused VPC (`albSubnetIds`) checked
+  against a logical-ID fixture from `main`),
   `./test/stamp-config.test.sh`
   (dependency-free bash: placeholder guard + Google scope auto-injection),
   `./test/setup-helpers.test.sh` (setup.sh's sourceable helpers — container-tool

@@ -28,6 +28,15 @@ export interface GatewayStackProps extends cdk.StackProps {
   /** Import an existing VPC instead of creating one. */
   readonly vpcId?: string;
   /**
+   * Subnets for the internal ALB when reusing a VPC (`vpcId`): exactly one per AZ,
+   * in at least two AZs. Any subnet of the VPC is accepted (public, private, or
+   * isolated). Omit it and the stack uses the first private subnet in each AZ,
+   * warning at synth when an AZ has several to choose from. Not valid without
+   * `vpcId`. Only the ALB uses this; tasks and RDS keep every private subnet.
+   * See docs/gotchas.md §23.
+   */
+  readonly albSubnetIds?: string[];
+  /**
    * Create the interface + S3 VPC endpoints (default true). Set false ONLY when
    * reusing a VPC (`vpcId`) that ALREADY provides private egress to Bedrock,
    * Secrets Manager, ECR, CloudWatch Logs/Monitoring, and S3 — otherwise the
@@ -100,6 +109,12 @@ export class GatewayStack extends cdk.Stack {
     const zoneName = req(props.zoneName, 'zoneName');
     const ingressCidr = req(props.ingressCidr, 'ingressCidr');
     const certArn = req(props.certArn, 'certArn');
+    if (props.albSubnetIds !== undefined && !props.vpcId) {
+      throw new Error(
+        'albSubnetIds is only valid with vpcId: it picks the ALB subnets in a reused VPC. ' +
+          'The VPC this stack creates already has one private subnet per AZ.',
+      );
+    }
     // publicUrl is https://<host>; the record name is the host part.
     const recordHost = publicUrl.replace(/^https?:\/\//, '');
 
@@ -349,6 +364,23 @@ export class GatewayStack extends cdk.Stack {
       'developers to ALB (HTTPS)',
     );
 
+    // ── Reused VPC: one ALB subnet per AZ ─────────────────────────────────────
+    // An ALB accepts only one subnet per AZ, but the pattern hands it every
+    // private subnet. That's one per AZ in the VPC this stack creates, and a failed
+    // deploy in an enterprise VPC with several per AZ (docs/gotchas.md §23). So for
+    // a reused VPC only, override the ALB's Subnets with albSubnetIds, or else the
+    // first private subnet in each AZ. Only this property changes: the pattern still
+    // builds the ALB, so its logical ID, listener, idle timeout and IPv4-only
+    // setting are untouched, and a fresh-VPC template is unchanged. Tasks and RDS
+    // keep every private subnet; the ALB reaches tasks in any subnet of its AZs.
+    if (props.vpcId) {
+      const albSubnetIds = selectAlbSubnets(this, vpc, props.vpcId, props.albSubnetIds);
+      if (albSubnetIds) {
+        const cfnLb = fargate.loadBalancer.node.defaultChild as elbv2.CfnLoadBalancer;
+        cfnLb.addPropertyOverride('Subnets', albSubnetIds);
+      }
+    }
+
     // ── ADOT collector sidecar (OTLP receiver → CW native OTLP metrics) ─────
     // Receives OTLP from the gateway on localhost:4318 and forwards to CloudWatch's
     // native OTLP endpoint using SigV4 via the task role.
@@ -410,6 +442,74 @@ export class GatewayStack extends cdk.Stack {
       description: 'Run this to get the cert SHA-256 to publish to developers (the CLI pins it)',
     });
   }
+}
+
+/**
+ * Pick the internal ALB's subnets in a reused VPC: one per AZ, in at least two AZs.
+ * With `requested` (albSubnetIds), validate and use exactly those. Without it, take
+ * the first subnet per AZ from the same default selection the ALB gets today (the
+ * VPC's private subnets), and warn when an AZ had several to choose from.
+ *
+ * Returns undefined while `Vpc.fromLookup` still holds its placeholder. On a first
+ * synth the CLI hasn't fetched the VPC yet; it records the lookup and synthesizes
+ * again with the real subnets. Throwing here would stop it from ever doing that.
+ */
+function selectAlbSubnets(
+  scope: Construct,
+  vpc: ec2.IVpc,
+  vpcId: string,
+  requested: string[] | undefined,
+): string[] | undefined {
+  if (vpc.vpcId !== vpcId) return undefined;
+
+  if (requested !== undefined) {
+    if (requested.length < 2) {
+      throw new Error(
+        `albSubnetIds needs at least two subnet IDs, one per AZ (an ALB spans at least ` +
+          `two AZs); got ${requested.length}.`,
+      );
+    }
+    // Look IDs up among ALL the VPC's subnets: the §23 tagging workaround marks
+    // subnets Isolated, and those are still valid ALB subnets.
+    const all = [...vpc.publicSubnets, ...vpc.privateSubnets, ...vpc.isolatedSubnets];
+    const byAz = new Map<string, string>();
+    for (const id of requested) {
+      const subnet = all.find((s) => s.subnetId === id);
+      if (!subnet) {
+        throw new Error(`albSubnetIds: ${id} is not a subnet of ${vpcId}.`);
+      }
+      const other = byAz.get(subnet.availabilityZone);
+      if (other) {
+        throw new Error(
+          `albSubnetIds: ${other} and ${id} are both in ${subnet.availabilityZone}; ` +
+            'an ALB accepts only one subnet per AZ.',
+        );
+      }
+      byAz.set(subnet.availabilityZone, id);
+    }
+    return requested;
+  }
+
+  const chosen = vpc.selectSubnets({ onePerAz: true }).subnets;
+  const azCount = new Set(chosen.map((s) => s.availabilityZone)).size;
+  if (azCount < 2) {
+    throw new Error(
+      `The private subnets of ${vpcId} are in ${azCount === 1 ? 'one AZ' : `${azCount} AZs`}, ` +
+        'and an ALB needs subnets in at least two. Set albSubnetIds ' +
+        '(ALB_SUBNET_IDS in .env for deploy.sh) to one subnet in each of two or more AZs.',
+    );
+  }
+  if (vpc.selectSubnets().subnets.length > chosen.length) {
+    const picks = chosen.map((s) => `${s.availabilityZone}: ${s.subnetId}`).join(', ');
+    cdk.Annotations.of(scope).addWarningV2(
+      'claude-gateway:albSubnetsDefault',
+      `Reused VPC ${vpcId} has more than one private subnet in an AZ, so the ALB uses ` +
+        `the first in each: ${picks}. If those aren't the subnets developers' laptops ` +
+        'reach over the VPN, set albSubnetIds (ALB_SUBNET_IDS in .env for deploy.sh). ' +
+        'See docs/gotchas.md §23.',
+    );
+  }
+  return chosen.map((s) => s.subnetId);
 }
 
 /** Fail synth with a clear message when a pass-2 required input is missing. */
