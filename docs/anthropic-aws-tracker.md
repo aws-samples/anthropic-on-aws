@@ -1,6 +1,11 @@
 # Anthropic on AWS — news tracker
 
 
+## 2026-11-21
+
+- [AWS Lambda now supports a batch size of up to 10,000 messages for Amazon SQS FIFO queues](https://aws.amazon.com/about-aws/whats-new/2026/11/aws-lambda-10K-batch-size-SQSFIFO/) — *AWS What's New* (Fri, 20 Nov 2026 19:00:00 GMT)
+- [Announcing a new skill for AI agents in Amazon Textract Core](https://aws.amazon.com/about-aws/whats-new/2026/11/amazon-textract-core-skill-ai-agents/) — *AWS What's New* (Fri, 20 Nov 2026 08:00:00 GMT)
+
 ## 2026-11-20
 
 - [AWS DevOps Agent adds new chat capabilities](https://aws.amazon.com/about-aws/whats-new/2026/11/devops-agent-new-chat-capabilities/) — *AWS What's New* (Fri, 20 Nov 2026 08:00:00 GMT)
