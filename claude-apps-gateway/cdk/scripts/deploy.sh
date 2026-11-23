@@ -168,6 +168,15 @@ echo ""
 # but it MUST match what CDK creates, hence we thread the same value everywhere below.
 GATEWAY_NAME="${GATEWAY_NAME:-claude-gateway}"
 
+# Per-developer AWS attribution (off by default). One switch drives both halves,
+# which must agree: the stack's IAM (-c perDeveloperAttribution, below) and the
+# assume_role block baked into the image (BEDROCK_ROLE_ARN at the stamp step).
+PER_DEVELOPER_ATTRIBUTION="${PER_DEVELOPER_ATTRIBUTION:-false}"
+case "${PER_DEVELOPER_ATTRIBUTION}" in
+  true|false) ;;
+  *) echo "❌ PER_DEVELOPER_ATTRIBUTION must be true or false (got '${PER_DEVELOPER_ATTRIBUTION}')."; exit 1 ;;
+esac
+
 # OIDC client secret preflight. deploy.sh seeds Secrets Manager from this AFTER
 # pass 2 (see Step 4b) — but bail now, before the long CDK/CodeBuild run, if it's
 # unset or still the .env.example placeholder. Otherwise the stack comes up with a
@@ -242,6 +251,7 @@ fi
 # also set CREATE_VPC_ENDPOINTS=false — the stack refuses to recreate them.
 [ -n "${VPC_ID:-}" ] && CDK_CTX+=(-c "vpcId=${VPC_ID}")
 [ -n "${CREATE_VPC_ENDPOINTS:-}" ] && CDK_CTX+=(-c "createVpcEndpoints=${CREATE_VPC_ENDPOINTS}")
+[ "${PER_DEVELOPER_ATTRIBUTION}" = "true" ] && CDK_CTX+=(-c "perDeveloperAttribution=true")
 
 # --- Step 1: CDK pass 1 — ECR repository only ---
 # The ECS service can't start until its image exists, so the stack splits the
@@ -422,12 +432,20 @@ fi
 # the template, so a template change can't skip this convenience path.
 # AWS_REGION here is the Bedrock endpoint region (the upstream `region:` the
 # template bakes); DB_NAME defaults inside stamp-config.sh to match the stack.
+# BEDROCK_ROLE_ARN (per-developer attribution only) is the stack's fixed-name
+# <gatewayName>-bedrock-role, derived here because the image is built before
+# pass 2 creates the role.
+BEDROCK_ROLE_ARN=""
+if [ "${PER_DEVELOPER_ATTRIBUTION}" = "true" ]; then
+  BEDROCK_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${GATEWAY_NAME}-bedrock-role"
+fi
 echo "   Stamping gateway.yaml from gateway.yaml.template..."
 PUBLIC_URL="https://${GATEWAY_HOSTNAME}" \
 AWS_REGION="${BEDROCK_REGION}" \
 OIDC_ISSUER="${OIDC_ISSUER}" \
 OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
+BEDROCK_ROLE_ARN="${BEDROCK_ROLE_ARN}" \
 TEMPLATE="${PROJECT_DIR}/gateway.yaml.template" \
 OUT="/tmp/gw-gateway.yaml" \
   "${SCRIPT_DIR}/stamp-config.sh"

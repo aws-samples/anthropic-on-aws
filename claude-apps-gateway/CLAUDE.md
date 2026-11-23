@@ -65,6 +65,13 @@ The CDK app and `setup.sh` provision the **same** Fargate deployment two ways â€
   ALB idle timeout exists to prevent. Both tracks pin it to **40s** (CDK: a property override,
   since `taskImageOptions` exposes no `stopTimeout`; `setup.sh`: in the task-def JSON), and a
   CDK test asserts the `web` container's value is above 25. Raise both together, never one.
+- **Per-developer attribution is two halves that must agree.** `PER_DEVELOPER_ATTRIBUTION`
+  (CDK: `perDeveloperAttribution`) drives the IAM (a fixed-name `<name>-bedrock-role`,
+  task role reduced to `sts:AssumeRole` + CloudWatch, an STS endpoint) *and* the
+  `assume_role` block that `stamp-config.sh` bakes into the image from `BEDROCK_ROLE_ARN`.
+  The role name is fixed because the image is stamped before the role exists. The
+  scripts derive both from the one flag; keep it that way, and keep the flag-off
+  output identical to the pre-flag deploy.
 - **Config secret guard:** `setup.sh` must refuse to publish `gateway.yaml` while any `REPLACE_ME`
   placeholder remains.
 - **Container image:** distroless glibc base (`gcr.io/distroless/cc-debian12:nonroot`) around the

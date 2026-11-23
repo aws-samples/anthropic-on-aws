@@ -5,7 +5,8 @@
 #   ./test/stamp-config.test.sh
 #
 # Covers: placeholder substitution, the REPLACE_ME/unstamped-placeholder guard,
-# and the Google-issuer scope-block auto-injection (and its absence for others).
+# the Google-issuer scope-block auto-injection (and its absence for others), and
+# the per-developer assume_role block (BEDROCK_ROLE_ARN set / unset / malformed).
 
 set -uo pipefail
 
@@ -103,6 +104,27 @@ if PUBLIC_URL=https://gw.example.com AWS_REGION=us-east-1 \
   fail "missing OIDC_ISSUER fails loudly" "expected non-zero exit"
 else
   pass "missing OIDC_ISSUER fails loudly"
+fi
+
+# ── 6. Per-developer attribution: BEDROCK_ROLE_ARN drives the assume_role block ──
+ROLE_ARN="arn:aws:iam::123456789012:role/claude-gateway-bedrock-role"
+upstream_check='import yaml,sys; u=yaml.safe_load(open(sys.argv[1]))["upstreams"][0]; '
+# Unset (case 1's okta.yaml): no assume_role key, and no placeholder line left behind.
+if python3 -c "${upstream_check}"'sys.exit(0 if "assume_role" not in u and u["auth"]=={} else 1)' "${TMP}/okta.yaml" 2>/dev/null; then
+  pass "BEDROCK_ROLE_ARN unset: upstream has no assume_role (signs as the task role)"
+else
+  fail "BEDROCK_ROLE_ARN unset: upstream has no assume_role (signs as the task role)"
+fi
+if BEDROCK_ROLE_ARN="${ROLE_ARN}" run_stamp "https://example.okta.com" "${TMP}/attr.yaml" \
+  && python3 -c "${upstream_check}"'sys.exit(0 if u.get("assume_role")=={"role_arn":sys.argv[2],"session_name":"email"} else 1)' "${TMP}/attr.yaml" "${ROLE_ARN}" 2>/dev/null; then
+  pass "BEDROCK_ROLE_ARN set: upstream gets assume_role {role_arn, session_name: email}"
+else
+  fail "BEDROCK_ROLE_ARN set: upstream gets assume_role {role_arn, session_name: email}"
+fi
+if BEDROCK_ROLE_ARN="not-an-arn" run_stamp "https://example.okta.com" "${TMP}/badarn.yaml"; then
+  fail "malformed BEDROCK_ROLE_ARN fails loudly" "expected non-zero exit"
+else
+  pass "malformed BEDROCK_ROLE_ARN fails loudly"
 fi
 
 echo ""

@@ -178,7 +178,11 @@ output. The stamped config and verified binary must sit next to the `Dockerfile`
 `cdk/`:
 
 ```bash
-# Stamp gateway.yaml from the template (fails if any placeholder is unresolved)
+# Stamp gateway.yaml from the template (fails if any placeholder is unresolved).
+# Per-developer AWS attribution (optional): add
+#   BEDROCK_ROLE_ARN=arn:aws:iam::<account>:role/claude-gateway-bedrock-role
+# to the variables below, and pass -c perDeveloperAttribution=true to pass 2.
+# The two must agree.
 PUBLIC_URL=https://claude-gateway.example.com AWS_REGION=us-east-1 \
 OIDC_ISSUER=https://example.okta.com OIDC_CLIENT_ID=0oa1example2 \
 ALLOWED_EMAIL_DOMAINS=example.com \
@@ -277,7 +281,8 @@ with those four ranges free; anything else fails at `create-subnet`. The CDK tra
 imports the VPC's existing subnets instead, so any CIDR works.
 
 **Endpoint security groups.** If the VPC already has the Bedrock / Secrets Manager /
-ECR / CloudWatch **interface** endpoints, tell the CDK track not to recreate them with
+ECR / CloudWatch **interface** endpoints (plus STS with
+[per-developer attribution](../README.md#per-developer-aws-attribution) on), tell the CDK track not to recreate them with
 `CREATE_VPC_ENDPOINTS=false` (`deploy.sh`) or `-c createVpcEndpoints=false` (by hand)
 — AWS allows one private-DNS endpoint per service per VPC. `setup.sh` has no such
 flag and needs none: it describes before creating, so it adopts endpoints already in

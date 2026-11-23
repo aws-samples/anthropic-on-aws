@@ -87,6 +87,11 @@ upstreams:
   - provider: bedrock
     region: us-east-1
     auth: {}                 # AWS default credential chain → the ECS task role
+    # With PER_DEVELOPER_ATTRIBUTION=true, stamp-config.sh adds (README
+    # "Per-developer AWS attribution"):
+    # assume_role:
+    #   role_arn: arn:aws:iam::123456789012:role/claude-gateway-bedrock-role
+    #   session_name: email
     # FIPS / VPC-endpoint override:
     # base_url: https://bedrock-runtime-fips.us-east-1.amazonaws.com
   # Multi-upstream failover (provisioned-throughput → on-demand → second region).
@@ -94,6 +99,9 @@ upstreams:
   # 401, 403, 404, and timeout — so an upstream that hasn't enabled a model (404)
   # falls through to one that has; other 4xx (a bad request) does not. (Pre-2.1.198
   # returned the first 404 to the client instead of trying later upstreams.)
+  # With PER_DEVELOPER_ATTRIBUTION=true, copy the assume_role block above
+  # into every Bedrock upstream you add: one without it signs with the task role,
+  # which then has no Bedrock grant.
   # - name: bedrock-pt
   #   provider: bedrock
   #   region: us-east-1

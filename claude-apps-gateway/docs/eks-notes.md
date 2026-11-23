@@ -41,6 +41,10 @@ metadata:
 `auth: {}` in the Bedrock upstream picks it up through the default credential
 chain — no static keys.
 
+For [per-developer attribution](../README.md#per-developer-aws-attribution), the IRSA
+role takes the ECS task role's place: it holds only `sts:AssumeRole` on the Bedrock
+role, and the Bedrock role's trust policy names it.
+
 ### 2. Config + secrets: the Secrets Store CSI driver (file mounts)
 
 This is **the one place a file mount is the natural AWS answer**, so the EKS track
