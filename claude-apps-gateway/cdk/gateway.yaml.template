@@ -97,6 +97,7 @@ upstreams:
   - provider: bedrock
     region: @@AWS_REGION@@
     auth: {}                 # AWS default credential chain → the ECS task role
+@@BEDROCK_ASSUME_ROLE_BLOCK@@
     # FIPS / VPC-endpoint override:
     # base_url: https://bedrock-runtime-fips.@@AWS_REGION@@.amazonaws.com
   # Multi-upstream failover (provisioned-throughput → on-demand → second region).
@@ -104,6 +105,9 @@ upstreams:
   # 401, 403, 404, and timeout — so an upstream that hasn't enabled a model (404)
   # falls through to one that has; other 4xx (a bad request) does not. (Pre-2.1.198
   # returned the first 404 to the client instead of trying later upstreams.)
+  # With PER_DEVELOPER_ATTRIBUTION=true, copy the assume_role block stamped above
+  # into every Bedrock upstream you add: one without it signs with the task role,
+  # which then has no Bedrock grant.
   # - name: bedrock-pt
   #   provider: bedrock
   #   region: @@AWS_REGION@@

@@ -516,6 +516,9 @@ covers both routes: one STS session per developer with `assume_role` and `sessio
 and per-team application inference profiles. It lists the IAM grants and network path
 each route needs. Check the [config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#per-developer-aws-cost-attribution)
 for the gateway version `assume_role` requires; an older gateway refuses to start on the key.
+This example wires the per-developer route behind one opt-in flag,
+`PER_DEVELOPER_ATTRIBUTION=true`: see the README's
+[Per-developer AWS attribution](../README.md#per-developer-aws-attribution).
 
 ---
 

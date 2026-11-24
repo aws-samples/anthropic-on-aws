@@ -180,6 +180,18 @@ GATEWAY_LOG_LEVEL="${GATEWAY_LOG_LEVEL:-info}"
 # docs/deployment.md "Telemetry". The public ECR image for the collector:
 ADOT_IMAGE="${ADOT_IMAGE:-public.ecr.aws/aws-observability/aws-otel-collector:latest}"
 
+# Per-developer AWS attribution (off by default). true = the gateway calls Bedrock
+# through ${PROJECT}-bedrock-role, assumed once per developer with the STS session
+# named for their email (gateway.yaml assume_role, gateway >= 2.1.281). Adds that
+# role and an STS endpoint; the task role keeps only sts:AssumeRole on it. See the
+# README "Per-developer AWS attribution".
+PER_DEVELOPER_ATTRIBUTION="${PER_DEVELOPER_ATTRIBUTION:-false}"
+case "${PER_DEVELOPER_ATTRIBUTION}" in
+  true|false) ;;
+  *) die "PER_DEVELOPER_ATTRIBUTION must be true or false (got '${PER_DEVELOPER_ATTRIBUTION}')" ;;
+esac
+BEDROCK_ROLE="${PROJECT}-bedrock-role"
+
 # Required inputs (no safe default — fail loudly). See header.
 PUBLIC_URL="${PUBLIC_URL:?required: the internal ALB https origin, e.g. https://claude-gateway.example.com}"
 OIDC_ISSUER="${OIDC_ISSUER:?required: OIDC discovery base, e.g. https://example.okta.com}"
@@ -214,6 +226,13 @@ info "container tool: ${CTR}"
 ACCOUNT_ID="${ACCOUNT_ID:-$(aws_q sts get-caller-identity --query Account)}"
 [[ -n "${ACCOUNT_ID}" && "${ACCOUNT_ID}" != "None" ]] || die "could not resolve AWS account id - is the aws CLI authenticated?"
 info "account ${ACCOUNT_ID}, region ${AWS_REGION}"
+# Derived, not looked up: the config is stamped in phase 2, before phase 5 creates
+# the role. Empty when the flag is off, which stamps no assume_role block.
+BEDROCK_ROLE_ARN=""
+if [[ "${PER_DEVELOPER_ATTRIBUTION}" == "true" ]]; then
+  BEDROCK_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${BEDROCK_ROLE}"
+  info "per-developer attribution: on (Bedrock via ${BEDROCK_ROLE_ARN})"
+fi
 info "TLS: imported cert ${CERT_ARN}"
 info "caller $(aws_q sts get-caller-identity --query Arn)"
 # Fail fast on the OIDC client secret BEFORE the slow phases (RDS alone is ~9 min).
@@ -251,6 +270,7 @@ info "stamping gateway.yaml from template"
 PUBLIC_URL="${PUBLIC_URL}" AWS_REGION="${AWS_REGION}" \
 OIDC_ISSUER="${OIDC_ISSUER}" OIDC_CLIENT_ID="${OIDC_CLIENT_ID}" \
 ALLOWED_EMAIL_DOMAINS="${ALLOWED_EMAIL_DOMAINS}" \
+BEDROCK_ROLE_ARN="${BEDROCK_ROLE_ARN}" \
 DB_NAME="${DB_NAME}" \
 "${SCRIPT_DIR}/stamp-config.sh"
 
@@ -489,7 +509,11 @@ ensure_interface_endpoint() {
     --region "${AWS_REGION}" >/dev/null
   info "created vpc endpoint ${svc}"
 }
-for svc in bedrock-runtime secretsmanager ecr.api ecr.dkr logs monitoring; do
+IFACE_ENDPOINTS="bedrock-runtime secretsmanager ecr.api ecr.dkr logs monitoring"
+# sts: per-developer attribution calls sts:AssumeRole at request time. Turning the
+# flag off later leaves this endpoint in place (unused; teardown removes it).
+[[ "${PER_DEVELOPER_ATTRIBUTION}" == "true" ]] && IFACE_ENDPOINTS+=" sts"
+for svc in ${IFACE_ENDPOINTS}; do
   ensure_interface_endpoint "${svc}"
 done
 # S3 gateway endpoint — ECR layer pulls go to S3.
@@ -639,38 +663,92 @@ aws iam put-role-policy --role-name "${EXEC_ROLE}" \
   --policy-name "${PROJECT}-exec-secrets" --policy-document "${EXEC_SECRETS_POLICY}" >/dev/null
 EXEC_ROLE_ARN="$(aws iam get-role --role-name "${EXEC_ROLE}" --query Role.Arn --output text)"
 
-# 5b. Task role — the gateway's runtime identity. Dual-ARN Bedrock policy: BOTH
-# inference-profile (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or
-# invoke 403s. Matches gateway.yaml.template's global.anthropic.* model catalog, so
-# any region works. auth: {} in gateway.yaml picks this up via the ECS creds endpoint.
+# 5b. Task role — the gateway's runtime identity. auth: {} in gateway.yaml picks it
+# up via the ECS creds endpoint. Bedrock policy: BOTH inference-profile
+# (global.anthropic.*) AND foundation-model (anthropic.*) ARNs, or invoke 403s.
+# Matches gateway.yaml.template's global.anthropic.* model catalog, so any region works.
 # bedrock:CountTokens: from 2.1.260 the gateway counts an ABORTED request's input tokens
 # with Bedrock's free CountTokens API, falling back to a max_tokens:1 invoke (plus one
 # warning) when the call fails — so the grant buys a free path, it doesn't fix a metering
 # gap. Bedrock takes only a BARE foundation-model id here, and of this catalog only
 # anthropic.claude-haiku-4-5-20251001-v1:0 supports it today; Opus 5 and Sonnet 5 fall
-# back regardless. Also grants cloudwatch:PutMetricData so the ADOT sidecar can push
-# OTLP metrics to CloudWatch via SigV4 (PutMetricData takes no resource scope, hence "*").
+# back regardless. The task role also gets cloudwatch:PutMetricData so the ADOT sidecar
+# can push OTLP metrics to CloudWatch via SigV4 (no resource scope, hence "*").
+#
+# Who holds the Bedrock policy depends on PER_DEVELOPER_ATTRIBUTION:
+#   false → the task role, in ${PROJECT}-bedrock-invoke (with CloudWatch).
+#   true  → ${BEDROCK_ROLE} (5c); the task role's ${PROJECT}-task-policy holds only
+#           sts:AssumeRole on it + CloudWatch, so a Bedrock upstream missing
+#           assume_role 403s instead of quietly signing as the shared task role.
+# The other mode's grants are removed in 6g, after the rolling deploy: tasks still
+# running the previous config need them until they're replaced.
 TASK_ROLE="${PROJECT}-task-role"
 ensure_role "${TASK_ROLE}"
-BEDROCK_POLICY=$(cat <<JSON
-{"Version":"2012-10-17","Statement":[
+BEDROCK_STATEMENT=$(cat <<JSON
   {"Effect":"Allow",
    "Action":["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream","bedrock:CountTokens"],
    "Resource":[
      "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/global.anthropic.*",
      "arn:aws:bedrock:*::foundation-model/anthropic.*"
-   ]},
-  {"Effect":"Allow",
-   "Action":["cloudwatch:PutMetricData"],
-   "Resource":["*"]}
-]}
+   ]}
 JSON
 )
+METRICS_STATEMENT='  {"Effect":"Allow","Action":["cloudwatch:PutMetricData"],"Resource":["*"]}'
+if [[ "${PER_DEVELOPER_ATTRIBUTION}" == "true" ]]; then
+  TASK_POLICY_NAME="${PROJECT}-task-policy"
+  STALE_TASK_POLICY="${PROJECT}-bedrock-invoke"
+  TASK_POLICY="{\"Version\":\"2012-10-17\",\"Statement\":[
+  {\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Resource\":[\"${BEDROCK_ROLE_ARN}\"]},
+${METRICS_STATEMENT}
+]}"
+else
+  TASK_POLICY_NAME="${PROJECT}-bedrock-invoke"
+  STALE_TASK_POLICY="${PROJECT}-task-policy"
+  TASK_POLICY="{\"Version\":\"2012-10-17\",\"Statement\":[
+${BEDROCK_STATEMENT},
+${METRICS_STATEMENT}
+]}"
+fi
 aws iam put-role-policy --role-name "${TASK_ROLE}" \
-  --policy-name "${PROJECT}-bedrock-invoke" --policy-document "${BEDROCK_POLICY}" >/dev/null
+  --policy-name "${TASK_POLICY_NAME}" --policy-document "${TASK_POLICY}" >/dev/null
 TASK_ROLE_ARN="$(aws iam get-role --role-name "${TASK_ROLE}" --query Role.Arn --output text)"
+
+# 5c. Bedrock role (PER_DEVELOPER_ATTRIBUTION=true only) — assumed by the gateway once
+# per developer per hour, so Bedrock calls reach AWS as
+# assumed-role/${BEDROCK_ROLE}/<email>. Trusts only the task role.
+if [[ "${PER_DEVELOPER_ATTRIBUTION}" == "true" ]]; then
+  BEDROCK_TRUST="{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",
+  \"Principal\":{\"AWS\":\"${TASK_ROLE_ARN}\"},\"Action\":\"sts:AssumeRole\"}]}"
+  if aws iam get-role --role-name "${BEDROCK_ROLE}" >/dev/null 2>&1; then
+    # Re-assert the trust on every run: IAM pins a trust principal to the role's
+    # unique id, so a recreated task role would otherwise silently lose access.
+    aws iam update-assume-role-policy --role-name "${BEDROCK_ROLE}" \
+      --policy-document "${BEDROCK_TRUST}" >/dev/null
+    skip "iam role ${BEDROCK_ROLE}"
+  else
+    # A just-created task role can take a few seconds to become a valid principal;
+    # until then create-role fails with MalformedPolicyDocument (invalid principal).
+    # Retry only that error; any other failure (AccessDenied, a bad name) is shown.
+    for attempt in 1 2 3 4 5 6; do
+      if err="$(aws iam create-role --role-name "${BEDROCK_ROLE}" \
+           --assume-role-policy-document "${BEDROCK_TRUST}" \
+           --tags "Key=Project,Value=${PROJECT}" 2>&1 >/dev/null)"; then
+        info "created iam role ${BEDROCK_ROLE}"; break
+      fi
+      [[ "${err}" == *MalformedPolicyDocument* && "${attempt}" -lt 6 ]] \
+        || die "could not create iam role ${BEDROCK_ROLE} (trusting ${TASK_ROLE_ARN}): ${err}"
+      sleep 10
+    done
+  fi
+  aws iam put-role-policy --role-name "${BEDROCK_ROLE}" \
+    --policy-name "${PROJECT}-bedrock-invoke" \
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[
+${BEDROCK_STATEMENT}
+]}" >/dev/null
+fi
 info "exec=${EXEC_ROLE_ARN}"
 info "task=${TASK_ROLE_ARN}"
+[[ -z "${BEDROCK_ROLE_ARN}" ]] || info "bedrock=${BEDROCK_ROLE_ARN} (assumed per developer)"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Phase 6 — ECS cluster, ALB, gateway service (with ADOT telemetry sidecar)
@@ -872,6 +950,40 @@ else
   info "created gateway service ${SERVICE} (desiredCount ${DESIRED_COUNT})"
 fi
 
+# 6g. Drop the other attribution mode's grants once the rolling deploy has replaced
+# every old task (they ran the previous config and needed them until then). Only
+# waits when there is something to remove; a timeout exits with the old grants still
+# in place, and re-running finishes the job.
+# The Bedrock role is deleted only if this script created it (Project tag), so a
+# same-named role someone made by hand is left alone.
+STALE_BEDROCK_ROLE=""
+if [[ "${PER_DEVELOPER_ATTRIBUTION}" == "false" ]] \
+   && [[ "$(aws_q iam get-role --role-name "${BEDROCK_ROLE}" \
+          --query "Role.Tags[?Key=='Project'].Value | [0]")" == "${PROJECT}" ]]; then
+  STALE_BEDROCK_ROLE=1
+fi
+STALE_TASK_POLICY_PRESENT=""
+if aws iam get-role-policy --role-name "${TASK_ROLE}" \
+     --policy-name "${STALE_TASK_POLICY}" >/dev/null 2>&1; then
+  STALE_TASK_POLICY_PRESENT=1
+fi
+if [[ -n "${STALE_TASK_POLICY_PRESENT}${STALE_BEDROCK_ROLE}" ]]; then
+  info "waiting for ${SERVICE} to stabilize before removing the previous attribution mode's IAM grants"
+  aws ecs wait services-stable --cluster "${CLUSTER}" --services "${SERVICE}" --region "${AWS_REGION}" \
+    || die "${SERVICE} did not stabilize; kept the previous attribution mode's IAM grants. Fix the service, then re-run to finish."
+  if [[ -n "${STALE_TASK_POLICY_PRESENT}" ]]; then
+    aws iam delete-role-policy --role-name "${TASK_ROLE}" --policy-name "${STALE_TASK_POLICY}" >/dev/null
+    info "removed ${STALE_TASK_POLICY} from ${TASK_ROLE}"
+  fi
+  if [[ -n "${STALE_BEDROCK_ROLE}" ]]; then
+    for p in $(aws iam list-role-policies --role-name "${BEDROCK_ROLE}" --query 'PolicyNames[]' --output text); do
+      aws iam delete-role-policy --role-name "${BEDROCK_ROLE}" --policy-name "${p}" >/dev/null
+    done
+    aws iam delete-role --role-name "${BEDROCK_ROLE}" >/dev/null
+    info "deleted iam role ${BEDROCK_ROLE} (per-developer attribution is off)"
+  fi
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Final summary
 # ──────────────────────────────────────────────────────────────────────────────
@@ -893,6 +1005,7 @@ $(log "Deploy complete")
   Internal ALB DNS ... ${ALB_DNS}
   RDS endpoint ....... ${DB_HOST}
   Task role ARN ...... ${TASK_ROLE_ARN}
+  Bedrock role ARN ... ${BEDROCK_ROLE_ARN:-(none; PER_DEVELOPER_ATTRIBUTION=false)}
   Log group .......... ${LOG_GROUP}
 
   NEXT STEPS

@@ -332,8 +332,47 @@ See [`docs/deployment.md`](docs/deployment.md#telemetry) for deployment details.
 > metrics. Unless the Bedrock upstream sets `assume_role`, AWS sees every Bedrock call
 > under the gateway's one IAM principal, so CloudTrail and Bedrock invocation logs don't
 > split by developer. [Cost attribution on AWS](https://code.claude.com/docs/en/claude-apps-gateway-on-aws#cost-attribution)
-> covers per-developer and per-team attribution in AWS's records; see also
+> covers per-developer and per-team attribution in AWS's records; this example's
+> opt-in flag for the per-developer route is below. See also
 > [`docs/gotchas.md` §21](docs/gotchas.md#21-cloudtrail-shows-one-principal-for-every-developer).
+
+#### Per-developer AWS attribution
+
+Off by default. Set `PER_DEVELOPER_ATTRIBUTION=true` (in `cdk/.env` for `deploy.sh`, or
+exported for `setup.sh`; `-c perDeveloperAttribution=true` plus a stamped
+`BEDROCK_ROLE_ARN` if you run CDK by hand) and the deploy:
+
+- adds `<name>-bedrock-role`, which holds the Bedrock policy and trusts only the task
+  role. The task role keeps `sts:AssumeRole` on it and its CloudWatch grant, and loses
+  its own Bedrock grant
+- stamps `assume_role` with `session_name: email` into the Bedrock upstream
+- adds an STS interface VPC endpoint
+
+Each developer's Bedrock calls then reach AWS as
+`arn:aws:sts::<account>:assumed-role/<name>-bedrock-role/<email>` in CloudTrail and
+Bedrock model invocation logs. To see spend per developer in AWS billing, use a billing
+export that includes IAM principal data; see
+[IAM principal cost allocation](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/iam-principal-cost-allocation.html).
+How the gateway caches the sessions, and which calls stay on a shared session, is in the
+[config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#per-developer-aws-cost-attribution).
+
+Before turning it on:
+
+- **Gateway version.** `assume_role` needs 2.1.281 or later
+  ([config reference](https://code.claude.com/docs/en/claude-apps-gateway-config#per-developer-aws-cost-attribution));
+  older gateways refuse to start on the key.
+- **Toggling on a running deployment.** `setup.sh` removes the previous mode's IAM grants
+  only after the rolling deploy finishes. `deploy.sh` doesn't: CloudFormation changes IAM
+  before the service rolls, so requests can return 403 for a few minutes. Toggle in a
+  quiet window.
+- **Reused VPC.** With `CREATE_VPC_ENDPOINTS=false`, the VPC must give the tasks a path
+  to `sts.<region>.amazonaws.com` (an STS endpoint they can reach on 443, or the NAT).
+- **Every Bedrock upstream needs the block.** If you add a failover upstream, copy
+  `assume_role` into it. The task role has no Bedrock grant in this mode, so an upstream
+  without it fails with 403.
+- **Gateway budgets don't change.** Spend caps and the admin cost report come from the
+  gateway's own meter ([§5](#5-spend-caps-per-user-budget-enforcement)), not from AWS
+  billing.
 
 ---
 

@@ -16,6 +16,10 @@
 #   OIDC_CLIENT_ID         OAuth client id
 #   ALLOWED_EMAIL_DOMAINS  comma-separated, e.g. "example.com,corp.example.com"
 #   DB_NAME                Postgres database name (default: claude_gateway)
+#   BEDROCK_ROLE_ARN       optional. When set, the Bedrock upstream gets an
+#                          assume_role block (per-developer AWS attribution; the
+#                          deploy scripts set it when PER_DEVELOPER_ATTRIBUTION=true).
+#                          Unset, the upstream signs with the task role as before.
 #   TEMPLATE               input template path  (default: ./gateway.yaml.template)
 #   OUT                    output config path    (default: ./gateway.yaml)
 #
@@ -60,6 +64,20 @@ else
   google_block=''
 fi
 
+# Per-developer AWS attribution: the gateway assumes BEDROCK_ROLE_ARN once per
+# developer per hour, with the STS session named for their verified email. Same
+# literal-\n convention as the Google block above. Unset → the placeholder line is
+# dropped entirely (see drop_line_if_empty), so the upstream keeps signing with the
+# task role.
+BEDROCK_ROLE_ARN="${BEDROCK_ROLE_ARN:-}"
+if [[ -n "${BEDROCK_ROLE_ARN}" ]]; then
+  [[ "${BEDROCK_ROLE_ARN}" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] \
+    || die "BEDROCK_ROLE_ARN is not an IAM role ARN: ${BEDROCK_ROLE_ARN}"
+  assume_role_block='    # Per-developer AWS attribution (PER_DEVELOPER_ATTRIBUTION=true): Bedrock\n    # calls reach AWS as assumed-role/<role>/<developer email>. See the README.\n    assume_role:\n      role_arn: '"${BEDROCK_ROLE_ARN}"'\n      session_name: email'
+else
+  assume_role_block=''
+fi
+
 # Substitute with awk using literal string replacement (no regex interpretation of
 # the values — URLs/issuers contain '/', '.', etc. that would break sed s///).
 subst() {
@@ -69,6 +87,12 @@ subst() {
       }
       print }
   '
+}
+
+# For a block token: when the value is empty, drop any line that holds only the
+# token (plus indentation) rather than leaving a blank line behind.
+drop_line_if_empty() {
+  awk -v k="$1" -v v="$2" 'v == "" && $0 ~ "^[[:space:]]*" k "[[:space:]]*$" { next } { print }'
 }
 
 tmp="$(mktemp "${OUT}.XXXXXX")"
@@ -82,6 +106,8 @@ subst '@@PUBLIC_URL@@'            "${PUBLIC_URL}"            < "${TEMPLATE}" \
   | subst '@@ALLOWED_EMAIL_DOMAINS@@' "${domains_yaml}" \
   | subst '@@OIDC_GOOGLE_BLOCK@@'     "${google_block}" \
   | subst '@@DB_NAME@@'               "${DB_NAME}" \
+  | drop_line_if_empty '@@BEDROCK_ASSUME_ROLE_BLOCK@@' "${assume_role_block}" \
+  | subst '@@BEDROCK_ASSUME_ROLE_BLOCK@@' "${assume_role_block}" \
   > "${tmp}"
 
 # Guard: refuse to emit a config that still has an unstamped @@...@@ placeholder —
@@ -93,4 +119,4 @@ fi
 
 mv "${tmp}" "${OUT}"
 trap - EXIT INT TERM
-echo "stamp-config: wrote ${OUT} (public_url=${PUBLIC_URL}, region=${AWS_REGION})"
+echo "stamp-config: wrote ${OUT} (public_url=${PUBLIC_URL}, region=${AWS_REGION}${BEDROCK_ROLE_ARN:+, assume_role=${BEDROCK_ROLE_ARN}})"

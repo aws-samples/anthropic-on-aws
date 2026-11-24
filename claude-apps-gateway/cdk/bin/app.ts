@@ -30,6 +30,9 @@ import { GatewayStack } from '../lib/claude-gateway-stack';
  *     vpcId           import an existing VPC instead of creating one (optional)
  *     createVpcEndpoints  "false" to skip VPC endpoint creation when reusing a VPC
  *                     (`vpcId`) that already has them; default true (optional)
+ *     perDeveloperAttribution  "true" to call Bedrock through a per-developer
+ *                     assumed role (default off). The image's gateway.yaml must be
+ *                     stamped with BEDROCK_ROLE_ARN to match — see the README
  *     imageReady      "false" for pass 1 (repo only), "true"/unset for pass 2
  *   BUILD-TIME (stamped into the image by stamp-config.sh; shown here for parity,
  *   not passed to the running task — changing them means a new image, by design):
@@ -61,6 +64,8 @@ new GatewayStack(app, 'ClaudeGatewayStack', {
   vpcId: ctx('vpcId'),
   // Default true; only 'false' opts out (for a reused VPC that already has endpoints).
   createVpcEndpoints: ctx('createVpcEndpoints') !== 'false',
+  // Default off; only 'true' opts in. Must match the baked gateway.yaml.
+  perDeveloperAttribution: ctx('perDeveloperAttribution') === 'true',
   // Pass 1 sets imageReady=false to create just the ECR repo; pass 2 (default)
   // deploys the full stack including the Fargate service.
   imageReady: ctx('imageReady') !== 'false',

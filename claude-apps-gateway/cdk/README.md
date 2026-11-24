@@ -19,7 +19,7 @@ This CDK stack creates all the AWS infrastructure needed to run it:
 | **ACM certificate** | Free TLS certificate for the ALB. Auto-renews. |
 | **RDS PostgreSQL (db.t4g.micro)** | Stores short-lived sign-in state (device codes, rate limits). Smallest tier is sufficient. |
 | **ECR repository** | Holds the gateway container image you build and push. |
-| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`, plus `CountTokens`, which the gateway uses for free token counts where Bedrock supports it: aborted requests from 2.1.260, `/context` and large file reads from 2.1.295). No static keys. |
+| **IAM task role** | Gives the gateway container permission to call Bedrock (`InvokeModel` + `InvokeModelWithResponseStream`, plus `CountTokens`, which the gateway uses for free token counts where Bedrock supports it: aborted requests from 2.1.260, `/context` and large file reads from 2.1.295). No static keys. With `PER_DEVELOPER_ATTRIBUTION=true`, a second role holds these and the task role assumes it per developer. |
 | **IAM execution role** | Lets ECS pull the image from ECR and write logs to CloudWatch. |
 | **Security groups** | Network rules: ALB accepts HTTPS (443), ECS accepts traffic from ALB only (8080), RDS accepts traffic from ECS only (5432). |
 | **Route53 A record** | Points your gateway hostname at the ALB so developers can reach it by name. |
@@ -277,6 +277,7 @@ All values come from `.env`. The CDK code reads them at deploy time.
 | `INGRESS_CIDR` | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR (required; maps to `ingressCidr`) |
 | `VPC_ID` | Optional. Reuse an existing VPC (e.g. to keep a Client VPN association intact) instead of creating one; maps to `vpcId` |
 | `CREATE_VPC_ENDPOINTS` | Optional. Set `false` with `VPC_ID` when the reused VPC already has the interface endpoints; maps to `createVpcEndpoints`. You must then authorize 443 from the task SG on those endpoints yourself — see [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
+| `PER_DEVELOPER_ATTRIBUTION` | Optional, default `false`. `true` calls Bedrock through a role assumed per developer, so AWS's records show each developer; maps to `perDeveloperAttribution` and stamps the matching `assume_role` block into the image. See [Per-developer AWS attribution](../README.md#per-developer-aws-attribution) |
 
 ### CDK context variables
 
@@ -297,6 +298,7 @@ pass 2 (default) deploys the full stack.
 | `zoneId` | 2 | no | Hosted-zone id (looked up from `zoneName` if omitted) |
 | `ingressCidr` | 2 | **yes** | VPN/corp **client** CIDR developers connect from — **not** the VPC CIDR |
 | `vpcId` | 2 | no | Import an existing VPC instead of creating one |
+| `perDeveloperAttribution` | 2 | no | Default off; `true` adds `<gatewayName>-bedrock-role` (assumed per developer), moves the Bedrock grant onto it, and adds an STS endpoint. The image's `gateway.yaml` must be stamped with `BEDROCK_ROLE_ARN=arn:aws:iam::<account>:role/<gatewayName>-bedrock-role` to match. See [Per-developer AWS attribution](../README.md#per-developer-aws-attribution) |
 | `createVpcEndpoints` | 2 | no | Default `true`. Set `false` **only** when reusing a `vpcId` that already has the Bedrock/Secrets Manager/ECR/CloudWatch interface endpoints (+ the S3 gateway endpoint) — AWS allows one private-DNS endpoint per service per VPC, so recreating them fails the deploy. Then authorize 443 yourself: [Reusing an existing VPC](../docs/deployment.md#reusing-an-existing-vpc) |
 
 ### Regions & data residency
