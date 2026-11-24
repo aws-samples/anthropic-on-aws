@@ -55,7 +55,7 @@ export class PlatformStack extends cdk.Stack {
     }
     const bedrockModelId =
       this.node.tryGetContext('bedrockModelId') ??
-      'anthropic.claude-sonnet-5';
+      'us.anthropic.claude-sonnet-5';
     if (
       inferenceMode === 'bedrock' &&
       !isApprovedBedrockModelId(bedrockModelId)
